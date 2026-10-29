@@ -522,7 +522,17 @@ void BotSetInfoConfigString(bot_state_t *bs) {
 				leader,
 				carrying,
 				action);
-  	trap_SetConfigstring (CS_BOTINFO + bs->client, cs);
+	// Quake III published this as CS_BOTINFO + client.  Quake Live has no
+	// such configstring range (those indices are model slots), so the debug
+	// summary goes to the server console instead, whenever it changes.
+	{
+		static char lastReport[MAX_CLIENTS][256];
+
+		if ( bs->client >= 0 && bs->client < MAX_CLIENTS && strcmp( lastReport[bs->client], cs ) ) {
+			Q_strncpyz( lastReport[bs->client], cs, sizeof( lastReport[bs->client] ) );
+			G_Printf( "bot %d: %s\n", bs->client, cs );
+		}
+	}
 }
 
 /*

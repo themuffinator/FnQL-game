@@ -32,7 +32,7 @@
 
 
 typedef struct {
-	entityState_t	unused;				// communicated by server to clients
+	entityState_t	s;					// pad named as in FnQL; SVF_SELF_PORTAL2 reads s.origin2
 
 	qboolean	linked;				// qfalse if not in any good cluster
 	int			linkcount;

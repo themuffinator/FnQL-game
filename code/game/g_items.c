@@ -162,11 +162,13 @@ int Pickup_PersistantPowerup( gentity_t *ent, gentity_t *other ) {
 	float	handicap;
 	int		max;
 
-	other->client->ps.stats[STAT_PERSISTANT_POWERUP] = ent->item - bg_itemlist;
+	// Quake Live stores the persistant powerup tag itself (retail damage code
+	// compares stats[STAT_PERSISTANT_POWERUP] with PP_DOUBLER).
+	other->client->ps.stats[STAT_PERSISTANT_POWERUP] = ent->item->giTag;
 	other->client->persistantPowerup = ent;
 
 	switch( ent->item->giTag ) {
-	case PW_GUARD:
+	case PP_GUARD:
 		clientNum = other->client->ps.clientNum;
 		trap_GetUserinfo( clientNum, userinfo, sizeof(userinfo) );
 		handicap = atof( Info_ValueForKey( userinfo, "handicap" ) );
@@ -183,7 +185,7 @@ int Pickup_PersistantPowerup( gentity_t *ent, gentity_t *other ) {
 
 		break;
 
-	case PW_SCOUT:
+	case PP_SCOUT:
 		clientNum = other->client->ps.clientNum;
 		trap_GetUserinfo( clientNum, userinfo, sizeof(userinfo) );
 		handicap = atof( Info_ValueForKey( userinfo, "handicap" ) );
@@ -194,7 +196,7 @@ int Pickup_PersistantPowerup( gentity_t *ent, gentity_t *other ) {
 		other->client->ps.stats[STAT_ARMOR] = 0;
 		break;
 
-	case PW_DOUBLER:
+	case PP_DOUBLER:
 		clientNum = other->client->ps.clientNum;
 		trap_GetUserinfo( clientNum, userinfo, sizeof(userinfo) );
 		handicap = atof( Info_ValueForKey( userinfo, "handicap" ) );
@@ -203,7 +205,7 @@ int Pickup_PersistantPowerup( gentity_t *ent, gentity_t *other ) {
 		}
 		other->client->pers.maxHealth = handicap;
 		break;
-	case PW_AMMOREGEN:
+	case PP_ARMORREGEN:
 		clientNum = other->client->ps.clientNum;
 		trap_GetUserinfo( clientNum, userinfo, sizeof(userinfo) );
 		handicap = atof( Info_ValueForKey( userinfo, "handicap" ) );
@@ -324,7 +326,7 @@ static int Pickup_Health( gentity_t *ent, gentity_t *other ) {
 
 	// small and mega healths will go over the max
 #ifdef MISSIONPACK
-	if( other->client && bg_itemlist[other->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD ) {
+	if( other->client && other->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
 		max = other->client->ps.stats[STAT_MAX_HEALTH];
 	}
 	else
@@ -365,7 +367,7 @@ int Pickup_Armor( gentity_t *ent, gentity_t *other ) {
 
 	other->client->ps.stats[STAT_ARMOR] += ent->item->quantity;
 
-	if( other->client && bg_itemlist[other->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD ) {
+	if( other->client && other->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
 		upperBound = other->client->ps.stats[STAT_MAX_HEALTH];
 	}
 	else {

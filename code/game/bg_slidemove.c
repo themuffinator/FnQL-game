@@ -286,16 +286,10 @@ void PM_StepSlideMove( qboolean gravity ) {
 		float	delta;
 
 		delta = pm->ps->origin[2] - start_o[2];
+		// Quake Live has no step events: the step height is handed back to
+		// the caller (cgame step smoothing) instead of being sent as an event.
 		if ( delta > 2 && pm->ps->pm_type != PM_DEAD ) {
-			if ( delta < 7 ) {
-				PM_AddEvent( EV_STEP_4 );
-			} else if ( delta < 11 ) {
-				PM_AddEvent( EV_STEP_8 );
-			} else if ( delta < 15 ) {
-				PM_AddEvent( EV_STEP_12 );
-			} else {
-				PM_AddEvent( EV_STEP_16 );
-			}
+			pm->stepUp = delta;
 		}
 		if ( pm->debugLevel ) {
 			Com_Printf("%i:stepped\n", c_pmove);

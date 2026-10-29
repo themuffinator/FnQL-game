@@ -34,7 +34,7 @@
 
 // for the voice chats
 #ifdef MISSIONPACK
-#include "../../ui/menudef.h"
+#include "bg_voicechat.h"
 #endif
 
 #define TIME_BETWEENCHATTING	25

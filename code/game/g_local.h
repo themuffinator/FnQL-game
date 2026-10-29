@@ -9,7 +9,11 @@
 //==================================================================
 
 // the "gameversion" client command will print this plus compile date
-#define	GAMEVERSION	"baseq3"
+// Quake Live has no single player mode: gametype slot 2 is Race.  The
+// Quake III single player branches stay unreachable through this predicate.
+#define	G_IsSinglePlayer()	qfalse
+
+#define	GAMEVERSION	"baseqz"	// retail gamename (serverinfo) and CS_GAME_VERSION value
 
 #define BODY_QUEUE_SIZE		8
 
@@ -160,6 +164,10 @@ struct gentity_s {
 	team_t		fteam;
 
 	tag_t		tag;
+
+	// target_cvar
+	char		*cvarName;
+	float		cvarValue;
 };
 
 #define SPAWN_HEIGHT 0.0f
@@ -241,6 +249,16 @@ typedef struct {
 	int			teamVoted;
 
 	qboolean	inGame;
+
+	// Quake Live CS_PLAYERS state (keys rp, p, so, pq, st, c).  Ready-up,
+	// privileges, spectate-only and the join queue are driven by the match
+	// flow of milestone 5; until then they report the retail idle values.
+	unsigned long long	steamId;		// from import 200 at connect, like retail
+	int			readyToPlay;		// rp
+	int			privileges;			// p
+	int			spectateOnly;		// so
+	int			queuePosition;		// pq
+	char		country[24];		// c, userinfo "country"
 } clientPersistant_t;
 
 // unlagged
@@ -627,6 +645,12 @@ qboolean SpotWouldTelefrag( gentity_t *spot );
 //
 qboolean	ConsoleCommand( void );
 void G_ProcessIPBans(void);
+
+//
+// g_main.c
+//
+intptr_t	vmMain( int command, int arg0, int arg1, int arg2 );
+void		G_RegisterCvars( void );
 qboolean G_FilterPacket (char *from);
 
 //
@@ -785,6 +809,9 @@ void	trap_Cvar_Register( vmCvar_t *cvar, const char *var_name, const char *value
 void	trap_Cvar_Update( vmCvar_t *cvar );
 void	trap_Cvar_Set( const char *var_name, const char *value );
 int		trap_Cvar_VariableIntegerValue( const char *var_name );
+unsigned long long trap_GetSteamId64( int clientNum );
+qboolean	trap_HasSteamAchievement( int clientNum, int achievementId );
+void	trap_UnlockSteamAchievement( int clientNum, int achievementId );
 float	trap_Cvar_VariableValue( const char *var_name );
 void	trap_Cvar_VariableStringBuffer( const char *var_name, char *buffer, int bufsize );
 void	trap_LocateGameData( gentity_t *gEnts, int numGEntities, int sizeofGEntity_t, playerState_t *gameClients, int sizeofGameClient );

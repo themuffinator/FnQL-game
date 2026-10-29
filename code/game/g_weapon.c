@@ -106,7 +106,7 @@ qboolean CheckGauntletAttack( gentity_t *ent ) {
 		s_quadFactor = 1.0;
 	}
 #ifdef MISSIONPACK
-	if( ent->client->persistantPowerup && ent->client->persistantPowerup->item && ent->client->persistantPowerup->item->giTag == PW_DOUBLER ) {
+	if( ent->client->persistantPowerup && ent->client->persistantPowerup->item && ent->client->persistantPowerup->item->giTag == PP_DOUBLER ) {
 		s_quadFactor *= 2;
 	}
 #endif
@@ -508,14 +508,13 @@ void weapon_railgun_fire( gentity_t *ent ) {
 					passent = ENTITYNUM_NONE;
 				}
 			} else
-#else
+#endif
 			{
 				if ( LogAccuracyHit( traceEnt, ent ) ) {
 					hits++;
 				}
 				G_Damage( traceEnt, ent, ent, forward, trace.endpos, damage, 0, MOD_RAILGUN );
 			}
-#endif
 		}
 		if ( trace.contents & CONTENTS_SOLID ) {
 			break;		// we hit something solid enough to stop the beam
@@ -811,7 +810,7 @@ void FireWeapon( gentity_t *ent ) {
 		s_quadFactor = 1.0;
 	}
 #ifdef MISSIONPACK
-	if( ent->client->persistantPowerup && ent->client->persistantPowerup->item && ent->client->persistantPowerup->item->giTag == PW_DOUBLER ) {
+	if( ent->client->persistantPowerup && ent->client->persistantPowerup->item && ent->client->persistantPowerup->item->giTag == PP_DOUBLER ) {
 		s_quadFactor *= 2;
 	}
 #endif

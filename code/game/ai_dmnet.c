@@ -35,7 +35,7 @@
 
 // for the voice chats
 #ifdef MISSIONPACK
-#include "../../ui/menudef.h"
+#include "bg_voicechat.h"
 #endif
 
 //goal flag, see be_ai_goal.h for the other GFL_*

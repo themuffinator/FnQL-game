@@ -107,7 +107,7 @@ G_LoadArenasFromFile
 static void G_LoadArenasFromFile( const char *filename ) {
 	int				len;
 	fileHandle_t	f;
-	char			buf[MAX_ARENAS_TEXT];
+	static char	buf[MAX_ARENAS_TEXT];	// large enough for retail script files; not reentrant
 
 	len = trap_FS_FOpenFile( filename, &f, FS_READ );
 	if ( f == FS_INVALID_HANDLE ) {
@@ -484,7 +484,7 @@ void G_CheckBotSpawn( void ) {
 		ClientBegin( botSpawnQueue[n].clientNum );
 		botSpawnQueue[n].spawnTime = 0;
 
-		if( g_gametype.integer == GT_SINGLE_PLAYER ) {
+		if( G_IsSinglePlayer() ) {
 			trap_GetUserinfo( botSpawnQueue[n].clientNum, userinfo, sizeof(userinfo) );
 			PlayerIntroSound( Info_ValueForKey (userinfo, "model") );
 		}
@@ -873,7 +873,7 @@ G_LoadBotsFromFile
 static void G_LoadBotsFromFile( const char *filename ) {
 	int				len;
 	fileHandle_t	f;
-	char			buf[MAX_BOTS_TEXT];
+	static char	buf[MAX_BOTS_TEXT];	// large enough for retail script files; not reentrant
 
 	len = trap_FS_FOpenFile( filename, &f, FS_READ );
 	if ( f == FS_INVALID_HANDLE ) {
@@ -916,7 +916,7 @@ static void G_LoadBots( void ) {
 
 	trap_Cvar_Register( &botsFile, "g_botsFile", "", CVAR_ARCHIVE | CVAR_LATCH );
 
-	if ( *botsFile.string && g_gametype.integer != GT_SINGLE_PLAYER ) {
+	if ( *botsFile.string && !G_IsSinglePlayer() ) {
 		G_LoadBotsFromFile( botsFile.string );
 	} else {
 		G_LoadBotsFromFile( "scripts/bots.txt" );
@@ -987,7 +987,7 @@ void G_InitBots( qboolean restart ) {
 
 	trap_Cvar_Register( &bot_minplayers, "bot_minplayers", "0", CVAR_SERVERINFO );
 
-	if( g_gametype.integer == GT_SINGLE_PLAYER ) {
+	if( G_IsSinglePlayer() ) {
 		arenainfo = G_GetArenaInfoByMap( mapname );
 		if ( !arenainfo ) {
 			return;

@@ -33,7 +33,7 @@
 
 // for the voice chats
 #ifdef MISSIONPACK
-#include "../../ui/menudef.h"
+#include "bg_voicechat.h"
 #endif
 
 //ctf task preferences for a client

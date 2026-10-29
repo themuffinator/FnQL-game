@@ -1,0 +1,9 @@
+# Meson build directories
+/build/
+
+# scratch space for gates and investigations
+/.tmp/
+
+# tool caches
+__pycache__/
+.pytest_cache/

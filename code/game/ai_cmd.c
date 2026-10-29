@@ -35,7 +35,7 @@
 
 // for the voice chats
 #ifdef MISSIONPACK
-#include "../../ui/menudef.h"
+#include "bg_voicechat.h"
 #endif
 
 int notleader[MAX_CLIENTS];

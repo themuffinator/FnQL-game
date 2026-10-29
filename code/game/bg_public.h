@@ -5,7 +5,9 @@
 // because games can change separately from the main system version, we need a
 // second version that must match between game and cgame
 
-#define	GAME_VERSION		"baseq3-1"
+// Retail qagame publishes "baseqz" in CS_GAME_VERSION (HLIL qagamex86 0x1006648d)
+// and the retail cgame refuses a server whose game version differs.
+#define	GAME_VERSION		"baseqz"
 
 #define	DEFAULT_GRAVITY		800
 #define	GIB_HEALTH			-40
@@ -44,57 +46,113 @@
 //
 
 // CS_SERVERINFO and CS_SYSTEMINFO are defined in q_shared.h
+//
+// Quake Live configstring layout.  Indices are retail facts taken from the
+// retail qagame's SetConfigstring/GetConfigstring call sites (import slots 25
+// and 26) and the retail cgame dispatcher; they differ from Quake III below
+// CS_MODELS.  Payload grammars are documented where they are implemented.
 #define	CS_MUSIC				2
 #define	CS_MESSAGE				3		// from the map worldspawn's message field
-#define	CS_MOTD					4		// g_motd string for server message of the day
-#define	CS_WARMUP				5		// server time when the match will be restarted
+#define	CS_MOTD					4		// not written by retail qagame
+#define	CS_WARMUP				5		// retail payload is an infostring: "\time\<ms>"
 #define	CS_SCORES1				6
 #define	CS_SCORES2				7
-#define CS_VOTE_TIME			8
-#define CS_VOTE_STRING			9
+#define	CS_VOTE_TIME			8
+#define	CS_VOTE_STRING			9
 #define	CS_VOTE_YES				10
 #define	CS_VOTE_NO				11
+#define	CS_GAME_VERSION			12		// GAME_VERSION
+#define	CS_LEVEL_START_TIME		13		// so the timer only shows the current level
+#define	CS_INTERMISSION			14		// when 1, fraglimit/timelimit has been hit and intermission will start in a second or two
+#define	CS_ITEMS				15		// string of 0's and 1's that tell which items are present
+#define	CS_AWARD_LEADERS		16		// infostring of match leaders (keys e, ed, tg, tgd, sg, ...)
 
-#define CS_TEAMVOTE_TIME		12
-#define CS_TEAMVOTE_STRING		14
-#define	CS_TEAMVOTE_YES			16
-#define	CS_TEAMVOTE_NO			18
+#define	CS_MODELS				17
+#define	CS_SOUNDS				(CS_MODELS+MAX_MODELS)		// 273
+#define	CS_PLAYERS				(CS_SOUNDS+MAX_SOUNDS)		// 529
+#define	CS_LOCATIONS			(CS_PLAYERS+MAX_CLIENTS)	// 593, "unknown" at index 0
+#define	CS_FLAGSTATUS			658		// string indicating flag status in CTF
 
-#define	CS_GAME_VERSION			20
-#define	CS_LEVEL_START_TIME		21		// so the timer only shows the current level
-#define	CS_INTERMISSION			22		// when 1, fraglimit/timelimit has been hit and intermission will start in a second or two
-#define CS_FLAGSTATUS			23		// string indicating flag status in CTF
-#define CS_SHADERSTATE			24
-#define CS_BOTINFO				25
+#define	CS_FIRST_PLACE			0x293
+#define	CS_SECOND_PLACE			0x294
+#define	CS_MATCH_STATE			0x295	// infostring; retail keys: time, round, turn, state
+#define	CS_ROUND_START_TIME		0x296
+#define	CS_RED_PLAYERS_LEFT		0x297
+#define	CS_BLUE_PLAYERS_LEFT	0x298
+#define	CS_TIMEOUT_START_TIME	0x29D
+#define	CS_TIMEOUT_END_TIME		0x29E
+#define	CS_RED_TIMEOUTS_LEFT	0x29F
+#define	CS_BLUE_TIMEOUTS_LEFT	0x2A0
+#define	CS_CUSTOM_SETTINGS		0x2A1	// written next to g_customSettings handling
+#define	CS_PLAYER_CYLINDERS		0x2A2
+#define	CS_FACTORY_FLAGS		0x2A3
+#define	CS_ENABLE_BREATH		0x2A4
+#define	CS_DOM_CAPTURE_TIME		0x2A5
+#define	CS_MAP_AUTHOR			0x2A6
+#define	CS_MAP_AUTHOR2			0x2A7
+// 0x2A9..0x2AC are published by the engine from cvar flag groups (pmove
+// settings, armor tiers, weapon reload times, player appearance); the game
+// only registers the cvars.
+#define	CS_PMOVE_SETTINGS		0x2A9
+#define	CS_ARMOR_SETTINGS		0x2AA
+#define	CS_WEAPON_SETTINGS		0x2AB
+#define	CS_APPEARANCE_SETTINGS	0x2AC
+// 0x2AD..0x2B2 are written in pairs (integers and names); their payloads are
+// identified with the team modes that use them (milestone 5).
+#define	CS_QL_2AD				0x2AD
+#define	CS_QL_2AE				0x2AE
+#define	CS_QL_2AF				0x2AF
+#define	CS_QL_2B0				0x2B0
+#define	CS_QL_2B1				0x2B1
+#define	CS_QL_2B2				0x2B2
+#define	CS_QL_2B3				0x2B3
+#define	CS_AWARD_ITEM_CONTROL	0x2B4
+#define	CS_AWARD_ACCURACY		0x2B5
+#define	CS_QL_2B6				0x2B6
+#define	CS_QL_2B7				0x2B7	// position infostring: x, y, z
+#define	CS_AWARD_VALUABLE		0x2B8
+#define	CS_AWARD_VALUABLE_OFFENSE	0x2B9
+#define	CS_AWARD_VALUABLE_DEFENSE	0x2BA
+#define	CS_AWARD_DAMAGE			0x2BB
+#define	CS_RACE_SCORES			0x2BC
+#define	CS_RACE_INFO			0x2BD
+#define	CS_MATCH_AWARDS			0x2BF
+#define	CS_SETTINGS_MASK		0x2C0
+#define	CS_ROTATION_TITLES		0x2C1
+#define	CS_ROTATION_VOTES		0x2C2
+#define	CS_INTERMISSION_EXIT	0x2C3
+#define	CS_READY_UP				0x2C4
+#define	CS_RR_PING_RATE			0x2C5
+#define	CS_RACE_RECORDS			0x2C6
+#define	CS_DISABLED_LOADOUTS	0x2C7
+#define	CS_MATCH_GUID			0x2C8
+#define	CS_STARTING_WEAPONS		0x2C9
 
-#define	CS_ITEMS				27		// string of 0's and 1's that tell which items are present
-
-#define	CS_MODELS				32
-#define	CS_SOUNDS				(CS_MODELS+MAX_MODELS)
-#define	CS_PLAYERS				(CS_SOUNDS+MAX_SOUNDS)
-#define CS_LOCATIONS			(CS_PLAYERS+MAX_CLIENTS)
-#define CS_PARTICLES			(CS_LOCATIONS+MAX_LOCATIONS) 
-
-#define CS_MAX					(CS_PARTICLES+MAX_LOCATIONS)
+#define	CS_MAX					(CS_STARTING_WEAPONS+1)
 
 #if (CS_MAX) > MAX_CONFIGSTRINGS
 #error overflow: (CS_MAX) > MAX_CONFIGSTRINGS
 #endif
 
+// g_gametype values; order matches the retail gametype name tables in both
+// qagamex86 and cgamex86 (docs/contract/retail_tables.json "gametypes").
 typedef enum {
 	GT_FFA,				// free for all
-	GT_TOURNAMENT,		// one on one tournament
-	GT_SINGLE_PLAYER,	// single player ffa
+	GT_TOURNAMENT,		// duel
+	GT_RACE,			// race reuses the Quake III single player slot
 
 	//-- team games go after this --
 
 	GT_TEAM,			// team deathmatch
+	GT_CLAN_ARENA,
 	GT_CTF,				// capture the flag
-#ifdef MISSIONPACK
-	GT_1FCTF,
-	GT_OBELISK,
+	GT_1FCTF,			// one flag ctf
+	GT_OBELISK,			// overload
 	GT_HARVESTER,
-#endif
+	GT_FREEZE,			// freeze tag
+	GT_DOMINATION,
+	GT_ATTACK_DEFEND,
+	GT_RED_ROVER,
 	GT_MAX_GAME_TYPE
 } gametype_t;
 
@@ -118,7 +176,7 @@ typedef enum {
 	PM_DEAD,		// no acceleration or turning, but free falling
 	PM_FREEZE,		// stuck in place with no control
 	PM_INTERMISSION,	// no movement or status bar
-	PM_SPINTERMISSION	// no movement or status bar
+	PM_TUTORIAL			// retail pmove type 6 (docs/contract/retail_tables.json "pmTypes")
 } pmtype_t;
 
 typedef enum {
@@ -131,17 +189,25 @@ typedef enum {
 // pmove->pm_flags
 #define	PMF_DUCKED			1
 #define	PMF_JUMP_HELD		2
+#define PMF_ATTACK_LOCKOUT	4		// firing gated (round start, controller)
 #define	PMF_BACKWARDS_JUMP	8		// go into backwards land
 #define	PMF_BACKWARDS_RUN	16		// coast down to backwards run
 #define	PMF_TIME_LAND		32		// pm_time is time before rejump
 #define	PMF_TIME_KNOCKBACK	64		// pm_time is an air-accelerate only time
-#define	PMF_TIME_WATERJUMP	256		// pm_time is waterjump
+#define	PMF_TIME_WATERJUMP	128		// pm_time is waterjump (retail PM_CheckWaterJump ORs 0x80, HLIL 0x1002f814)
+#define PMF_NO_MOVE			256		// commandTime advances but the player does not move
 #define	PMF_RESPAWNED		512		// clear after attack and jump buttons come up
 #define	PMF_USE_ITEM_HELD	1024
 #define PMF_GRAPPLE_PULL	2048	// pull towards grapple location
 #define PMF_FOLLOW			4096	// spectate following another player
 #define PMF_SCOREBOARD		8192	// spectate as a scoreboard
 #define PMF_INVULEXPAND		16384	// invulnerability sphere set to full size
+#define PMF_WEAPON_RESET	32768
+#define PMF_AIR_CONTROL		65536	// per-player movement profile bits (milestone 3)
+#define PMF_DOUBLE_JUMP		131072
+#define PMF_REQUIRE_JUMP_RELEASE	262144
+#define PMF_IRONSIGHTS		524288
+#define PMF_CROUCH_SLIDE	1048576
 
 #define	PMF_ALL_TIMES	(PMF_TIME_WATERJUMP|PMF_TIME_LAND|PMF_TIME_KNOCKBACK)
 
@@ -167,6 +233,8 @@ typedef struct {
 	int			watertype;
 	int			waterlevel;
 
+	float		stepUp;				// height of the last step up, for cgame step smoothing
+
 	//float		xyspeed;
 
 	// for fixed msec Pmove
@@ -187,18 +255,29 @@ void Pmove (pmove_t *pmove);
 
 
 // player_state->stats[] indexes
+// Quake Live layout.  Retail evidence: STAT_HOLDABLE_ITEM (stats[1]) indexes
+// bg_itemlist in the flight thrust code, STAT_PERSISTANT_POWERUP (stats[2])
+// holds the persistant powerup tag in the damage multiplier, and stats[9],
+// [11] and [12] carry the flight holdable's thrust, fuel and recharge
+// (HLIL qagamex86 0x1002fa80, 0x1006f290).
 // NOTE: may not have more than 16
 typedef enum {
 	STAT_HEALTH,
 	STAT_HOLDABLE_ITEM,
-#ifdef MISSIONPACK
-	STAT_PERSISTANT_POWERUP,
-#endif
+	STAT_PERSISTANT_POWERUP,		// a persistantPowerup_t tag
 	STAT_WEAPONS,					// 16 bit fields
-	STAT_ARMOR,				
-	STAT_DEAD_YAW,					// look this direction when dead (FIXME: get rid of?)
-	STAT_CLIENTS_READY,				// bit mask of clients wishing to exit the intermission (FIXME: configstring?)
-	STAT_MAX_HEALTH					// health / armor limit, changable by handicap
+	STAT_ARMOR,
+	STAT_DEAD_YAW,					// look this direction when dead
+	STAT_CLIENTS_READY,				// bit mask of clients wishing to exit the intermission
+	STAT_MAX_HEALTH,				// health / armor limit, changable by handicap
+	STAT_CHAINGUN_SPINUP,			// chaingun spin accumulator
+	STAT_PLAYER_ITEM_THRUST,		// flight holdable thrust
+	STAT_PLAYER_ITEM_TIME_MAX,		// holdable fuel capacity
+	STAT_PLAYER_ITEM_TIME,			// holdable fuel remaining
+	STAT_PLAYER_ITEM_RECHARGE,		// holdable fuel recharge
+	STAT_QUAD_FRAG_COUNT,
+	STAT_ARMOR_TIER,				// armorTier_t of the armor being worn
+	STAT_KEY_MASK					// keyMask_t bits of carried keys
 } statIndex_t;
 
 
@@ -222,7 +301,8 @@ typedef enum {
 	PERS_DEFEND_COUNT,				// defend awards
 	PERS_ASSIST_COUNT,				// assist awards
 	PERS_GAUNTLET_FRAG_COUNT,		// kills with the gauntlet
-	PERS_CAPTURES					// captures
+	PERS_CAPTURES,					// captures
+	PERS_KILL_COUNT					// kill beep counter
 } persEnum_t;
 
 
@@ -258,31 +338,38 @@ typedef enum {
 
 #define EF_NOPREDICT ( EF_AWARDS | EF_PERSISTANT | EF_TALK )
 
+// ps->powerups[] and entityState_t->powerups bit indexes.  Quake Live order,
+// established from retail code rather than inherited: the quad multiplier
+// reads powerups[4] (HLIL qagamex86 0x1006f2a9), the flight holdable drives
+// powerups[9] (0x1002fa80), and the retail cgame draws the spawn armor,
+// quad, battlesuit, invisibility, regen, invulnerability, scout, guard,
+// doubler, armor regen and frozen effects from bits 0, 4, 5, 7, 8, 10..15
+// (HLIL cgamex86 0x10041860, 0x1004259f..0x10042776).  Item giTags of
+// IT_POWERUP and IT_TEAM items index this table.
 // NOTE: may not have more than 16
 typedef enum {
-	PW_NONE,
-
+	PW_SPAWNARMOR,		// spawn protection shell; Quake III's PW_NONE slot
+	PW_REDFLAG,
+	PW_BLUEFLAG,
+	PW_NEUTRALFLAG,
 	PW_QUAD,
 	PW_BATTLESUIT,
 	PW_HASTE,
 	PW_INVIS,
 	PW_REGEN,
-	PW_FLIGHT,
-
-	PW_REDFLAG,
-	PW_BLUEFLAG,
-	PW_NEUTRALFLAG,
-
+	PW_FLIGHT,			// active while the flight holdable thrusts
+	PW_INVULNERABILITY,
 	PW_SCOUT,
 	PW_GUARD,
 	PW_DOUBLER,
-	PW_AMMOREGEN,
-	PW_INVULNERABILITY,
+	PW_ARMORREGEN,
+	PW_FROZEN,			// freeze tag
 
 	PW_NUM_POWERUPS
-
 } powerup_t;
 
+// stats[STAT_HOLDABLE_ITEM] holds an item index; holdable item giTags
+// (retail bg_itemlist) use these values.  Flight is a fuelled holdable.
 typedef enum {
 	HI_NONE,
 
@@ -291,11 +378,47 @@ typedef enum {
 	HI_KAMIKAZE,
 	HI_PORTAL,
 	HI_INVULNERABILITY,
+	HI_FLIGHT,
 
 	HI_NUM_HOLDABLE
 } holdable_t;
 
+// IT_PERSISTANT_POWERUP giTags, stored in stats[STAT_PERSISTANT_POWERUP].
+typedef enum {
+	PP_NONE,
+	PP_SCOUT,
+	PP_GUARD,
+	PP_DOUBLER,
+	PP_ARMORREGEN
+} persistantPowerup_t;
 
+// IT_ARMOR giTags and stats[STAT_ARMOR_TIER] values.
+typedef enum {
+	ARMOR_TIER_NONE,
+	ARMOR_TIER_RED,
+	ARMOR_TIER_YELLOW,
+	ARMOR_TIER_GREEN,
+	ARMOR_TIER_SHARD
+} armorTier_t;
+
+// IT_HEALTH giTags.
+typedef enum {
+	HEALTH_TIER_NONE,
+	HEALTH_TIER_MEGA,
+	HEALTH_TIER_LARGE,
+	HEALTH_TIER_MEDIUM,
+	HEALTH_TIER_SMALL
+} healthTier_t;
+
+// IT_KEY giTags; bits of stats[STAT_KEY_MASK].
+typedef enum {
+	KEY_SILVER = 1,
+	KEY_GOLD = 2,
+	KEY_MASTER = 4
+} keyMask_t;
+
+
+// Weapon numbers equal the weapon item giTags in the retail bg_itemlist.
 typedef enum {
 	WP_NONE,
 
@@ -309,11 +432,10 @@ typedef enum {
 	WP_PLASMAGUN,
 	WP_BFG,
 	WP_GRAPPLING_HOOK,
-#ifdef MISSIONPACK
 	WP_NAILGUN,
 	WP_PROX_LAUNCHER,
 	WP_CHAINGUN,
-#endif
+	WP_HEAVY_MACHINEGUN,
 
 	WP_NUM_WEAPONS,
 	WP_PENDING = WP_NUM_WEAPONS, // used in ui_players.c
@@ -491,10 +613,13 @@ typedef enum {
 	IT_HOLDABLE,			// single use, holdable item
 							// EFX: rotate + bob
 	IT_PERSISTANT_POWERUP,
-	IT_TEAM
+	IT_TEAM,
+	IT_KEY					// Quake Live keys; giTag is a keyMask_t bit
 } itemType_t;
 
-#define MAX_ITEM_MODELS 4
+// Retail rows carry eight model slots; slot 4 holds the alternate (flag3)
+// model of the team flags.
+#define MAX_ITEM_MODELS 8
 
 typedef struct gitem_s {
 	const char	*classname;	// spawning name
@@ -507,7 +632,11 @@ typedef struct gitem_s {
 	int			quantity;		// for ammo how much, or duration of powerup
 	itemType_t  giType;			// IT_* flags
 
-	int			const giTag;
+	int			const giTag;	// weapon_t, powerup_t, holdable_t, armorTier_t, ... by giType
+
+	int			timer;			// retail row flag: armor, mega health, medkit and powerups
+	int			retail[2];		// retail row trailing values (set on the red and blue
+								// flags only); meaning not yet identified
 
 	char		const *precaches;		// string of all models and images this item will use
 	char		const *sounds;		// string of all sounds this item will use
@@ -520,6 +649,7 @@ extern	int		bg_numItems;
 gitem_t	*BG_FindItem( const char *pickupName );
 gitem_t	*BG_FindItemForWeapon( weapon_t weapon );
 gitem_t	*BG_FindItemForPowerup( powerup_t pw );
+gitem_t	*BG_FindItemForPersistantPowerup( persistantPowerup_t pp );
 gitem_t	*BG_FindItemForHoldable( holdable_t pw );
 #define	ITEM_INDEX(x) ((x)-bg_itemlist)
 
@@ -585,10 +715,10 @@ qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTim
 
 #define ARENAS_PER_TIER		4
 #define MAX_ARENAS			1024
-#define	MAX_ARENAS_TEXT		8192
+#define	MAX_ARENAS_TEXT		65536	// retail scripts/arenas.txt is about 13 KB
 
 #define MAX_BOTS			1024
-#define MAX_BOTS_TEXT		8192
+#define MAX_BOTS_TEXT		65536
 
 
 // Kamikaze

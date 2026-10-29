@@ -1,0 +1,14 @@
+option('fnql-root',
+  type: 'string',
+  value: '',
+  description: 'FnQL engine checkout for the ABI parity gate (default: ../FnQL next to this repository)')
+
+option('fnql-dedicated',
+  type: 'string',
+  value: '',
+  description: 'x86 fnql.ded executable for the dedicated-server smoke gate; empty disables the gate')
+
+option('retail-ql',
+  type: 'string',
+  value: '',
+  description: 'Retail Quake Live install for runtime gates (default: $FNQL_RETAIL_QL_PATH, then the Steam default)')

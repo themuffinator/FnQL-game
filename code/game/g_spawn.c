@@ -173,6 +173,15 @@ void SP_team_neutralobelisk( gentity_t *ent );
 #endif
 void SP_item_botroam( gentity_t *ent ) {};
 
+void SP_trigger_capturezone( gentity_t *ent );
+void SP_target_remove_keys( gentity_t *ent );
+void SP_advertisement( gentity_t *ent );
+void SP_info_tour_point( gentity_t *ent );
+void SP_target_cvar( gentity_t *ent );
+void SP_team_dom_point( gentity_t *ent );
+void SP_race_point( gentity_t *ent );
+void SP_target_achievement( gentity_t *ent );
+
 spawn_t	spawns[] = {
 	// info entities don't do anything at all, but provide positional
 	// information for things controlled by other processes
@@ -204,10 +213,12 @@ spawn_t	spawns[] = {
 	{"trigger_push", SP_trigger_push},
 	{"trigger_teleport", SP_trigger_teleport},
 	{"trigger_hurt", SP_trigger_hurt},
+	{"trigger_capturezone", SP_trigger_capturezone},
 
 	// targets perform no action by themselves, but must be triggered
 	// by another entity
 	{"target_give", SP_target_give},
+	{"target_remove_keys", SP_target_remove_keys},
 	{"target_remove_powerups", SP_target_remove_powerups},
 	{"target_delay", SP_target_delay},
 	{"target_speaker", SP_target_speaker},
@@ -245,6 +256,14 @@ spawn_t	spawns[] = {
 	{"team_neutralobelisk", SP_team_neutralobelisk},
 #endif
 	{"item_botroam", SP_item_botroam},
+
+	// Quake Live additions, in retail table order (g_ql_entities.c)
+	{"advertisement", SP_advertisement},
+	{"info_tour_point", SP_info_tour_point},
+	{"target_cvar", SP_target_cvar},
+	{"team_dom_point", SP_team_dom_point},
+	{"race_point", SP_race_point},
+	{"target_achievement", SP_target_achievement},
 
 	{0, 0}
 };
@@ -399,14 +418,14 @@ void G_SpawnGEntityFromSpawnVars( void ) {
 	}
 
 	// check for "notsingle" flag
-	if ( g_gametype.integer == GT_SINGLE_PLAYER ) {
+	if ( G_IsSinglePlayer() ) {
 		G_SpawnInt( "notsingle", "0", &i );
 		if ( i ) {
 			G_FreeEntity( ent );
 			return;
 		}
 	}
-	// check for "notteam" flag (GT_FFA, GT_TOURNAMENT, GT_SINGLE_PLAYER)
+	// check for "notteam" flag (GT_FFA, GT_TOURNAMENT, GT_RACE)
 	if ( g_gametype.integer >= GT_TEAM ) {
 		G_SpawnInt( "notteam", "0", &i );
 		if ( i ) {
@@ -585,7 +604,7 @@ void SP_worldspawn( void ) {
 	g_entities[ENTITYNUM_NONE].classname = "nothing";
 
 	// see if we want a warmup time
-	if ( /*g_restarted.integer ||*/ g_gametype.integer == GT_SINGLE_PLAYER ) {
+	if ( /*g_restarted.integer ||*/ G_IsSinglePlayer() ) {
 		//trap_Cvar_Set( "g_restarted", "0" );
 		level.warmupTime = 0;
 		trap_SetConfigstring( CS_WARMUP, "" );
@@ -593,7 +612,7 @@ void SP_worldspawn( void ) {
 		// assume that g_doWarmup is always 1
 		level.warmupTime = -1;
 		if ( g_warmup.integer > 0 ) {
-			trap_SetConfigstring( CS_WARMUP, va( "%i", level.warmupTime ) );
+			trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime ) );
 		} else {
 			trap_SetConfigstring( CS_WARMUP, "" );
 		}

@@ -1,0 +1,125 @@
+{
+ "about": "Retail Quake Live wire-contract enum values that are not stored as string tables in the retail binaries. Each group cites its evidence; scripts/check_wire_contract.py requires FnQL-game's headers to match. HLIL references are to QuakeLive-SRP/references/hlil/quakelive/.",
+ "groups": {
+  "powerup_t": {
+   "evidence": "qagamex86 quad multiplier reads ps.powerups[4] (0x1006f2a9); flight thrust drives powerups[9] (0x1002fa80); cgamex86 draws spawn armor, quad, battlesuit, invis, regen, frozen from entityState.powerups bits 0,4,5,7,8,15 (0x10041860) and invulnerability, scout, guard, doubler, armor regen from bits 10..14 (0x1004259f..0x10042776); IT_POWERUP/IT_TEAM giTags in retail bg_itemlist.",
+   "values": {
+    "PW_SPAWNARMOR": 0, "PW_REDFLAG": 1, "PW_BLUEFLAG": 2, "PW_NEUTRALFLAG": 3, "PW_QUAD": 4,
+    "PW_BATTLESUIT": 5, "PW_HASTE": 6, "PW_INVIS": 7, "PW_REGEN": 8, "PW_FLIGHT": 9,
+    "PW_INVULNERABILITY": 10, "PW_SCOUT": 11, "PW_GUARD": 12, "PW_DOUBLER": 13,
+    "PW_ARMORREGEN": 14, "PW_FROZEN": 15, "PW_NUM_POWERUPS": 16
+   }
+  },
+  "holdable_t": {
+   "evidence": "IT_HOLDABLE giTags in retail bg_itemlist (teleporter 1, medkit 2, kamikaze 3, portal 4, invulnerability 5, flight 6); flight thrust checks giTag 6 (qagamex86 0x1002fac9).",
+   "values": {
+    "HI_NONE": 0, "HI_TELEPORTER": 1, "HI_MEDKIT": 2, "HI_KAMIKAZE": 3, "HI_PORTAL": 4,
+    "HI_INVULNERABILITY": 5, "HI_FLIGHT": 6
+   }
+  },
+  "persistantPowerup_t": {
+   "evidence": "IT_PERSISTANT_POWERUP giTags in retail bg_itemlist; damage multiplier compares stats[STAT_PERSISTANT_POWERUP] with 3 for the doubler (qagamex86 0x1006f2a9).",
+   "values": { "PP_NONE": 0, "PP_SCOUT": 1, "PP_GUARD": 2, "PP_DOUBLER": 3, "PP_ARMORREGEN": 4 }
+  },
+  "armorTier_t": {
+   "evidence": "IT_ARMOR giTags in retail bg_itemlist (body 1, combat 2, jacket 3, shard 4).",
+   "values": { "ARMOR_TIER_NONE": 0, "ARMOR_TIER_RED": 1, "ARMOR_TIER_YELLOW": 2, "ARMOR_TIER_GREEN": 3, "ARMOR_TIER_SHARD": 4 }
+  },
+  "healthTier_t": {
+   "evidence": "IT_HEALTH giTags in retail bg_itemlist (mega 1, large 2, medium 3, small 4).",
+   "values": { "HEALTH_TIER_NONE": 0, "HEALTH_TIER_MEGA": 1, "HEALTH_TIER_LARGE": 2, "HEALTH_TIER_MEDIUM": 3, "HEALTH_TIER_SMALL": 4 }
+  },
+  "keyMask_t": {
+   "evidence": "IT_KEY giTags in retail bg_itemlist; target_remove_keys tests bits 1, 2, 4 of stats[15] (qagamex86 0x10066ff0).",
+   "values": { "KEY_SILVER": 1, "KEY_GOLD": 2, "KEY_MASTER": 4 }
+  },
+  "itemType_t": {
+   "evidence": "giType column of retail bg_itemlist.",
+   "values": {
+    "IT_BAD": 0, "IT_WEAPON": 1, "IT_AMMO": 2, "IT_ARMOR": 3, "IT_HEALTH": 4, "IT_POWERUP": 5,
+    "IT_HOLDABLE": 6, "IT_PERSISTANT_POWERUP": 7, "IT_TEAM": 8, "IT_KEY": 9
+   }
+  },
+  "weapon_t": {
+   "evidence": "IT_WEAPON giTags in retail bg_itemlist; retail cgame weapon table order.",
+   "values": {
+    "WP_NONE": 0, "WP_GAUNTLET": 1, "WP_MACHINEGUN": 2, "WP_SHOTGUN": 3, "WP_GRENADE_LAUNCHER": 4,
+    "WP_ROCKET_LAUNCHER": 5, "WP_LIGHTNING": 6, "WP_RAILGUN": 7, "WP_PLASMAGUN": 8, "WP_BFG": 9,
+    "WP_GRAPPLING_HOOK": 10, "WP_NAILGUN": 11, "WP_PROX_LAUNCHER": 12, "WP_CHAINGUN": 13,
+    "WP_HEAVY_MACHINEGUN": 14, "WP_NUM_WEAPONS": 15
+   }
+  },
+  "gametype_t": {
+   "evidence": "Retail gametype name tables (retail_tables.json gametypes).",
+   "values": {
+    "GT_FFA": 0, "GT_TOURNAMENT": 1, "GT_RACE": 2, "GT_TEAM": 3, "GT_CLAN_ARENA": 4, "GT_CTF": 5,
+    "GT_1FCTF": 6, "GT_OBELISK": 7, "GT_HARVESTER": 8, "GT_FREEZE": 9, "GT_DOMINATION": 10,
+    "GT_ATTACK_DEFEND": 11, "GT_RED_ROVER": 12, "GT_MAX_GAME_TYPE": 13
+   }
+  },
+  "pmtype_t": {
+   "evidence": "Retail pmove type name table (retail_tables.json pmTypes).",
+   "values": {
+    "PM_NORMAL": 0, "PM_NOCLIP": 1, "PM_SPECTATOR": 2, "PM_DEAD": 3, "PM_FREEZE": 4,
+    "PM_INTERMISSION": 5, "PM_TUTORIAL": 6
+   }
+  },
+  "pm_flags": {
+   "evidence": "PMF_TIME_WATERJUMP: retail PM_CheckWaterJump ORs 0x80 (qagamex86 0x1002f814); PMF_USE_ITEM_HELD 0x400 tested by flight thrust (0x1002fac9). Remaining Quake Live bits are verified with movement parity (milestone 3).",
+   "values": { "PMF_TIME_WATERJUMP": 128, "PMF_USE_ITEM_HELD": 1024 }
+  },
+  "statIndex_t": {
+   "evidence": "stats[1] holdable item index and stats[9], [11], [12] flight thrust, fuel and recharge (qagamex86 0x1002fa80); stats[2] persistant powerup tag (0x1006f290); stats[15] key mask (0x10066ff0).",
+   "values": {
+    "STAT_HEALTH": 0, "STAT_HOLDABLE_ITEM": 1, "STAT_PERSISTANT_POWERUP": 2, "STAT_WEAPONS": 3,
+    "STAT_ARMOR": 4, "STAT_PLAYER_ITEM_THRUST": 9, "STAT_PLAYER_ITEM_TIME": 11,
+    "STAT_PLAYER_ITEM_RECHARGE": 12, "STAT_KEY_MASK": 15
+   }
+  },
+  "configstrings": {
+   "evidence": "Retail qagame SetConfigstring/GetConfigstring call sites (imports 25/26): music 2, message 3, warmup 5, scores 6/7, vote 8..11, game version 12 \"baseqz\" (0x1006648d), level start 13, intermission 14 (0x10056ce4), items 15, award leaders 16, models 17, sounds 273 (0x111+i), players 529 (0x211+i), locations 593 (0x251 \"unknown\", 0x10067be5), flag status 658 (0x292, 0x10068842).",
+   "values": {
+    "CS_MUSIC": 2, "CS_MESSAGE": 3, "CS_WARMUP": 5, "CS_SCORES1": 6, "CS_SCORES2": 7,
+    "CS_VOTE_TIME": 8, "CS_VOTE_STRING": 9, "CS_VOTE_YES": 10, "CS_VOTE_NO": 11,
+    "CS_GAME_VERSION": 12, "CS_LEVEL_START_TIME": 13, "CS_INTERMISSION": 14, "CS_ITEMS": 15,
+    "CS_AWARD_LEADERS": 16, "CS_MODELS": 17, "CS_SOUNDS": 273, "CS_PLAYERS": 529,
+    "CS_LOCATIONS": 593, "CS_FLAGSTATUS": 658, "CS_MATCH_STATE": 661, "CS_PMOVE_SETTINGS": 681,
+    "CS_MATCH_GUID": 712
+   }
+  },
+  "entity_event_t": {
+   "evidence": "Event names printed by retail CG_EntityEvent (cgamex86 0x10019EB0) for each value 0..99; slots 36, 52 and 91 are unused.",
+   "values": {
+    "EV_NONE": 0, "EV_FOOTSTEP": 1, "EV_FALL_SHORT": 6, "EV_JUMP_PAD": 9, "EV_JUMP": 10,
+    "EV_ITEM_PICKUP": 15, "EV_GLOBAL_ITEM_PICKUP": 16, "EV_NOAMMO": 17, "EV_CHANGE_WEAPON": 18,
+    "EV_DROP_WEAPON": 19, "EV_FIRE_WEAPON": 20, "EV_USE_ITEM0": 21, "EV_USE_ITEM14": 35,
+    "EV_ITEM_RESPAWN": 37, "EV_ITEM_POP": 38, "EV_PLAYER_TELEPORT_IN": 39, "EV_GRENADE_BOUNCE": 41,
+    "EV_GENERAL_SOUND": 42, "EV_GLOBAL_SOUND": 43, "EV_GLOBAL_TEAM_SOUND": 44,
+    "EV_BULLET_HIT_FLESH": 45, "EV_MISSILE_HIT": 47, "EV_RAILTRAIL": 50, "EV_SHOTGUN": 51,
+    "EV_PAIN": 53, "EV_DEATH1": 54, "EV_DROWN": 57, "EV_OBITUARY": 58, "EV_POWERUP_QUAD": 59,
+    "EV_POWERUP_ARMORREGEN": 62, "EV_GIB_PLAYER": 63, "EV_SCOREPLUM": 64,
+    "EV_PROXIMITY_MINE_STICK": 65, "EV_KAMIKAZE": 67, "EV_LIGHTNINGBOLT": 72, "EV_DEBUG_LINE": 73,
+    "EV_TAUNT": 74, "EV_TAUNT_PATROL": 80, "EV_FOOTSTEP_SNOW": 81, "EV_ITEM_PICKUP_SPEC": 83,
+    "EV_OVERTIME": 84, "EV_GAMEOVER": 85, "EV_THAW_PLAYER": 87, "EV_SHOTGUN_KILL": 89,
+    "EV_POI": 90, "EV_LIGHTNING_DISCHARGE": 92, "EV_RACE_START": 93, "EV_RACE_FINISH": 95,
+    "EV_DAMAGEPLUM": 96, "EV_AWARD": 97, "EV_INFECTED": 98, "EV_NEW_HIGH_SCORE": 99,
+    "EV_MAX": 100
+   }
+  },
+  "entityType_t": {
+   "evidence": "Quake III Team Arena layout, unchanged in Quake Live; the FnQL engine snapshot code relies on ET_EVENTS for retail modules.",
+   "values": {
+    "ET_GENERAL": 0, "ET_PLAYER": 1, "ET_ITEM": 2, "ET_MISSILE": 3, "ET_MOVER": 4, "ET_BEAM": 5,
+    "ET_PORTAL": 6, "ET_SPEAKER": 7, "ET_PUSH_TRIGGER": 8, "ET_TELEPORT_TRIGGER": 9,
+    "ET_INVISIBLE": 10, "ET_GRAPPLE": 11, "ET_TEAM": 12, "ET_EVENTS": 13
+   }
+  },
+  "team_t": {
+   "evidence": "Quake III layout; team flag items use TEAM_RED 1 / TEAM_BLUE 2 ordering throughout retail Team_ code.",
+   "values": { "TEAM_FREE": 0, "TEAM_RED": 1, "TEAM_BLUE": 2, "TEAM_SPECTATOR": 3 }
+  }
+ },
+ "strings": {
+  "GAME_VERSION": { "value": "baseqz", "evidence": "CS_GAME_VERSION written by retail qagame (0x1006648d)." }
+ }
+}

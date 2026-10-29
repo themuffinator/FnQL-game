@@ -1,3 +1,8 @@
+// Copyright (C) 1999-2000 Id Software, Inc.
+//
+// Quake Live means of death (obituary parms, client stats).  The order is the
+// retail modNames[] table (docs/contract/retail_tables.json "meansOfDeath").
+
 #ifdef MOD_ENUMS
 	#define DECLARE_MOD( mod ) mod
 #endif
@@ -29,14 +34,17 @@ DECLARE_MOD( MOD_FALLING ),
 DECLARE_MOD( MOD_SUICIDE ),
 DECLARE_MOD( MOD_TARGET_LASER ),
 DECLARE_MOD( MOD_TRIGGER_HURT ),
-#ifdef MISSIONPACK
 DECLARE_MOD( MOD_NAIL ),
 DECLARE_MOD( MOD_CHAINGUN ),
 DECLARE_MOD( MOD_PROXIMITY_MINE ),
 DECLARE_MOD( MOD_KAMIKAZE ),
 DECLARE_MOD( MOD_JUICED ),
-#endif
-DECLARE_MOD( MOD_GRAPPLE )
+DECLARE_MOD( MOD_GRAPPLE ),
+DECLARE_MOD( MOD_SWITCHTEAM ),
+DECLARE_MOD( MOD_THAW ),
+DECLARE_MOD( MOD_LIGHTNING_DISCHARGE ),
+DECLARE_MOD( MOD_HMG ),
+DECLARE_MOD( MOD_RAILGUN_HEADSHOT )
 
 #ifdef MOD_ENUMS
 	, DECLARE_MOD( MOD_NUM_MAX )

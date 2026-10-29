@@ -344,7 +344,7 @@ Svcmd_AbortPodium_f
 ===============
 */
 void Svcmd_AbortPodium_f( void ) {
-	if( g_gametype.integer != GT_SINGLE_PLAYER ) {
+	if( !G_IsSinglePlayer() ) {
 		return;
 	}
 

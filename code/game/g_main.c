@@ -2,6 +2,7 @@
 //
 
 #include "g_local.h"
+#include "../../version/fnql_game_version.h"
 
 level_locals_t	level;
 
@@ -27,6 +28,10 @@ static cvarTable_t gameCvarTable[] = {
 	// noset vars
 	{ NULL, "gamename", GAMEVERSION , CVAR_SERVERINFO | CVAR_ROM, 0, qfalse  },
 	{ NULL, "gamedate", __DATE__ , CVAR_ROM, 0, qfalse  },
+	// FnQL-game identity for capable peers and server browsers.  Retail
+	// clients ignore unknown serverinfo keys; extensions are negotiated
+	// separately (docs/COMPATIBILITY.md).
+	{ NULL, "fnql_game", FNQL_GAME_VERSION_STRING, CVAR_SERVERINFO | CVAR_ROM, 0, qfalse  },
 
 #define G_CVAR_LIST
 	#include "g_cvar.h"
@@ -57,11 +62,13 @@ int	svf_self_portal2;
 ================
 vmMain
 
-This is the only way control passes into the module.
-This must be the very first function compiled into the .q3vm file
+Central game dispatcher.  FnQL-game modules are entered through the retail
+native export table (g_native.c), whose thunks all route here so per-call
+bookkeeping stays in one place.  It is not exported: a module that exports
+vmMain is treated by the engine as a classic Quake III module.
 ================
 */
-DLLEXPORT intptr_t vmMain( int command, int arg0, int arg1, int arg2 ) {
+intptr_t vmMain( int command, int arg0, int arg1, int arg2 ) {
 	int ret;
 
 	switch ( command ) {
@@ -257,7 +264,8 @@ void G_RemapTeamShaders( void ) {
 	Com_sprintf( string, sizeof(string), "team_icon/%s_blue", g_blueteam.string );
 	AddRemap("textures/ctf2/blueteam01", string, f); 
 	AddRemap("textures/ctf2/blueteam02", string, f); 
-	trap_SetConfigstring(CS_SHADERSTATE, BuildShaderStateConfig());
+	// Quake III published remaps in CS_SHADERSTATE (24), which is a model
+	// slot in Quake Live; retail Quake Live has no shader remap channel.
 #endif
 }
 
@@ -482,7 +490,7 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	level.snd_fry = G_SoundIndex("sound/player/fry.wav");	// FIXME standing in lava / slime
 
-	if ( g_gametype.integer != GT_SINGLE_PLAYER && g_log.string[0] ) {
+	if ( !G_IsSinglePlayer() && g_log.string[0] ) {
 		if ( g_logSync.integer ) {
 			trap_FS_FOpenFile( g_log.string, &level.logFile, FS_APPEND_SYNC );
 		} else {
@@ -553,7 +561,7 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	G_Printf ("-----------------------------------\n");
 
-	if( g_gametype.integer == GT_SINGLE_PLAYER || trap_Cvar_VariableIntegerValue( "com_buildScript" ) ) {
+	if( G_IsSinglePlayer() || trap_Cvar_VariableIntegerValue( "com_buildScript" ) ) {
 		G_ModelIndex( SP_PODIUM_MODEL );
 	}
 
@@ -568,7 +576,7 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	// don't forget to reset times
 	trap_SetConfigstring( CS_INTERMISSION, "" );
 
-	if ( g_gametype.integer != GT_SINGLE_PLAYER ) {
+	if ( !G_IsSinglePlayer() ) {
 		// launch rotation system on first map load
 		if ( trap_Cvar_VariableIntegerValue( SV_ROTATION ) == 0 ) {
 			trap_Cvar_Set( SV_ROTATION, "1" );
@@ -913,7 +921,7 @@ void CalculateRanks( void ) {
 				level.clients[ level.sortedClients[i] ].ps.persistant[PERS_RANK] = rank | RANK_TIED_FLAG;
 			}
 			score = newScore;
-			if ( g_gametype.integer == GT_SINGLE_PLAYER && level.numPlayingClients == 1 ) {
+			if ( G_IsSinglePlayer() && level.numPlayingClients == 1 ) {
 				level.clients[ level.sortedClients[i] ].ps.persistant[PERS_RANK] = rank | RANK_TIED_FLAG;
 			}
 		}
@@ -1097,7 +1105,7 @@ void BeginIntermission( void ) {
 	}
 #else
 	// if single player game
-	if ( g_gametype.integer == GT_SINGLE_PLAYER ) {
+	if ( G_IsSinglePlayer() ) {
 		UpdateTournamentInfo();
 		SpawnModelsOnVictoryPads();
 	}
@@ -1296,7 +1304,7 @@ void CheckIntermissionExit( void ) {
 	gclient_t	*cl;
 	int			readyMask;
 
-	if ( g_gametype.integer == GT_SINGLE_PLAYER )
+	if ( G_IsSinglePlayer() )
 		return;
 
 	// see which players are ready
@@ -1670,7 +1678,7 @@ static void CheckTournament( void ) {
 		if ( level.numPlayingClients != 2 ) {
 			if ( level.warmupTime != -1 ) {
 				level.warmupTime = -1;
-				trap_SetConfigstring( CS_WARMUP, va("%i", level.warmupTime) );
+				trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
 				G_LogPrintf( "Warmup:\n" );
 			}
 			return;
@@ -1695,7 +1703,7 @@ static void CheckTournament( void ) {
 					level.warmupTime = 0;
 				}
 
-				trap_SetConfigstring( CS_WARMUP, va("%i", level.warmupTime) );
+				trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
 			}
 			return;
 		}
@@ -1705,7 +1713,7 @@ static void CheckTournament( void ) {
 			G_WarmupEnd();
 			return;
 		}
-	} else if ( g_gametype.integer != GT_SINGLE_PLAYER && level.warmupTime != 0 ) {
+	} else if ( !G_IsSinglePlayer() && level.warmupTime != 0 ) {
 		int		counts[TEAM_NUM_TEAMS];
 		qboolean	notEnough = qfalse;
 
@@ -1723,7 +1731,7 @@ static void CheckTournament( void ) {
 		if ( notEnough ) {
 			if ( level.warmupTime != -1 ) {
 				level.warmupTime = -1;
-				trap_SetConfigstring( CS_WARMUP, va("%i", level.warmupTime) );
+				trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
 				G_LogPrintf( "Warmup:\n" );
 			}
 			return; // still waiting for team members
@@ -1747,7 +1755,7 @@ static void CheckTournament( void ) {
 				level.warmupTime = 0;
 			}
 
-			trap_SetConfigstring( CS_WARMUP, va("%i", level.warmupTime) );
+			trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
 			return;
 		}
 
@@ -1901,52 +1909,6 @@ void CheckTeamLeader( team_t team ) {
 		SetLeader( team, max_bot_id );
 		return;
 	}
-}
-
-
-/*
-==================
-CheckTeamVote
-==================
-*/
-static void CheckTeamVote( team_t team ) {
-	int cs_offset;
-
-	if ( team == TEAM_RED )
-		cs_offset = 0;
-	else if ( team == TEAM_BLUE )
-		cs_offset = 1;
-	else
-		return;
-
-	if ( !level.teamVoteTime[cs_offset] ) {
-		return;
-	}
-	if ( level.time - level.teamVoteTime[cs_offset] >= VOTE_TIME ) {
-		G_BroadcastServerCommand( -1, "print \"Team vote failed.\n\"" );
-	} else {
-		if ( level.teamVoteYes[cs_offset] > level.numteamVotingClients[cs_offset]/2 ) {
-			// execute the command, then remove the vote
-			G_BroadcastServerCommand( -1, "print \"Team vote passed.\n\"" );
-			//
-			if ( !Q_strncmp( "leader", level.teamVoteString[cs_offset], 6) ) {
-				//set the team leader
-				SetLeader(team, atoi(level.teamVoteString[cs_offset] + 7));
-			}
-			else {
-				trap_SendConsoleCommand( EXEC_APPEND, va("%s\n", level.teamVoteString[cs_offset] ) );
-			}
-		} else if ( level.teamVoteNo[cs_offset] >= level.numteamVotingClients[cs_offset]/2 ) {
-			// same behavior as a timeout
-			G_BroadcastServerCommand( -1, "print \"Team vote failed.\n\"" );
-		} else {
-			// still waiting for a majority
-			return;
-		}
-	}
-	level.teamVoteTime[cs_offset] = 0;
-	trap_SetConfigstring( CS_TEAMVOTE_TIME + cs_offset, "" );
-
 }
 
 
@@ -2124,8 +2086,7 @@ static void G_RunFrame( int levelTime ) {
 	CheckVote();
 
 	// check team votes
-	CheckTeamVote( TEAM_RED );
-	CheckTeamVote( TEAM_BLUE );
+	// Quake Live has no team votes (retail qagame registers only callvote and vote).
 
 	// for tracking changes
 	CheckCvars();

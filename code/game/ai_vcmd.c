@@ -36,7 +36,7 @@
 
 // for the voice chats
 #ifdef MISSIONPACK
-#include "../../ui/menudef.h"
+#include "bg_voicechat.h"
 
 typedef struct voiceCommand_s
 {

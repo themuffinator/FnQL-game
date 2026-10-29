@@ -1686,11 +1686,11 @@ static void PM_Weapon( void ) {
 	}
 
 #ifdef MISSIONPACK
-	if( bg_itemlist[pm->ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT ) {
+	if( pm->ps->stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
 		addTime /= 1.5;
 	}
 	else
-	if( bg_itemlist[pm->ps->stats[STAT_PERSISTANT_POWERUP]].giTag == PW_AMMOREGEN ) {
+	if( pm->ps->stats[STAT_PERSISTANT_POWERUP] == PP_ARMORREGEN ) {
 		addTime /= 1.3;
   }
   else
@@ -1795,7 +1795,7 @@ void PM_UpdateViewAngles( playerState_t *ps, const usercmd_t *cmd ) {
 	short		temp;
 	int		i;
 
-	if ( ps->pm_type == PM_INTERMISSION || ps->pm_type == PM_SPINTERMISSION) {
+	if ( ps->pm_type == PM_INTERMISSION ) {
 		return;		// no view changes at all
 	}
 
@@ -1952,7 +1952,7 @@ void PmoveSingle (pmove_t *pmove) {
 		return;		// no movement at all
 	}
 
-	if ( pm->ps->pm_type == PM_INTERMISSION || pm->ps->pm_type == PM_SPINTERMISSION) {
+	if ( pm->ps->pm_type == PM_INTERMISSION ) {
 		return;		// no movement at all
 	}
 

@@ -566,6 +566,27 @@ team_t PickTeam( int ignoreClientNum ) {
 
 /*
 ===========
+G_SteamIdString
+
+Decimal form of a 64-bit SteamID.  The game's formatter has no 64-bit
+conversions, so the digits are produced here.
+===========
+*/
+static const char *G_SteamIdString( unsigned long long steamId ) {
+	static char text[24];
+	char *p = text + sizeof( text ) - 1;
+
+	*p = '\0';
+	do {
+		*--p = (char)( '0' + (int)( steamId % 10 ) );
+		steamId /= 10;
+	} while ( steamId && p > text );
+	return p;
+}
+
+
+/*
+===========
 ClientUserInfoChanged
 
 Called from ClientConnect when the player first connects and
@@ -695,17 +716,27 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	Q_strncpyz( c1, Info_ValueForKey( userinfo, "color1" ), sizeof( c1 ) );
 	Q_strncpyz( c2, Info_ValueForKey( userinfo, "color2" ), sizeof( c2 ) );
 
+	Q_strncpyz( client->pers.country, Info_ValueForKey( userinfo, "country" ), sizeof( client->pers.country ) );
+
 	// send over a subset of the userinfo keys so other clients can
-	// print scoreboards, display models, and play custom sounds
+	// print scoreboards, display models, and play custom sounds.  The key
+	// sets are the retail ones (retail qagamex86 format strings): bots add
+	// "skill", humans add their SteamID and country.
 	if ( ent->r.svFlags & SVF_BOT ) {
-		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\skill\\%s\\tt\\%d\\tl\\%d",
+		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\skill\\%s\\tt\\%d\\tl\\%d"
+			"\\rp\\%d\\p\\%d\\so\\%i\\pq\\%i",
 			client->pers.netname, client->sess.sessionTeam, model, headModel, c1, c2,
 			client->pers.maxHealth, client->sess.wins, client->sess.losses,
-			Info_ValueForKey( userinfo, "skill" ), teamTask, teamLeader );
+			Info_ValueForKey( userinfo, "skill" ), teamTask, teamLeader,
+			client->pers.readyToPlay, client->pers.privileges, client->pers.spectateOnly,
+			client->pers.queuePosition );
 	} else {
-		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\tt\\%d\\tl\\%d",
-			client->pers.netname, client->sess.sessionTeam, model, headModel, c1, c2, 
-			client->pers.maxHealth, client->sess.wins, client->sess.losses, teamTask, teamLeader );
+		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\tt\\%d\\tl\\%d"
+			"\\rp\\%d\\p\\%d\\so\\%i\\pq\\%i\\st\\%s\\c\\%s",
+			client->pers.netname, client->sess.sessionTeam, model, headModel, c1, c2,
+			client->pers.maxHealth, client->sess.wins, client->sess.losses, teamTask, teamLeader,
+			client->pers.readyToPlay, client->pers.privileges, client->pers.spectateOnly,
+			client->pers.queuePosition, G_SteamIdString( client->pers.steamId ), client->pers.country );
 	}
 
 	trap_SetConfigstring( CS_PLAYERS+clientNum, s );
@@ -809,6 +840,8 @@ const char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 	memset( client, 0, sizeof( *client ) );
 
 	client->ps.clientNum = clientNum;
+	// retail ClientConnect records the SteamID right after clearing the client
+	client->pers.steamId = isBot ? 0 : trap_GetSteamId64( clientNum );
 
 	if ( !ClientUserinfoChanged( clientNum ) ) {
 		return ban_reason;

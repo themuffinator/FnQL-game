@@ -388,7 +388,7 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 
 		// regenerate
 #ifdef MISSIONPACK
-		if( bg_itemlist[client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD ) {
+		if( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
 			maxHealth = client->ps.stats[STAT_MAX_HEALTH] / 2;
 		}
 		else if ( client->ps.powerups[PW_REGEN] ) {
@@ -440,7 +440,7 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 		}
 	}
 #ifdef MISSIONPACK
-	if( bg_itemlist[client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_AMMOREGEN ) {
+	if( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_ARMORREGEN ) {
 		int w, max, inc, t, i;
     int weapList[]={WP_MACHINEGUN,WP_SHOTGUN,WP_GRENADE_LAUNCHER,WP_ROCKET_LAUNCHER,WP_LIGHTNING,WP_RAILGUN,WP_PLASMAGUN,WP_BFG,WP_NAILGUN,WP_PROX_LAUNCHER,WP_CHAINGUN};
     int weapCount = ARRAY_LEN( weapList );
@@ -825,7 +825,7 @@ void ClientThink_real( gentity_t *ent ) {
 	client->ps.speed = g_speed.value;
 
 #ifdef MISSIONPACK
-	if( bg_itemlist[client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT ) {
+	if( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
 		client->ps.speed *= 1.5;
 	}
 	else
@@ -914,7 +914,7 @@ void ClientThink_real( gentity_t *ent ) {
 				if ( level.time - level.intermissionQueued >= 2000 && level.time - level.intermissionQueued <= 2500 ) {
 					trap_SendConsoleCommand( EXEC_APPEND, "centerview\n");
 				}
-				ent->client->ps.pm_type = PM_SPINTERMISSION;
+				ent->client->ps.pm_type = PM_INTERMISSION;
 			}
 		}
 		Pmove (&pm);
@@ -1117,17 +1117,17 @@ void ClientEndFrame( gentity_t *ent ) {
 
 #ifdef MISSIONPACK
 	// set powerup for player animation
-	if( bg_itemlist[ent->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD ) {
+	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
 		ent->client->ps.powerups[PW_GUARD] = level.time;
 	}
-	if( bg_itemlist[ent->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_SCOUT ) {
+	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
 		ent->client->ps.powerups[PW_SCOUT] = level.time;
 	}
-	if( bg_itemlist[ent->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_DOUBLER ) {
+	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_DOUBLER ) {
 		ent->client->ps.powerups[PW_DOUBLER] = level.time;
 	}
-	if( bg_itemlist[ent->client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_AMMOREGEN ) {
-		ent->client->ps.powerups[PW_AMMOREGEN] = level.time;
+	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_ARMORREGEN ) {
+		ent->client->ps.powerups[PW_ARMORREGEN] = level.time;
 	}
 	if ( ent->client->invulnerabilityTime > level.time ) {
 		ent->client->ps.powerups[PW_INVULNERABILITY] = level.time;
@@ -1183,8 +1183,8 @@ void ClientEndFrame( gentity_t *ent ) {
 		if ( lag > 500 )
 			lag = 500;
 		G_PredictPlayerMove( &sent, (float)lag * 0.001f );
-		VectorCopy( sent.s.pos.trBase, ent->r.unused.origin2 );
-		ent->r.unused.origin2[2] += client->ps.viewheight;
+		VectorCopy( sent.s.pos.trBase, ent->r.s.origin2 );
+		ent->r.s.origin2[2] += client->ps.viewheight;
 		ent->r.svFlags |= svf_self_portal2;
 	}
 

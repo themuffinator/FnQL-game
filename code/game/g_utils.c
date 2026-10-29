@@ -228,7 +228,8 @@ void G_UseTargets( gentity_t *ent, gentity_t *activator ) {
 	if (ent->targetShaderName && ent->targetShaderNewName) {
 		f = level.time * 0.001;
 		AddRemap(ent->targetShaderName, ent->targetShaderNewName, f);
-		trap_SetConfigstring(CS_SHADERSTATE, BuildShaderStateConfig());
+		// Quake III published remaps in CS_SHADERSTATE (24), which is a model
+		// slot in Quake Live; retail Quake Live has no shader remap channel.
 	}
 
 	if ( !ent->target ) {
