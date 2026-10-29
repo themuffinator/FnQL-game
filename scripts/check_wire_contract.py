@@ -202,13 +202,71 @@ def main() -> int:
     if warmup != {tables["warmupFormat"]}:
         failures.append(f"CS_WARMUP formats {sorted(warmup)} != retail {tables['warmupFormat']!r}")
 
+    # cvars the engine publishes to clients (pmove, weapon, appearance, armor)
+    flag_values = {name: int(value, 0) for name, value in re.findall(
+        r"#define\s+(CVAR_\w+)\s+(0x[0-9a-fA-F]+|\d+)", (GAME / "q_shared.h").read_text(encoding="latin-1"))}
+    registered = {}
+    for header in ("g_cvar.h", "g_ql_cvars.h"):
+        source = (GAME / header).read_text(encoding="latin-1")
+        for name, default, flags in re.findall(
+                r'^G_CVAR\(\s*\w+,\s*"(\w+)",\s*"((?:[^"\\]|\\.)*)",\s*([^,]+),', source, re.M):
+            value = 0
+            for token in flags.split("|"):
+                token = token.strip()
+                value |= int(token, 0) if token[:1].isdigit() else flag_values[token]
+            registered[name] = (default, value)
+    published_mask = sum(flag_values[n] for n in ("CVAR_QL_PMOVE_SETTINGS", "CVAR_QL_WEAPON_RELOAD",
+                                                  "CVAR_QL_PLAYER_APPEARANCE", "CVAR_QL_ARMOR_TIERED"))
+    retail_published = {c["name"]: (c["default"], c["flags"]) for c in tables["cvars"] if c["flags"] & published_mask}
+    for name, expected in retail_published.items():
+        if registered.get(name) != expected:
+            failures.append(f"cvar {name}: ours {registered.get(name)} != retail {expected}")
+    for name, (default, flags) in registered.items():
+        if flags & published_mask and name not in retail_published:
+            failures.append(f"cvar {name} is published to clients but retail does not publish it")
+    # every other cvar retail also has keeps its retail default and flags
+    # (server browsers, factories and admins see both).  Cvar names are
+    # case-insensitive, but the registered spelling is the info-string key.
+    retail_all = {c["name"]: (c["default"], c["flags"]) for c in tables["cvars"]}
+    retail_by_lower = {name.lower(): name for name in retail_all}
+    retail_checked = 0
+    for name, ours in registered.items():
+        retail_name = retail_by_lower.get(name.lower())
+        if retail_name and retail_name != name:
+            failures.append(f"cvar {name} is spelled {retail_name} in retail")
+        if retail_name and retail_name not in retail_published:
+            retail_checked += 1
+            if ours != retail_all[retail_name]:
+                failures.append(f"cvar {name}: ours {ours} != retail {retail_all[retail_name]}")
+    # serverinfo and systeminfo carry exactly retail's keys: everything retail
+    # publishes there, and nothing it does not (the engine adds its own keys)
+    info_mask = flag_values["CVAR_SERVERINFO"] | flag_values["CVAR_SYSTEMINFO"]
+    registered_lower = {name.lower() for name in registered}
+    for name, (default, flags) in retail_all.items():
+        if flags & info_mask and name.lower() not in registered_lower:
+            failures.append(f"cvar {name} is in retail's serverinfo/systeminfo but not registered")
+    engine_owned = {"mapname"}  # the engine registers it with the same flags
+    for name, (default, flags) in registered.items():
+        if flags & info_mask and name.lower() not in retail_by_lower and name not in engine_owned:
+            failures.append(f"cvar {name} is in serverinfo/systeminfo but retail does not register it")
+
+    # curated string lists (e.g. the spawn filter gametype tokens)
+    for list_name, spec in enums.get("lists", {}).items():
+        file_name, symbol = spec["source"].split()
+        source = (ROOT / file_name).read_text(encoding="latin-1")
+        match = re.search(re.escape(symbol) + r"\[[^\]]*\]\s*=\s*\{([^}]*)\}", source)
+        ours = re.findall(r'"([^"]*)"', match.group(1)) if match else None
+        if ours != spec["values"]:
+            failures.append(f"{list_name}: {ours} != retail {spec['values']}")
+
     if failures:
         print(f"wire contract FAILED ({len(failures)}):")
         for failure in failures:
             print(f"  - {failure}")
         return 1
     checks = len(tables["items"]) + len(mods) + sum(len(g["values"]) for g in enums["groups"].values()) \
-        + len(spawns) + len(tables["botItemIndices"])         + sum(len(keys) for keys in tables["playerKeys"].values()) + 1
+        + len(spawns) + len(tables["botItemIndices"]) + sum(len(keys) for keys in tables["playerKeys"].values()) \
+        + 1 + len(retail_published) + retail_checked
     print(f"wire contract OK: {checks} retail values match")
     return 0
 

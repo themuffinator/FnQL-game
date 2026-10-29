@@ -421,8 +421,10 @@ static void target_location_linkup(gentity_t *ent)
 
 	trap_SetConfigstring( CS_LOCATIONS, "unknown" );
 
+	// retail (qagamex86 0x10067c03) names at most 63 locations, so a map
+	// with more never reaches the match state configstrings past them
 	for (i = 0, ent = g_entities, n = 1;
-			i < level.num_entities;
+			i < level.num_entities && n < MAX_LOCATIONS;
 			i++, ent++) {
 		if (ent->classname && !Q_stricmp(ent->classname, "target_location")) {
 			// lets overload some variables!

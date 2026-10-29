@@ -68,7 +68,9 @@ def main() -> int:
         log_path = game_dir / "qconsole.log"
         command = [str(engine), "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
                    "+set", "logfile", "2", "+set", "net_port", str(args.port), "+set", "sv_pure", "0",
-                   "+set", "vm_gameProvider", "fnql", "+exec", "sweep.cfg"]
+                   "+set", "vm_gameProvider", "fnql",
+                   # the dedicated startup hook runs after the command line
+                   "+set", "serverstartup", "exec sweep.cfg"]
         process = subprocess.Popen(command, cwd=engine.parent, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

@@ -21,13 +21,23 @@ Milestone 1 of [`docs/PLAN.md`](docs/PLAN.md) is complete:
 - it speaks the retail native module ABI and identifies itself to FnQL;
 - it boots on retail maps in an FnQL dedicated server and hosts bots.
 
-Milestone 2 (the wire contract) is in progress. The item table, enums,
-configstring layout and spawn table now match retail, checked against the
-retail binaries. Every loadable stock map boots.
+Milestone 2 (the wire contract) is complete. The item table, enums,
+configstring layout, published cvars, spawn table and spawn filters match
+retail, checked against the retail binaries. Every loadable stock map boots,
+and the retail cgame runs against FnQL-game's qagame and reaches the game
+with the retail HUD.
 
-Gameplay is still Quake III, and the module does not yet claim retail wire
-parity, so FnQL keeps loading the retail modules unless told otherwise. cgame
-and ui arrive in later milestones.
+Milestone 3 (movement) is complete. Player movement and weapon timing match
+the retail qagame bit for bit:
+
+- the lockstep harness runs the retail `Pmove` next to FnQL-game's on 54
+  scenarios, including fuzzed input, with no divergence;
+- the retail cgame predicts FnQL-game's server, VQL and PQL, with no
+  prediction error at all.
+
+Combat, items and match rules are still Quake III, and the module does not
+yet claim retail wire parity, so FnQL keeps loading the retail modules unless
+told otherwise. cgame and ui arrive in later milestones.
 
 ## Using it
 

@@ -1,0 +1,28 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory tdm --frames 1600
+# --scenario ...): a team deathmatch match on campgrounds.  Alpha joins red
+# and bravo blue and both ready up; a dedicated server holds a team game
+# for g_warmupDelay before the countdown, and the match starts at frame 984.
+# Bravo kills itself, and then alpha leaves for the spectators, so red
+# forfeits.  This exercises team ready-up, the warmup delay, the match
+# start, team scoring, a team forfeit, the team result sound and the
+# intermission's team statistics.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+at 1040 alpha forward=127
+at 1080 alpha forward=0 buttons=attack
+at 1100 alpha buttons=0
+clientcmd 1120 bravo kill
+clientcmd 1160 alpha score
+clientcmd 1250 alpha team s
+clientcmd 1280 bravo score

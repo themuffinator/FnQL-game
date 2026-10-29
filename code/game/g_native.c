@@ -382,6 +382,10 @@ void trap_SetConfigstring( int num, const char *string ) {
 	gi->SetConfigstring( num, string );
 }
 
+void trap_ResendConfigstring( int num ) {
+	gi->ResendConfigstring( num );
+}
+
 void trap_GetConfigstring( int num, char *buffer, int bufferSize ) {
 	gi->GetConfigstring( num, buffer, bufferSize );
 }
@@ -468,6 +472,10 @@ int trap_DebugPolygonCreate( int color, int numPoints, vec3_t *points ) {
 
 void trap_DebugPolygonDelete( int id ) {
 	gi->DebugPolygonDelete( id );
+}
+
+void trap_GenerateMatchGuid( char *buffer, int bufferSize ) {
+	gi->GenerateMatchGuid( buffer, bufferSize );
 }
 
 int trap_RealTime( qtime_t *qtime ) {

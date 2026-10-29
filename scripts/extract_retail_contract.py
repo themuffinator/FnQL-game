@@ -13,6 +13,7 @@ the tables whose order is part of the network contract:
   botItemIndices MODELINDEX_* values from baseq3/pak00.pk3 botfiles/inv.h
   playerKeys     CS_PLAYERS infostring keys, for bots and for humans
   warmupFormat   CS_WARMUP payload format
+  cvars          qagame cvar table: name, default string, flags
 
   --write   regenerate docs/contract/retail_tables.json
   --check   compare a fresh extraction with the committed file (default)
@@ -171,6 +172,38 @@ def extract_player_keys(image: PeImage) -> dict[str, list[str]]:
     return {"bot": format_keys(bot[0]), "human": format_keys(human[0])}
 
 
+CVAR_ROW_STRIDE = 24  # {vmCvar *, name, default, flags, track flag, change callback}
+
+
+def extract_cvars(image: PeImage) -> list[dict]:
+    """Rows of the qagame cvar table: name, default string and flags.
+
+    The table is found through the row naming g_quadDamageFactor and walked
+    in both directions while rows keep the cvar shape: a vmCvar pointer into
+    the image (or none: retail sets a few of these by name, such as
+    g_levelStartTime), a printable name, and a small flags word (the table
+    that follows has pointers where the flags would be).
+    """
+    def row(va: int) -> dict | None:
+        vm, name_va, default_va, flags = (image.dword(va + 4 * i) for i in range(4))
+        name = image.string(name_va)
+        if name is None or not (vm == 0 or image.base <= vm < image.base + 0x01000000) or flags >= 0x01000000:
+            return None
+        default = image.string(default_va) if default_va else ""
+        return {"name": name, "default": default if default is not None else "", "flags": flags}
+
+    anchor = next(ref - 4 for ref in image.references(image.string_va("g_quadDamageFactor"))
+                  if row(ref - 4) is not None)
+    start = anchor
+    while row(start - CVAR_ROW_STRIDE) is not None:
+        start -= CVAR_ROW_STRIDE
+    rows, cursor = [], start
+    while (entry := row(cursor)) is not None:
+        rows.append(entry)
+        cursor += CVAR_ROW_STRIDE
+    return rows
+
+
 def extract_bot_item_indices(retail: Path) -> dict[str, int]:
     with zipfile.ZipFile(retail / "baseq3" / "pak00.pk3") as package:
         text = package.read("botfiles/inv.h").decode("latin-1")
@@ -194,6 +227,7 @@ def extract(retail: Path) -> dict:
         "botItemIndices": extract_bot_item_indices(retail),
         "playerKeys": extract_player_keys(qagame),
         "warmupFormat": "\\time\\%i" if qagame.data.find(b"\\time\\%i\x00") >= 0 else None,
+        "cvars": extract_cvars(qagame),
     }
 
 

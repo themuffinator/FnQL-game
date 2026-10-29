@@ -1,0 +1,26 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --map spidercrossings
+# --factory ctf --frames 1700 --scenario ...): capture the flag.  Alpha
+# joins red and bravo blue and both ready up; the match starts at frame 984.
+# setviewpos (a cheat, hence --cheats and devmap) carries alpha onto the
+# blue flag and home to capture it, then bravo takes the red flag and dies
+# beside alpha, who returns it; bravo then leaves for the spectators and
+# blue forfeits.  This exercises flag pickup, capture, drop and return, the
+# CTF scoring and sounds, and the intermission's CTF statistics.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 1020 alpha setviewpos 0 2752 170 0
+clientcmd 1060 alpha setviewpos 0 -2752 170 0
+clientcmd 1100 bravo setviewpos 32 -2752 170 0
+clientcmd 1140 bravo kill
+clientcmd 1200 alpha score
+clientcmd 1300 bravo team s
+clientcmd 1330 alpha score

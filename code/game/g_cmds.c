@@ -8,22 +8,601 @@
 
 /*
 ==================
-DeathmatchScoreboardMessage
-
+G_ScoreboardPing
 ==================
 */
-void DeathmatchScoreboardMessage( gentity_t *ent ) {
+static int G_ScoreboardPing( const gclient_t *cl ) {
+	if ( cl->pers.connected == CON_CONNECTING ) {
+		return -1;
+	}
+	return cl->ps.ping < 999 ? cl->ps.ping : 999;
+}
+
+
+/*
+==================
+G_BestWeapon
+
+Retail qagamex86 0x100789d0: the weapon that has dealt the most damage
+this match, or else the best starting weapon.
+==================
+*/
+static int G_BestWeapon( const gclient_t *cl ) {
+	int		i, best, most, fallback;
+
+	fallback = WP_GAUNTLET;
+	for ( i = WP_MACHINEGUN; i < WP_NUM_WEAPONS; i++ ) {
+		if ( g_startingWeapons.integer & ( 1 << ( i - 1 ) ) ) {
+			fallback = i;
+		}
+	}
+
+	best = WP_NONE;
+	most = 0;
+	for ( i = WP_GAUNTLET; i < WP_NUM_WEAPONS; i++ ) {
+		if ( cl->stats.weaponDamageGiven[i] > most ) {
+			most = cl->stats.weaponDamageGiven[i];
+			best = i;
+		}
+	}
+	return best != WP_NONE ? best : fallback;
+}
+
+
+/*
+==================
+G_ScoreboardFFA
+
+Retail qagamex86 0x1003d090: the free-for-all scoreboard, or NULL when its
+entries outgrow a 1024-byte buffer.
+==================
+*/
+static const char *G_ScoreboardFFA( void ) {
+	char		entry[MAX_STRING_CHARS];
+	char		string[MAX_STRING_CHARS];
+	int			stringlength, i, j, accuracy, perfect, best, bestAccuracy;
+	gclient_t	*cl;
+
+	string[0] = '\0';
+	stringlength = 0;
+
+	for ( i = 0 ; i < level.numConnectedClients ; i++ ) {
+		cl = &level.clients[level.sortedClients[i]];
+
+		accuracy = cl->accuracy_shots ? cl->accuracy_hits * 100 / cl->accuracy_shots : 0;
+		perfect = ( cl->ps.persistant[PERS_RANK] == 0 && cl->ps.persistant[PERS_KILLED] == 0 ) ? 1 : 0;
+		best = G_BestWeapon( cl );
+		bestAccuracy = cl->stats.weaponShots[best] > 0
+			? (int)( (double)cl->stats.weaponHits[best] * 100.0 / (double)cl->stats.weaponShots[best] ) : 0;
+
+		j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+			level.sortedClients[i],
+			cl->ps.persistant[PERS_SCORE],
+			G_ScoreboardPing( cl ),
+			(level.time - cl->pers.enterTime)/60000,
+			accuracy,
+			cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
+			cl->ps.persistant[PERS_EXCELLENT_COUNT],
+			cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+			cl->ps.persistant[PERS_DEFEND_COUNT],
+			cl->ps.persistant[PERS_ASSIST_COUNT],
+			perfect,
+			cl->ps.persistant[PERS_CAPTURES],
+			cl->ps.pm_type == PM_NORMAL,
+			cl->stats.kills,
+			cl->stats.deaths,
+			best,
+			bestAccuracy,
+			cl->stats.damageGiven );
+
+		if ( stringlength + j > 1023 ) {
+			return NULL;
+		}
+		strcpy( string + stringlength, entry );
+		stringlength += j;
+	}
+
+	return va( "scores_ffa %i %i %i%s", i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+}
+
+
+/*
+==================
+G_ScoreboardDuelRow
+
+One duelist's scores_duel entry (retail qagamex86 0x1003d2b0): the match
+figures, the item control of the red, yellow and green armor and the mega
+health (pickups, then the average seconds each stood waiting before a
+pickup that was not its first), and five figures per weapon.  Without
+withItems the item control reads zero.
+==================
+*/
+static void G_ScoreboardDuelRow( int clientNum, qboolean withItems, char *out, int outSize ) {
+	const gclient_t		*cl = &level.clients[clientNum];
+	const itemControl_t	*items[4];
+	char				weapons[MAX_STRING_CHARS];
+	char				entry[MAX_STRING_CHARS];
+	int					pickups[4];
+	float				waited[4];
+	int					length, i, j, hits, shots, accuracy, perfect;
+
+	weapons[0] = '\0';
+	length = 0;
+	for ( i = WP_GAUNTLET; i < WP_NUM_WEAPONS; i++ ) {
+		hits = cl->stats.weaponHits[i];
+		shots = cl->stats.weaponShots[i];
+		accuracy = ( hits && shots ) ? hits * 100 / shots : 0;
+		j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i",
+			hits, shots, accuracy, cl->stats.weaponDamageGiven[i], cl->stats.weaponKills[i] );
+		if ( length + j > 1023 ) {
+			break;
+		}
+		strcpy( weapons + length, entry );
+		length += j;
+	}
+
+	items[0] = &cl->stats.redArmor;
+	items[1] = &cl->stats.yellowArmor;
+	items[2] = &cl->stats.greenArmor;
+	items[3] = &cl->stats.mega;
+	for ( i = 0; i < 4; i++ ) {
+		const int later = items[i]->pickups - items[i]->first;
+
+		pickups[i] = withItems ? items[i]->pickups : 0;
+		waited[i] = ( withItems && later > 0 ) ? (float)( (double)items[i]->waited / 1000.0 / (double)later ) : 0.0f;
+	}
+
+	accuracy = cl->accuracy_shots ? cl->accuracy_hits * 100 / cl->accuracy_shots : 0;
+	perfect = ( cl->ps.persistant[PERS_RANK] == 0 && cl->ps.persistant[PERS_KILLED] == 0 ) ? 1 : 0;
+
+	Com_sprintf( out, outSize,
+		"%i %i %i %i %i %i %i %i %i %i %i %i %i %i %3.2f %i %3.2f %i %3.2f %i %3.2f%s",
+		clientNum,
+		cl->ps.persistant[PERS_SCORE],
+		G_ScoreboardPing( cl ),
+		(level.time - cl->pers.enterTime)/60000,
+		cl->stats.kills,
+		cl->stats.deaths,
+		accuracy,
+		G_BestWeapon( cl ),
+		cl->stats.damageGiven,
+		cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
+		cl->ps.persistant[PERS_EXCELLENT_COUNT],
+		cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+		perfect,
+		pickups[0], waited[0], pickups[1], waited[1], pickups[2], waited[2], pickups[3], waited[3],
+		weapons );
+}
+
+
+/*
+==================
+G_ScoreboardDuel
+
+Retail qagamex86 0x1003d2b0: the two duelists in client order.  A player
+sees its opponent's item control only from the spectators or at the
+intermission, which shows the duelists' last full entries even after one
+has gone.
+==================
+*/
+static const char *G_ScoreboardDuel( gentity_t *viewer ) {
+	char		plain[2][MAX_STRING_CHARS];
+	char		full[2][MAX_STRING_CHARS];
+	int			duelists[2] = { -1, -1 };
+	int			count, i;
+	qboolean	open;
+
+	if ( level.numPlayingClients == 1 ) {
+		duelists[0] = level.sortedClients[0];
+	} else if ( level.numPlayingClients > 1 ) {
+		const qboolean ordered = level.sortedClients[0] < level.sortedClients[1];
+
+		duelists[0] = level.sortedClients[ordered ? 0 : 1];
+		duelists[1] = level.sortedClients[ordered ? 1 : 0];
+		level.duelRowClient = duelists[0];
+	}
+
+	for ( i = 0; i < 2; i++ ) {
+		plain[i][0] = full[i][0] = '\0';
+		if ( duelists[i] < 0 ) {
+			continue;
+		}
+		G_ScoreboardDuelRow( duelists[i], qfalse, plain[i], sizeof( plain[i] ) );
+		G_ScoreboardDuelRow( duelists[i], qtrue, full[i], sizeof( full[i] ) );
+		Q_strncpyz( level.duelRows[( i == 0 && duelists[i] == level.duelRowClient ) ? 0 : 1], full[i],
+			sizeof( level.duelRows[0] ) );
+	}
+
+	if ( level.intermissionQueued || level.intermissiontime ) {
+		return va( "scores_duel 2 %s %s", level.duelRows[0], level.duelRows[1] );
+	}
+
+	count = level.numPlayingClients < 2 ? level.numPlayingClients : 2;
+	if ( count < 2 ) {
+		return va( "scores_duel %i %s", count, full[0] );
+	}
+
+	for ( i = 0; i < 2; i++ ) {
+		open = viewer->client == &level.clients[duelists[i]]
+			|| viewer->client->sess.sessionTeam == TEAM_SPECTATOR;
+		if ( !open ) {
+			Q_strncpyz( full[i], plain[i], sizeof( full[i] ) );
+		}
+	}
+	return va( "scores_duel %i %s %s", count, full[0], full[1] );
+}
+
+
+/*
+==================
+G_ScoreboardRace
+
+Retail qagamex86 0x1003dbb0: each racer's best time (-1 for none), or NULL
+when the entries outgrow a 1024-byte buffer.  Retail counts the players in
+the game for the header but lists everyone connected.
+==================
+*/
+static const char *G_ScoreboardRace( void ) {
+	char		entry[MAX_STRING_CHARS];
+	char		string[MAX_STRING_CHARS];
+	int			stringlength, i, j, best;
+	gclient_t	*cl;
+
+	string[0] = '\0';
+	stringlength = 0;
+
+	for ( i = 0 ; i < level.numConnectedClients ; i++ ) {
+		cl = &level.clients[level.sortedClients[i]];
+
+		best = cl->ps.persistant[PERS_SCORE];
+		if ( best == 0x7fffffff ) {
+			best = -1;
+		}
+		j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i",
+			level.sortedClients[i],
+			best,
+			G_ScoreboardPing( cl ),
+			(level.time - cl->pers.enterTime)/60000 );
+
+		if ( stringlength + j >= 1024 ) {
+			return NULL;
+		}
+		strcpy( string + stringlength, entry );
+		stringlength += j;
+	}
+
+	return va( "scores_race %i%s", level.numPlayingClients, string );
+}
+
+
+/*
+==================
+G_ScoreboardPlayer
+
+The fields the retail per-mode scoreboards draw from (qagamex86
+0x1003d090-0x1003f260).
+==================
+*/
+typedef struct {
+	int		clientNum, team, score, ping, minutes;
+	int		accuracy, perfect, alive, best, bestAccuracy;
+} scoreboardPlayer_t;
+
+static void G_ScoreboardPlayer( int sortedIndex, scoreboardPlayer_t *out ) {
+	const int	clientNum = level.sortedClients[sortedIndex];
+	gclient_t	*cl = &level.clients[clientNum];
+
+	out->clientNum = clientNum;
+	out->team = cl->sess.sessionTeam;
+	out->score = cl->ps.persistant[PERS_SCORE];
+	out->ping = G_ScoreboardPing( cl );
+	out->minutes = (level.time - cl->pers.enterTime)/60000;
+	out->accuracy = cl->accuracy_shots ? cl->accuracy_hits * 100 / cl->accuracy_shots : 0;
+	out->perfect = ( cl->ps.persistant[PERS_RANK] == 0 && cl->ps.persistant[PERS_KILLED] == 0 ) ? 1 : 0;
+	out->alive = cl->ps.pm_type == PM_NORMAL;
+	out->best = G_BestWeapon( cl );
+	out->bestAccuracy = cl->stats.weaponShots[out->best] > 0
+		? (int)( (double)cl->stats.weaponHits[out->best] * 100.0 / (double)cl->stats.weaponShots[out->best] ) : 0;
+}
+
+
+/*
+==================
+G_TeamStatsHeader
+
+The team item-control numbers the team scoreboards open with, red's then
+blue's.  Outside the intermission a player sees only its own team's.
+==================
+*/
+static const teamStat_t tdmTeamStats[] = {
+	TEAM_STAT_RED_ARMOR, TEAM_STAT_YELLOW_ARMOR, TEAM_STAT_GREEN_ARMOR, TEAM_STAT_MEGA_HEALTH,
+	TEAM_STAT_QUAD, TEAM_STAT_BATTLESUIT, TEAM_STAT_REGEN, TEAM_STAT_HASTE, TEAM_STAT_INVIS,
+	TEAM_STAT_QUAD_TIME, TEAM_STAT_BATTLESUIT_TIME, TEAM_STAT_REGEN_TIME, TEAM_STAT_HASTE_TIME,
+	TEAM_STAT_INVIS_TIME
+};
+
+static const teamStat_t ctfTeamStats[] = {
+	TEAM_STAT_RED_ARMOR, TEAM_STAT_YELLOW_ARMOR, TEAM_STAT_GREEN_ARMOR, TEAM_STAT_MEGA_HEALTH,
+	TEAM_STAT_QUAD, TEAM_STAT_BATTLESUIT, TEAM_STAT_REGEN, TEAM_STAT_HASTE, TEAM_STAT_INVIS,
+	TEAM_STAT_FLAG_PICKUPS, TEAM_STAT_MEDKIT, TEAM_STAT_QUAD_TIME, TEAM_STAT_BATTLESUIT_TIME,
+	TEAM_STAT_REGEN_TIME, TEAM_STAT_HASTE_TIME, TEAM_STAT_INVIS_TIME, TEAM_STAT_FLAG_TIME
+};
+
+static const char *G_TeamStatsHeader( gentity_t *viewer, const teamStat_t *stats, int count ) {
+	static char	header[MAX_STRING_CHARS];
+	const int	viewerTeam = viewer->client->sess.sessionTeam;
+	int			length = 0, team, i, value;
+
+	header[0] = '\0';
+	for ( team = TEAM_RED; team <= TEAM_BLUE; team++ ) {
+		const qboolean hidden = !level.intermissiontime
+			&& ( ( viewerTeam == TEAM_RED && team == TEAM_BLUE ) || ( viewerTeam == TEAM_BLUE && team == TEAM_RED ) );
+
+		for ( i = 0; i < count; i++ ) {
+			value = hidden ? 0 : level.teamStats[stats[i]][team];
+			length += Com_sprintf( header + length, sizeof( header ) - length, " %i", value );
+		}
+	}
+	return header;
+}
+
+
+/*
+==================
+G_ScoreboardTeam
+
+The team scoreboards: retail qagamex86 0x1003dd20 (team deathmatch),
+0x1003eda0 (freeze tag), 0x1003e300 (clan arena) and 0x1003e6d0 (the flag
+modes and domination).  Each returns NULL when its entries outgrow a
+1024-byte buffer.
+==================
+*/
+static const char *G_ScoreboardTeam( gentity_t *viewer ) {
+	char				entry[MAX_STRING_CHARS];
+	char				string[MAX_STRING_CHARS];
+	int					stringlength, i, j;
+	scoreboardPlayer_t	p;
+	gclient_t			*cl;
+	const int			gametype = g_gametype.integer;
+
+	string[0] = '\0';
+	stringlength = 0;
+
+	for ( i = 0 ; i < level.numConnectedClients ; i++ ) {
+		G_ScoreboardPlayer( i, &p );
+		cl = &level.clients[p.clientNum];
+
+		switch ( gametype ) {
+		case GT_TEAM:
+			j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+				p.clientNum, p.team, p.score, p.ping, p.minutes, cl->stats.kills, cl->stats.deaths,
+				p.accuracy, p.best, cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
+				cl->ps.persistant[PERS_EXCELLENT_COUNT], cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+				cl->stats.teamKills, cl->stats.teamKilled, cl->stats.damageGiven );
+			break;
+		case GT_FREEZE:
+			j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+				p.clientNum, p.team, p.score, p.ping, p.minutes, cl->stats.kills, cl->stats.deaths,
+				p.accuracy, p.best, cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
+				cl->ps.persistant[PERS_EXCELLENT_COUNT], cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+				cl->ps.persistant[PERS_ASSIST_COUNT], cl->stats.teamKills, cl->stats.teamKilled,
+				cl->stats.damageGiven, p.alive );
+			break;
+		case GT_CLAN_ARENA:
+			j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+				p.clientNum, p.team, p.score, p.ping, p.minutes, cl->stats.kills, cl->stats.deaths,
+				p.accuracy, p.best, p.bestAccuracy, cl->stats.damageGiven,
+				cl->ps.persistant[PERS_IMPRESSIVE_COUNT], cl->ps.persistant[PERS_EXCELLENT_COUNT],
+				cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT], p.perfect, p.alive );
+			break;
+		default:
+			j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+				p.clientNum, p.team, p.score, p.ping, p.minutes, cl->stats.kills, cl->stats.deaths,
+				p.accuracy, p.best, cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
+				cl->ps.persistant[PERS_EXCELLENT_COUNT], cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+				cl->ps.persistant[PERS_DEFEND_COUNT], cl->ps.persistant[PERS_ASSIST_COUNT],
+				cl->ps.persistant[PERS_CAPTURES], p.perfect, p.alive );
+			break;
+		}
+
+		if ( stringlength + j > 1023 ) {
+			return NULL;
+		}
+		strcpy( string + stringlength, entry );
+		stringlength += j;
+	}
+
+	switch ( gametype ) {
+	case GT_TEAM:
+		return va( "scores_tdm%s %i %i %i%s", G_TeamStatsHeader( viewer, tdmTeamStats, ARRAY_LEN( tdmTeamStats ) ),
+			i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+	case GT_FREEZE:
+		return va( "scores_ft%s %i %i %i%s", G_TeamStatsHeader( viewer, tdmTeamStats, ARRAY_LEN( tdmTeamStats ) ),
+			i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+	case GT_CLAN_ARENA:
+		return va( "scores_ca %i %i %i%s", i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+	default:
+		return va( "scores_ctf%s %i %i %i%s", G_TeamStatsHeader( viewer, ctfTeamStats, ARRAY_LEN( ctfTeamStats ) ),
+			i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+	}
+}
+
+
+/*
+==================
+G_ScoreboardOverload
+
+Retail qagamex86 0x1003cec0: Overload keeps the Quake III command name
+with Quake Live's fields, and the entries that fit.
+==================
+*/
+static const char *G_ScoreboardOverload( void ) {
+	char				entry[MAX_STRING_CHARS];
+	char				string[MAX_STRING_CHARS];
+	int					stringlength, i, j;
+	scoreboardPlayer_t	p;
+	gclient_t			*cl;
+
+	string[0] = '\0';
+	stringlength = 0;
+
+	for ( i = 0 ; i < level.numConnectedClients ; i++ ) {
+		G_ScoreboardPlayer( i, &p );
+		cl = &level.clients[p.clientNum];
+
+		j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+			p.clientNum, p.score, p.ping, p.minutes, 0, 0, p.accuracy,
+			cl->ps.persistant[PERS_IMPRESSIVE_COUNT], cl->ps.persistant[PERS_EXCELLENT_COUNT],
+			cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT], cl->ps.persistant[PERS_DEFEND_COUNT],
+			cl->ps.persistant[PERS_ASSIST_COUNT], p.perfect, cl->ps.persistant[PERS_CAPTURES], p.alive,
+			cl->stats.kills, cl->stats.deaths, p.best );
+
+		if ( stringlength + j > 1023 ) {
+			break;
+		}
+		strcpy( string + stringlength, entry );
+		stringlength += j;
+	}
+
+	return va( "scores %i %i %i%s", i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+}
+
+
+/*
+==================
+G_SendIntermissionTeamStats
+
+At the intermission retail sends each player's team statistics after the
+scoreboard, one command per player in scoreboard order: tdmstats
+(qagamex86 0x1003e1b0) for team deathmatch and freeze tag, castats
+(0x1003e510: damage, then accuracy and kills per weapon) for clan arena,
+ctfstats (0x1003ec40) for the flag modes and domination.
+==================
+*/
+static void G_SendIntermissionTeamStats( gentity_t *viewer ) {
+	char		entry[MAX_STRING_CHARS];
+	gclient_t	*cl;
+	int			i, w, j, length;
+
+	for ( i = 0 ; i < level.numConnectedClients ; i++ ) {
+		cl = &level.clients[level.sortedClients[i]];
+
+		switch ( g_gametype.integer ) {
+		case GT_TEAM:
+		case GT_FREEZE:
+			j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i",
+				cl->stats.suicides, cl->stats.teamKills, cl->stats.teamKilled, cl->stats.damageGiven,
+				cl->stats.damageTaken, cl->stats.redArmor.pickups, cl->stats.yellowArmor.pickups,
+				cl->stats.greenArmor.pickups, cl->stats.mega.pickups, cl->stats.quadPickups,
+				cl->stats.battleSuitPickups );
+			if ( j > 1023 ) {
+				return;
+			}
+			trap_SendServerCommand( viewer - g_entities, va( "tdmstats %i%s", i, entry ) );
+			break;
+
+		case GT_CLAN_ARENA:
+			length = Com_sprintf( entry, sizeof( entry ), " %i %i", cl->stats.damageGiven, cl->stats.damageTaken );
+			for ( w = WP_GAUNTLET; w < WP_GAUNTLET + 15; w++ ) {
+				const int shots = cl->stats.weaponShots[w];
+				const int accuracy = cl->stats.weaponHits[w] && shots ? cl->stats.weaponHits[w] * 100 / shots : 0;
+				char pair[64];
+
+				j = Com_sprintf( pair, sizeof( pair ), " %i %i", accuracy, cl->stats.weaponKills[w] );
+				if ( length + j > 1023 ) {
+					break;
+				}
+				strcpy( entry + length, pair );
+				length += j;
+			}
+			trap_SendServerCommand( viewer - g_entities, va( "castats %i%s", i, entry ) );
+			break;
+
+		case GT_CTF:
+		case GT_1FCTF:
+		case GT_HARVESTER:
+		case GT_DOMINATION:
+		case GT_ATTACK_DEFEND:
+			j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i %i %i %i %i",
+				cl->stats.suicides, cl->stats.damageGiven, cl->stats.damageTaken,
+				cl->stats.redArmor.pickups, cl->stats.yellowArmor.pickups, cl->stats.greenArmor.pickups,
+				cl->stats.mega.pickups, cl->stats.quadPickups, cl->stats.battleSuitPickups,
+				cl->stats.regenPickups, cl->stats.hastePickups, cl->stats.invisPickups );
+			if ( j > 1023 ) {
+				return;
+			}
+			trap_SendServerCommand( viewer - g_entities, va( "ctfstats %i%s", i, entry ) );
+			break;
+
+		default:
+			return;
+		}
+	}
+}
+
+
+/*
+==================
+G_ScoreboardSmall
+
+Retail qagamex86 0x1003cd70: the short scoreboard for when the full one is
+too long or g_forceSmallScoreboardMessage asks for it; it keeps the
+entries that fit.
+==================
+*/
+static const char *G_ScoreboardSmall( void ) {
+	char		entry[MAX_STRING_CHARS];
+	char		string[MAX_STRING_CHARS];
+	int			stringlength, i, j;
+	gclient_t	*cl;
+
+	string[0] = '\0';
+	stringlength = 0;
+
+	for ( i = 0 ; i < level.numConnectedClients ; i++ ) {
+		cl = &level.clients[level.sortedClients[i]];
+
+		j = Com_sprintf( entry, sizeof( entry ), " %i %i %i %i %i %i %i %i",
+			level.sortedClients[i],
+			cl->ps.persistant[PERS_SCORE],
+			G_ScoreboardPing( cl ),
+			(level.time - cl->pers.enterTime)/60000,
+			cl->ps.persistant[PERS_CAPTURES],
+			cl->ps.pm_type == PM_NORMAL,
+			cl->stats.kills,
+			cl->stats.deaths );
+
+		if ( stringlength + j > 1023 ) {
+			break;
+		}
+		strcpy( string + stringlength, entry );
+		stringlength += j;
+	}
+
+	return va( "smscores %i %i %i%s", i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+}
+
+
+/*
+==================
+G_ScoreboardLegacy
+
+The Quake III scoreboard that duel and red rover still send until their
+retail grammars land (scores_duel with the duel statistics, scores_rr with
+red rover).
+==================
+*/
+static const char *G_ScoreboardLegacy( void ) {
 	char		entry[256]; // enough to hold 14 integers
 	char		string[MAX_STRING_CHARS-1];
 	int			stringlength;
-	int			i, j, ping, prefix;
+	int			i, j, prefix;
 	gclient_t	*cl;
-	int			numSorted, scoreFlags, accuracy, perfect;
+	int			numSorted, accuracy, perfect;
 
 	// send the latest information on all clients
 	string[0] = '\0';
 	stringlength = 0;
-	scoreFlags = 0;
 
 	numSorted = level.numConnectedClients;
 
@@ -33,12 +612,6 @@ void DeathmatchScoreboardMessage( gentity_t *ent ) {
 	for ( i = 0 ; i < numSorted ; i++ ) {
 
 		cl = &level.clients[level.sortedClients[i]];
-
-		if ( cl->pers.connected == CON_CONNECTING ) {
-			ping = -1;
-		} else {
-			ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
-		}
 
 		if( cl->accuracy_shots ) {
 			accuracy = cl->accuracy_hits * 100 / cl->accuracy_shots;
@@ -51,9 +624,9 @@ void DeathmatchScoreboardMessage( gentity_t *ent ) {
 		j = BG_sprintf( entry, " %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 			level.sortedClients[i],
 			cl->ps.persistant[PERS_SCORE],
-			ping,
+			G_ScoreboardPing( cl ),
 			(level.time - cl->pers.enterTime)/60000,
-			scoreFlags,
+			0,
 			g_entities[level.sortedClients[i]].s.powerups,
 			accuracy, 
 			cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
@@ -71,9 +644,51 @@ void DeathmatchScoreboardMessage( gentity_t *ent ) {
 		stringlength += j;
 	}
 
-	trap_SendServerCommand( ent-g_entities, va( "scores %i %i %i%s", i,
-		level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE],
-		string ) );
+	return va( "scores %i %i %i%s", i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], string );
+}
+
+
+/*
+==================
+DeathmatchScoreboardMessage
+
+Retail qagamex86 0x1003cbf0: each mode sends its own scoreboard, falling
+back to the short one, and at the intermission the team modes follow it
+with each player's team statistics.
+==================
+*/
+void DeathmatchScoreboardMessage( gentity_t *ent ) {
+	const char	*message;
+
+	switch ( g_gametype.integer ) {
+	case GT_FFA:
+		message = G_ScoreboardFFA();
+		break;
+	case GT_TOURNAMENT:
+		message = G_ScoreboardDuel( ent );
+		break;
+	case GT_RACE:
+		message = G_ScoreboardRace();
+		break;
+	case GT_OBELISK:
+		message = G_ScoreboardOverload();
+		break;
+	case GT_RED_ROVER:
+		message = G_ScoreboardLegacy();	// scores_rr arrives with red rover (milestone 6)
+		break;
+	default:
+		message = G_ScoreboardTeam( ent );
+		break;
+	}
+
+	if ( !message || strlen( message ) > 1023 || g_forceSmallScoreboardMessage.integer ) {
+		message = G_ScoreboardSmall();
+	}
+	trap_SendServerCommand( ent-g_entities, message );
+
+	if ( level.intermissiontime ) {
+		G_SendIntermissionTeamStats( ent );
+	}
 }
 
 
@@ -453,6 +1068,9 @@ void Cmd_TeamTask_f( gentity_t *ent ) {
 /*
 =================
 Cmd_Kill_f
+
+Retail qagamex86 0x100401d0: g_allowKill 0 refuses, and the suicide is
+not stopped by god mode.
 =================
 */
 void Cmd_Kill_f( gentity_t *ent ) {
@@ -462,8 +1080,11 @@ void Cmd_Kill_f( gentity_t *ent ) {
 	if (ent->health <= 0) {
 		return;
 	}
-	ent->flags &= ~FL_GODMODE;
-	ent->client->ps.stats[STAT_HEALTH] = ent->health = -999;
+	if ( !g_allowKill.integer ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Kill is not enabled on this server.\n\"" );
+		return;
+	}
+	ent->s.health = ent->client->ps.stats[STAT_HEALTH] = ent->health = -999;
 	player_die (ent, ent, ent, 100000, MOD_SUICIDE);
 }
 
@@ -472,25 +1093,41 @@ void Cmd_Kill_f( gentity_t *ent ) {
 =================
 BroadcastTeamChange
 
-Let everyone know about a team change
+Let everyone know about a team change.  Retail (qagamex86 0x10040260)
+stays quiet in training and in the first five seconds of a level, and puts
+a long name on its own line.
 =================
 */
 void BroadcastTeamChange( gclient_t *client, team_t oldTeam )
 {
-	int clientNum = client - level.clients;
+	char		name[40], clean[40];
+	const char	*sep;
 
-	if ( client->sess.sessionTeam == TEAM_RED ) {
-		G_BroadcastServerCommand( clientNum, va("cp \"%s" S_COLOR_WHITE " joined the " S_COLOR_RED "red" S_COLOR_WHITE " team.\n\"",
-			client->pers.netname) );
-	} else if ( client->sess.sessionTeam == TEAM_BLUE ) {
-		G_BroadcastServerCommand( clientNum, va("cp \"%s" S_COLOR_WHITE " joined the " S_COLOR_BLUE "blue" S_COLOR_WHITE " team.\n\"",
-		client->pers.netname));
-	} else if ( client->sess.sessionTeam == TEAM_SPECTATOR && oldTeam != TEAM_SPECTATOR ) {
-		G_BroadcastServerCommand( clientNum, va("cp \"%s" S_COLOR_WHITE " joined the spectators.\n\"",
-		client->pers.netname));
-	} else if ( client->sess.sessionTeam == TEAM_FREE ) {
-		G_BroadcastServerCommand( clientNum, va("cp \"%s" S_COLOR_WHITE " joined the battle.\n\"",
-		client->pers.netname));
+	if ( g_training.integer || level.time < 5000 ) {
+		return;
+	}
+
+	Q_strncpyz( name, client->pers.netname, sizeof( name ) );
+	Q_strncpyz( clean, name, sizeof( clean ) );
+	Q_CleanStr( clean );
+	sep = ( strlen( clean ) > 19 || strlen( name ) > 25 ) ? "\n" : " ";
+
+	switch ( client->sess.sessionTeam ) {
+	case TEAM_RED:
+	case TEAM_BLUE:
+		trap_SendServerCommand( -1, va( "cp \"%s" S_COLOR_WHITE "%sjoined the %s.\n\"", name, sep,
+			client->sess.sessionTeam == TEAM_RED ? "Red Team" : "Blue Team" ) );
+		break;
+	case TEAM_SPECTATOR:
+		if ( oldTeam != TEAM_SPECTATOR ) {
+			trap_SendServerCommand( -1, va( "cp \"%s" S_COLOR_WHITE "%sjoined the spectators.\n\"", name, sep ) );
+		}
+		break;
+	case TEAM_FREE:
+		trap_SendServerCommand( -1, va( "cp \"%s" S_COLOR_WHITE "%sjoined the battle.\n\"", name, sep ) );
+		break;
+	default:
+		break;
 	}
 }
 
@@ -523,17 +1160,35 @@ static qboolean AllowTeamSwitch( int clientNum, team_t newTeam ) {
 
 /*
 =================
+G_SetSpectateOnly
+
+Retail qagamex86 0x10040759: in a duel, asking to spectate leaves the queue.
+=================
+*/
+static void G_SetSpectateOnly( gclient_t *client ) {
+	if ( g_gametype.integer != GT_TOURNAMENT ) {
+		return;
+	}
+	client->sess.spectateOnly = 1;
+	client->sess.queuePosition = 0;
+	trap_SendServerCommand( client - level.clients, "cp \"You are set to spectate only\n\"" );
+}
+
+
+/*
+=================
 SetTeam
 =================
 */
-qboolean SetTeam( gentity_t *ent, const char *s ) {
+int SetTeam( gentity_t *ent, const char *s ) {
 	team_t				team, oldTeam;
 	gclient_t			*client;
 	int					clientNum;
 	spectatorState_t	specState;
 	int					specClient;
 	int					teamLeader;
-	qboolean			checkTeamLeader;
+	qboolean			checkTeamLeader = qfalse;
+	int					i;
 
 	//
 	// see what change is requested
@@ -558,25 +1213,42 @@ qboolean SetTeam( gentity_t *ent, const char *s ) {
 			// count current clients and rank for scoreboard
 			CalculateRanks();
 		}
-		return qfalse; // bypass flood protection
+		return -1; // bypass flood protection
 	}
 
-	specClient = clientNum;
+	// retail (qagamex86 0x10040715) starts a free spectator on client 0, so it
+	// hears client 0's deaths like a follower
+	specClient = 0;
 	specState = SPECTATOR_NOT;
 	if ( !Q_stricmp( s, "scoreboard" ) || !Q_stricmp( s, "score" )  ) {
 		team = TEAM_SPECTATOR;
 		specState = SPECTATOR_SCOREBOARD;
 	} else if ( !Q_stricmp( s, "follow1" ) ) {
 		team = TEAM_SPECTATOR;
-		specState = SPECTATOR_FOLLOW;
-		specClient = -1;
+		G_SetSpectateOnly( client );
+		// retail (qagamex86 0x100407a5) follows only when someone plays
+		if ( level.numPlayingClients > 0 ) {
+			specState = SPECTATOR_FOLLOW;
+			specClient = -1;
+		} else {
+			specState = SPECTATOR_FREE;
+		}
 	} else if ( !Q_stricmp( s, "follow2" ) ) {
 		team = TEAM_SPECTATOR;
-		specState = SPECTATOR_FOLLOW;
-		specClient = -2;
+		G_SetSpectateOnly( client );
+		if ( level.numPlayingClients > 1 ) {
+			specState = SPECTATOR_FOLLOW;
+			specClient = -2;
+		} else if ( level.numPlayingClients == 1 ) {
+			specState = SPECTATOR_FOLLOW;
+			specClient = -1;
+		} else {
+			specState = SPECTATOR_FREE;
+		}
 	} else if ( !Q_stricmp( s, "spectator" ) || !Q_stricmp( s, "s" ) ) {
 		team = TEAM_SPECTATOR;
 		specState = SPECTATOR_FREE;
+		G_SetSpectateOnly( client );
 	} else if ( g_gametype.integer >= GT_TEAM ) {
 		// if running a team game, assign player to one of the teams
 		specState = SPECTATOR_NOT;
@@ -590,19 +1262,26 @@ qboolean SetTeam( gentity_t *ent, const char *s ) {
 		}
 
 		if ( !AllowTeamSwitch( clientNum, team ) ) {
-			return qtrue;
+			return -1;
 		}
 
 	} else {
-		// force them to spectators if there aren't any spots free
 		team = TEAM_FREE;
+		if ( g_gametype.integer == GT_TOURNAMENT ) {
+			// retail (qagamex86 0x10040bd1): asking to play joins the queue
+			client->sess.spectateOnly = 0;
+			trap_SendServerCommand( clientNum, "cp \"You are in the queue to play\n\"" );
+		}
 	}
 
-	// override decision if limiting the players
-	if ( (g_gametype.integer == GT_TOURNAMENT)
-		&& level.numNonSpectatorClients >= 2 ) {
-		team = TEAM_SPECTATOR;
-	} else if ( g_maxGameClients.integer > 0 && 
+	// a duel takes only the next in line while it lacks players; everyone
+	// else asking waits as a spectator (retail qagamex86 0x10040c83)
+	if ( g_gametype.integer == GT_TOURNAMENT ) {
+		if ( !( level.numNonSpectatorClients < 2 && G_NextInLine() == client )
+			&& ( team != client->sess.sessionTeam || team == TEAM_SPECTATOR ) ) {
+			team = TEAM_SPECTATOR;
+		}
+	} else if ( g_maxGameClients.integer > 0 &&
 		level.numNonSpectatorClients >= g_maxGameClients.integer ) {
 		team = TEAM_SPECTATOR;
 	}
@@ -610,25 +1289,11 @@ qboolean SetTeam( gentity_t *ent, const char *s ) {
 	//
 	// decide if we will allow the change
 	//
+	// a request for the team already held changes nothing, but a spectator's
+	// request always respawns it (retail qagamex86 0x10040cbe)
 	oldTeam = client->sess.sessionTeam;
-	if ( team == oldTeam ) {
-		if ( team != TEAM_SPECTATOR )
-			return qfalse;
-
-		// do soft release if possible
-		if ( ( client->ps.pm_flags & PMF_FOLLOW ) && client->sess.spectatorState == SPECTATOR_FOLLOW ) {
-			StopFollowing( ent, qtrue );
-			return qfalse;
-		}
-
-		// second spectator team request will move player to intermission point
-		if ( client->ps.persistant[ PERS_TEAM ] == TEAM_SPECTATOR && !( client->ps.pm_flags & PMF_FOLLOW )
-			&& client->sess.spectatorState == SPECTATOR_FREE ) {
-			VectorCopy( level.intermission_origin, ent->s.origin );
-			VectorCopy( level.intermission_origin, client->ps.origin );
-			SetClientViewAngle( ent, level.intermission_angle );
-			return qfalse;
-		}
+	if ( team == oldTeam && team != TEAM_SPECTATOR ) {
+		return team;
 	}
 
 	//
@@ -651,21 +1316,40 @@ qboolean SetTeam( gentity_t *ent, const char *s ) {
 
 		// Kill him (makes sure he loses flags, etc)
 		ent->flags &= ~FL_GODMODE;
-		ent->client->ps.stats[STAT_HEALTH] = ent->health = 0;
-		player_die (ent, ent, ent, 100000, MOD_SUICIDE);
+		ent->s.health = ent->client->ps.stats[STAT_HEALTH] = ent->health = 0;
+		player_die (ent, ent, ent, 100000, MOD_SWITCHTEAM);
 	}
 
-	// they go to the end of the line for tournements
-	if ( team == TEAM_SPECTATOR ) {
+	// a player leaves the duel queue; a spectator keeps its place, or joins
+	// the end of the line (retail qagamex86 0x100404da)
+	if ( team != TEAM_SPECTATOR ) {
+		client->sess.queuePosition = 0;
 		client->sess.spectatorTime = 0;
+	} else {
+		if ( !client->sess.queuePosition ) {
+			client->sess.spectatorTime = trap_RealTime( NULL );
+		}
+		client->ps.eFlags |= EF_SPECTATOR;
+		client->pers.readyToPlay = 0;
+	}
+
+	// retail resets the player's match stats on every team change
+	// (qagamex86 0x10040543), except when red rover moves a player between
+	// the playing teams
+	if ( g_gametype.integer != GT_RED_ROVER || team == TEAM_SPECTATOR ) {
+		G_ResetClientStats( client );
 	}
 
 	client->sess.sessionTeam = team;
 	client->sess.spectatorState = specState;
 	client->sess.spectatorClient = specClient;
+	// retail (qagamex86 0x1004056f) catches a spectator up on the item timers
+	if ( team == TEAM_SPECTATOR ) {
+		G_SendItemTimers( clientNum );
+	}
 
-	checkTeamLeader = client->sess.teamLeader;
 	client->sess.teamLeader = qfalse;
+	(void)checkTeamLeader;
 
 	if ( team == TEAM_RED || team == TEAM_BLUE ) {
 		teamLeader = TeamLeader( team );
@@ -677,21 +1361,25 @@ qboolean SetTeam( gentity_t *ent, const char *s ) {
 
 	// make sure there is a team leader on the team the player came from
 	if ( oldTeam == TEAM_RED || oldTeam == TEAM_BLUE ) {
-		if ( checkTeamLeader ) {
-			CheckTeamLeader( oldTeam );
-		}
+		CheckTeamLeader( oldTeam );
 	}
 
 	G_WriteClientSessionData( client );
 
 	BroadcastTeamChange( client, oldTeam );
 
+	// nobody keeps revenge counts against a player who changes team
+	// (retail qagamex86 0x10040644)
+	for ( i = 0; i < level.numConnectedClients; i++ ) {
+		level.clients[level.sortedClients[i]].killedBy[clientNum] = 0;
+	}
+
 	// get and distribute relevent paramters
 	ClientUserinfoChanged( clientNum );
 
 	ClientBegin( clientNum );
 
-	return qtrue;
+	return team;
 }
 
 
@@ -729,47 +1417,76 @@ void StopFollowing( gentity_t *ent, qboolean release ) {
 
 /*
 =================
+Cmd_ReadyUp_f
+
+Retail qagamex86 0x10045bd0: a player in the game toggles ready while the
+match waits in PRE_GAME, and everyone hears about it.
+=================
+*/
+static void Cmd_ReadyUp_f( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+
+	if ( level.warmupTime >= 0 || level.intermissiontime ) {
+		return;
+	}
+	if ( client->ps.pm_type == PM_SPECTATOR || client->sess.sessionTeam == TEAM_SPECTATOR
+		|| ( client->ps.pm_flags & PMF_FOLLOW ) ) {
+		return;
+	}
+
+	client->pers.readyToPlay = !client->pers.readyToPlay;
+	ClientUserinfoChanged( ent - g_entities );
+	trap_SendServerCommand( -1, va( "cp \"%s ^7is ^7%s\n\"", client->pers.netname,
+		client->pers.readyToPlay ? "Ready" : "Not Ready" ) );
+}
+
+
+/*
+=================
 Cmd_Team_f
+
+Retail qagamex86 0x10040d90: with no argument it names the player's team;
+a change may follow another only g_switchTeamDelay seconds after joining a
+team, and a duelist leaving a match in progress takes a loss.
 =================
 */
 static void Cmd_Team_f( gentity_t *ent ) {
 	char		s[MAX_TOKEN_CHARS];
+	const char	*name;
 
 	if ( trap_Argc() != 2 ) {
 		switch ( ent->client->sess.sessionTeam ) {
-		case TEAM_BLUE:
-			trap_SendServerCommand( ent-g_entities, "print \"Blue team\n\"" );
-			break;
 		case TEAM_RED:
-			trap_SendServerCommand( ent-g_entities, "print \"Red team\n\"" );
+			name = "Red Team";
 			break;
-		case TEAM_FREE:
-			trap_SendServerCommand( ent-g_entities, "print \"Free team\n\"" );
+		case TEAM_BLUE:
+			name = "Blue Team";
 			break;
 		case TEAM_SPECTATOR:
-			trap_SendServerCommand( ent-g_entities, "print \"Spectator team\n\"" );
+			name = "Spectator";
 			break;
 		default:
+			name = "Team Free";
 			break;
 		}
+		trap_SendServerCommand( ent-g_entities, va( "print \"%s\n\"", name ) );
 		return;
 	}
 
 	if ( ent->client->switchTeamTime > level.time ) {
-		trap_SendServerCommand( ent-g_entities, "print \"May not switch teams more than once per 5 seconds.\n\"" );
+		trap_SendServerCommand( ent-g_entities, va( "print \"^1May not switch teams more than once per %i seconds.^7\n\"",
+			g_switchTeamDelay.integer ) );
 		return;
 	}
 
-	// if they are playing a tournement game, count as a loss
-	if ( (g_gametype.integer == GT_TOURNAMENT )
-		&& ent->client->sess.sessionTeam == TEAM_FREE ) {
+	if ( !level.warmupTime && g_gametype.integer == GT_TOURNAMENT && ent->client->sess.sessionTeam == TEAM_FREE ) {
 		ent->client->sess.losses++;
 	}
 
 	trap_Argv( 1, s, sizeof( s ) );
 
-	if ( SetTeam( ent, s ) ) {
-		ent->client->switchTeamTime = level.time + 5000;
+	if ( SetTeam( ent, s ) != -1 && ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		ent->client->switchTeamTime = level.time + g_switchTeamDelay.integer * 1000;
 	}
 }
 
@@ -1471,11 +2188,143 @@ void Cmd_CallVote_f( gentity_t *ent ) {
 
 /*
 ==================
+Cmd_Forfeit_f
+
+Retail qagamex86 0x100456b0 and 0x10057cd0: a player may give up a match
+in progress under g_allowForfeit, though not during a timeout or a round
+countdown, and not in free-for-all, race or red rover: in duel only from
+behind, in a team game only as the last player of the losing team.
+==================
+*/
+static const char *const gametypeNames[GT_MAX_GAME_TYPE] = {
+	"Free For All", "Duel", "Race", "Team Deathmatch", "Clan Arena", "Capture the Flag",
+	"One Flag CTF", "Overload", "Harvester", "Freeze Tag", "Domination", "Attack and Defend",
+	"Red Rover"
+};
+
+static void Cmd_Forfeit_f( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+	const int	gametype = g_gametype.integer;
+	const char	*refusal;
+	int			red, blue, rank;
+
+	if ( client->ps.pm_type == PM_SPECTATOR ) {
+		return;
+	}
+	if ( level.timeoutStartTime ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Forfeit is not available during a pause or timeout.\n\"" );
+		return;
+	}
+	if ( G_IsRoundBasedGametype( gametype ) && ( level.warmupTime > 0 || G_RoundInProgress() ) ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Forfeit is not available during a round countdown.\n\"" );
+		return;
+	}
+
+	if ( gametype == GT_FFA || gametype == GT_RACE || gametype == GT_RED_ROVER ) {
+		trap_SendServerCommand( ent - g_entities, va( "print \"Forfeit is not available in %s.\n\"", gametypeNames[gametype] ) );
+		return;
+	}
+
+	if ( !g_allowForfeit.integer ) {
+		refusal = "Forfeits are not enabled on this server.\n";
+	} else if ( level.warmupTime ) {
+		refusal = "Forfeit is not available in warmup.\n";
+	} else if ( gametype == GT_TOURNAMENT ) {
+		rank = client->ps.persistant[PERS_RANK];
+		if ( rank && ( rank & ~RANK_TIED_FLAG ) ) {
+			client->ps.persistant[PERS_SCORE] = -999;
+			G_Forfeit();
+			return;
+		}
+		refusal = "Forfeit is only available to the losing player.\n";
+	} else {
+		red = level.teamScores[TEAM_RED];
+		blue = level.teamScores[TEAM_BLUE];
+		if ( client->sess.sessionTeam == TEAM_RED && red < blue ) {
+			if ( TeamCount( -1, TEAM_RED ) == 1 ) {
+				G_Forfeit();
+				return;
+			}
+			refusal = "Forfeit is only available to the last remaining player on the losing team.\n";
+		} else if ( client->sess.sessionTeam == TEAM_BLUE && blue < red ) {
+			if ( TeamCount( -1, TEAM_BLUE ) == 1 ) {
+				G_Forfeit();
+				return;
+			}
+			refusal = "Forfeit is only available to the last remaining player on the losing team.\n";
+		} else {
+			refusal = "Forfeit is only available to members of the losing team.\n";
+		}
+	}
+	trap_SendServerCommand( ent - g_entities, va( "print \"%s\"", refusal ) );
+}
+
+
+/*
+==================
+G_MapVote
+
+Retail qagamex86 0x10043ff0: at the intermission "vote <1-3>" picks the
+next map, once every two seconds and only while the twenty-second vote
+runs; a vote also counts as ready to leave.
+==================
+*/
+static void G_MapVote( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+	char		arg[64];
+	int			vote;
+
+	if ( g_voteFlags.integer & 0x800 ) {
+		return;
+	}
+	trap_Cvar_VariableStringBuffer( "nextmaps", arg, sizeof( arg ) );
+	if ( !arg[0] ) {
+		return;
+	}
+
+	trap_Argv( 1, arg, sizeof( arg ) );
+	vote = atoi( arg );
+
+	if ( level.time - level.voteTime >= 20000 ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Voting time has expired.\n\"" );
+		return;
+	}
+	if ( level.time - client->pers.mapVoteTime < 2000 ) {
+		trap_SendServerCommand( ent - g_entities, "print \"You may only vote once every 2 seconds.\n\"" );
+		return;
+	}
+	if ( vote == client->pers.mapVote ) {
+		trap_SendServerCommand( ent - g_entities, "print \"You already voted for this arena.\n\"" );
+		return;
+	}
+	if ( vote < 1 || vote > 3 || !level.voteMaps[vote - 1][0] || !Q_stricmp( "default", level.voteMaps[vote - 1] ) ) {
+		return;
+	}
+
+	client->pers.mapVoteTime = level.time;
+	client->pers.mapVote = vote;
+	G_CountMapVotes();
+	trap_SendServerCommand( ent - g_entities, "disable_vote_ui" );
+	trap_SendServerCommand( -1, va( "print \"%s voted for %s.\n\"", client->pers.netname, level.voteTitles[vote - 1] ) );
+	if ( !client->pers.readyToPlay ) {
+		client->pers.readyToPlay = 1;
+		ClientUserinfoChanged( ent - g_entities );
+	}
+}
+
+
+/*
+==================
 Cmd_Vote_f
 ==================
 */
 static void Cmd_Vote_f( gentity_t *ent ) {
 	char		msg[64];
+
+	if ( level.intermissiontime ) {
+		G_MapVote( ent );
+		return;
+	}
 
 	if ( !level.voteTime ) {
 		trap_SendServerCommand( ent-g_entities, "print \"No vote in progress.\n\"" );
@@ -1657,9 +2506,18 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
-	// ignore all other commands when at intermission
-	if (level.intermissiontime) {
-		Cmd_Say_f (ent, qfalse, qtrue);
+	// ready-up and votes also work at the intermission; from the moment the
+	// match ends every other command is ignored (retail qagamex86
+	// 0x10045fe3-0x1004602c)
+	if ( Q_stricmp( cmd, "readyup" ) == 0 ) {
+		Cmd_ReadyUp_f( ent );
+		return;
+	}
+	if ( Q_stricmp( cmd, "vote" ) == 0 ) {
+		Cmd_Vote_f( ent );
+		return;
+	}
+	if ( level.intermissionQueued || level.intermissiontime ) {
 		return;
 	}
 
@@ -1685,12 +2543,14 @@ void ClientCommand( int clientNum ) {
 		Cmd_FollowCycle_f (ent, -1);
 	else if (Q_stricmp (cmd, "team") == 0)
 		Cmd_Team_f (ent);
+	else if (Q_stricmp (cmd, "forfeit") == 0)
+		Cmd_Forfeit_f (ent);
+	else if (Q_stricmp (cmd, "specresp") == 0)	// the retail cgame asks for the item timers
+		G_SendItemTimers( ent - g_entities );
 	else if (Q_stricmp (cmd, "where") == 0)
 		Cmd_Where_f (ent);
 	else if (Q_stricmp (cmd, "callvote") == 0)
 		Cmd_CallVote_f (ent);
-	else if (Q_stricmp (cmd, "vote") == 0)
-		Cmd_Vote_f (ent);
 	else if (Q_stricmp (cmd, "gc") == 0)
 		Cmd_GameCommand_f( ent );
 	else if (Q_stricmp (cmd, "setviewpos") == 0)

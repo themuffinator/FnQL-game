@@ -1716,5 +1716,1972 @@
    "c"
   ]
  },
- "warmupFormat": "\\time\\%i"
+ "warmupFormat": "\\time\\%i",
+ "cvars": [
+  {
+   "name": "g_levelStartTime",
+   "default": "0",
+   "flags": 68
+  },
+  {
+   "name": "gamedate",
+   "default": "Jun  3 2016",
+   "flags": 64
+  },
+  {
+   "name": "sv_mapname",
+   "default": "",
+   "flags": 68
+  },
+  {
+   "name": "armor_tiered",
+   "default": "0",
+   "flags": 1179648
+  },
+  {
+   "name": "bot_autoReady",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_breakPoint",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "bot_debugVar",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "bot_dynamicSkill",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_followDist",
+   "default": "250",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_followMe",
+   "default": "",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_gauntlet",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_gauntletOnly",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_hud",
+   "default": "-1",
+   "flags": 512
+  },
+  {
+   "name": "bot_instaGibAimSkill",
+   "default": "0.4",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_itemDelayTime",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_teamkill",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_showAreaNumber",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_showAreas",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_showAvoidSpots",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_showPath",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_showTourPoints",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_startingSkill",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "bot_training",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_accelFactor_bfg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_accelFactor_pg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_accelFactor_rl",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_accelRate_bfg",
+   "default": "16",
+   "flags": 1048576
+  },
+  {
+   "name": "g_accelRate_pg",
+   "default": "16",
+   "flags": 1048576
+  },
+  {
+   "name": "g_accelRate_rl",
+   "default": "16",
+   "flags": 1048576
+  },
+  {
+   "name": "g_accessFile",
+   "default": "access.txt",
+   "flags": 0
+  },
+  {
+   "name": "g_adCaptureScoreBonus",
+   "default": "3",
+   "flags": 1048580
+  },
+  {
+   "name": "g_adElimScoreBonus",
+   "default": "2",
+   "flags": 1048580
+  },
+  {
+   "name": "g_adTouchScoreBonus",
+   "default": "1",
+   "flags": 1048580
+  },
+  {
+   "name": "g_allowCustomHeadmodels",
+   "default": "0",
+   "flags": 1114112
+  },
+  {
+   "name": "g_allowForfeit",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_allowKill",
+   "default": "1000",
+   "flags": 1048576
+  },
+  {
+   "name": "g_allowSpecVote",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_allowVote",
+   "default": "1",
+   "flags": 1
+  },
+  {
+   "name": "g_allowVoteMidGame",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_allTalk",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_ammoPack",
+   "default": "0",
+   "flags": 1048608
+  },
+  {
+   "name": "g_ammoPackHack",
+   "default": "0",
+   "flags": 1048608
+  },
+  {
+   "name": "g_ammoRespawn",
+   "default": "40",
+   "flags": 1048576
+  },
+  {
+   "name": "g_autoAction",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_banIPs",
+   "default": "",
+   "flags": 1
+  },
+  {
+   "name": "g_battleSuitDampen",
+   "default": "0.25",
+   "flags": 1048576
+  },
+  {
+   "name": "g_bestStartingWeapons",
+   "default": "gh bfg rl lg rg hmg cg sg pg mg ng gl g pl",
+   "flags": 1048576
+  },
+  {
+   "name": "g_botSpawnList",
+   "default": "",
+   "flags": 0
+  },
+  {
+   "name": "capturelimit",
+   "default": "8",
+   "flags": 1049604
+  },
+  {
+   "name": "sv_cheats",
+   "default": "",
+   "flags": 0
+  },
+  {
+   "name": "g_complaintDamageThreshold",
+   "default": "400",
+   "flags": 1
+  },
+  {
+   "name": "g_complaintLimit",
+   "default": "5",
+   "flags": 1
+  },
+  {
+   "name": "g_cubeTimeout",
+   "default": "30",
+   "flags": 1048576
+  },
+  {
+   "name": "g_customSettings",
+   "default": "0",
+   "flags": 4
+  },
+  {
+   "name": "g_damage_bfg",
+   "default": "100",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_cg",
+   "default": "8",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_g",
+   "default": "50",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_gh",
+   "default": "10",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_hmg",
+   "default": "8",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_gl",
+   "default": "100",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_lg",
+   "default": "6",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_lg_falloff",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_mg",
+   "default": "5",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_ng",
+   "default": "12",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_pg",
+   "default": "20",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_pl",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_rg",
+   "default": "80",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_rl",
+   "default": "100",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_sg",
+   "default": "5",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_sg_falloff",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damage_sg_outer",
+   "default": "5",
+   "flags": 1310720
+  },
+  {
+   "name": "g_damagePlums",
+   "default": "2",
+   "flags": 1048576
+  },
+  {
+   "name": "g_debugAlloc",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_debugDamage",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_debugFlags",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_debugInactivity",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_debugMove",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_debugThawTime",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_debugVampiricDamage",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "dedicated",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_disableLoadout",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "dmflags",
+   "default": "0",
+   "flags": 1048580
+  },
+  {
+   "name": "g_dmgThroughSurfaceAngularThreshold",
+   "default": "0.5f",
+   "flags": 1048576
+  },
+  {
+   "name": "g_dmgThroughSurfaceDampening",
+   "default": "0.5f",
+   "flags": 1048576
+  },
+  {
+   "name": "g_dmgThroughSurfaceDistance",
+   "default": "-33.1f",
+   "flags": 1048576
+  },
+  {
+   "name": "g_domCapTime",
+   "default": "5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_domDistressThreshold",
+   "default": "75",
+   "flags": 1048576
+  },
+  {
+   "name": "g_domEnableContention",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_domNeutralFlag",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_domScoreRate",
+   "default": "5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_domTeammateCapScale",
+   "default": "0.5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_doWarmup",
+   "default": "1",
+   "flags": 1
+  },
+  {
+   "name": "g_dropCmds",
+   "default": "7",
+   "flags": 1048576
+  },
+  {
+   "name": "g_droppedFlagBonus",
+   "default": "1",
+   "flags": 256
+  },
+  {
+   "name": "g_dropDamagedHealth",
+   "default": "0",
+   "flags": 1310976
+  },
+  {
+   "name": "g_dropInactive",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "g_droppedPowerupsDecay",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_dropPowerups",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_dropSkulls",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_enableDebugTrace",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_enableDust",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_enemyTeamRespawnRatio",
+   "default": "1.5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_factory",
+   "default": "",
+   "flags": 68
+  },
+  {
+   "name": "g_factoryTitle",
+   "default": "",
+   "flags": 68
+  },
+  {
+   "name": "g_filterBan",
+   "default": "1",
+   "flags": 1
+  },
+  {
+   "name": "g_flightThrust",
+   "default": "1200",
+   "flags": 1048576
+  },
+  {
+   "name": "g_flightRefuelRate",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_flagBounce",
+   "default": "0.25",
+   "flags": 1048576
+  },
+  {
+   "name": "g_flagPhysics",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_floodprot_decay",
+   "default": "1000",
+   "flags": 0
+  },
+  {
+   "name": "g_floodprot_maxcount",
+   "default": "10",
+   "flags": 0
+  },
+  {
+   "name": "g_forceDmgThroughSurface",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_forceAtmosphericEffects",
+   "default": "",
+   "flags": 1048576
+  },
+  {
+   "name": "g_forceSendConfigstring",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_forceSmallScoreboardMessage",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "fraglimit",
+   "default": "50",
+   "flags": 1049604
+  },
+  {
+   "name": "g_freezeAutoThawTime",
+   "default": "120000",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeEnvironmentalRespawnDelay",
+   "default": "5000",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeProtectedSpawnTime",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeRemovePowerupsOnRound",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeResetArmorOnRound",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeResetHealthOnRound",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeResetWeaponsOnRound",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeRoundDelay",
+   "default": "4000",
+   "flags": 1048580
+  },
+  {
+   "name": "g_freezeThawRadius",
+   "default": "96",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeThawTick",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeThawTime",
+   "default": "2000",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeThawThroughSurface",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_freezeThawWinningTeam",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_friendlyFire",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_friendlyFireDampen",
+   "default": "1.00",
+   "flags": 1048576
+  },
+  {
+   "name": "g_gameState",
+   "default": "PRE_GAME",
+   "flags": 68
+  },
+  {
+   "name": "g_gametype",
+   "default": "0",
+   "flags": 100
+  },
+  {
+   "name": "g_gauntletSpeedFactor",
+   "default": "1.0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_grantItemOnSpawn",
+   "default": "",
+   "flags": 1048576
+  },
+  {
+   "name": "g_gravity",
+   "default": "800",
+   "flags": 1048580
+  },
+  {
+   "name": "g_guidedRocket",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_headShotDamage_rg",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_inactivity",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_inactivityWarning",
+   "default": "10",
+   "flags": 0
+  },
+  {
+   "name": "g_infiniteAmmo",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_instaGib",
+   "default": "0",
+   "flags": 1310724
+  },
+  {
+   "name": "g_ironsights_mg",
+   "default": "1.0",
+   "flags": 1310976
+  },
+  {
+   "name": "g_itemHeight",
+   "default": "35",
+   "flags": 1048580
+  },
+  {
+   "name": "g_itemTimers",
+   "default": "1",
+   "flags": 1048580
+  },
+  {
+   "name": "g_kamiAttenuate",
+   "default": "2048",
+   "flags": 1048576
+  },
+  {
+   "name": "g_kamiMinRatio",
+   "default": "0.1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_kickBadUserinfo",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "g_knockback",
+   "default": "1000",
+   "flags": 1048576
+  },
+  {
+   "name": "g_knockback_bfg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_cg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_cripple",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_knockback_g",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_gh",
+   "default": "-5",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_gl",
+   "default": "1.10",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_hmg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_lg",
+   "default": "1.75",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_mg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_ng",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_pg",
+   "default": "1.10",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_pg_self",
+   "default": "1.30",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_pl",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_rg",
+   "default": "0.85",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_rl",
+   "default": "0.90",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_rl_self",
+   "default": "1.10",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_sg",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_knockback_z",
+   "default": "24",
+   "flags": 1048576
+  },
+  {
+   "name": "g_knockback_z_self",
+   "default": "24",
+   "flags": 1048576
+  },
+  {
+   "name": "g_lagHaxHistory",
+   "default": "4",
+   "flags": 32
+  },
+  {
+   "name": "g_lagHaxMs",
+   "default": "80",
+   "flags": 32
+  },
+  {
+   "name": "g_lastManStandingMessage",
+   "default": "You are the last standing",
+   "flags": 0
+  },
+  {
+   "name": "g_lastManStandingWarning",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "g_latchedHookOffset",
+   "default": "-2.0f",
+   "flags": 1048576
+  },
+  {
+   "name": "g_lightningDischarge",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_loadout",
+   "default": "0",
+   "flags": 1048580
+  },
+  {
+   "name": "g_log",
+   "default": "",
+   "flags": 1
+  },
+  {
+   "name": "g_logSync",
+   "default": "0",
+   "flags": 1
+  },
+  {
+   "name": "g_max_knockback",
+   "default": "120",
+   "flags": 1048576
+  },
+  {
+   "name": "sv_maxclients",
+   "default": "8",
+   "flags": 37
+  },
+  {
+   "name": "g_maxDeferredSpawns",
+   "default": "4",
+   "flags": 0
+  },
+  {
+   "name": "g_maxFlightFuel",
+   "default": "16000",
+   "flags": 1048576
+  },
+  {
+   "name": "mercylimit",
+   "default": "0",
+   "flags": 1049604
+  },
+  {
+   "name": "g_mercytime",
+   "default": "0",
+   "flags": 1049600
+  },
+  {
+   "name": "g_midAirMinHeight",
+   "default": "96",
+   "flags": 1048576
+  },
+  {
+   "name": "g_motd",
+   "default": "",
+   "flags": 0
+  },
+  {
+   "name": "g_nailbounce",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_nailbouncepercentage",
+   "default": "65",
+   "flags": 1310720
+  },
+  {
+   "name": "g_nailcount",
+   "default": "10",
+   "flags": 1310720
+  },
+  {
+   "name": "g_nailspeed",
+   "default": "1000",
+   "flags": 1310720
+  },
+  {
+   "name": "g_nailspread",
+   "default": "400",
+   "flags": 1310720
+  },
+  {
+   "name": "g_needpass",
+   "default": "0",
+   "flags": 68
+  },
+  {
+   "name": "g_neutralFlagPingRate",
+   "default": "2400",
+   "flags": 1048576
+  },
+  {
+   "name": "g_obeliskHealth",
+   "default": "2500",
+   "flags": 1048576
+  },
+  {
+   "name": "g_obeliskRegenAmount",
+   "default": "15",
+   "flags": 1048576
+  },
+  {
+   "name": "g_obeliskRegenPeriod",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_obeliskRespawnDelay",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_overtime",
+   "default": "120",
+   "flags": 1048580
+  },
+  {
+   "name": "g_password",
+   "default": "",
+   "flags": 2
+  },
+  {
+   "name": "g_playerCylinders",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_playerheadmodelOverride",
+   "default": "",
+   "flags": 1114112
+  },
+  {
+   "name": "g_playerheadScale",
+   "default": "1.0",
+   "flags": 1114112
+  },
+  {
+   "name": "g_playerheadScaleOffset",
+   "default": "1.0",
+   "flags": 1114112
+  },
+  {
+   "name": "g_playermodelOverride",
+   "default": "",
+   "flags": 1114112
+  },
+  {
+   "name": "g_playerModelScale",
+   "default": "1.1",
+   "flags": 1114112
+  },
+  {
+   "name": "g_podiumDist",
+   "default": "80",
+   "flags": 1048576
+  },
+  {
+   "name": "g_podiumDrop",
+   "default": "70",
+   "flags": 1048576
+  },
+  {
+   "name": "g_powerupRespawn",
+   "default": "120",
+   "flags": 1048576
+  },
+  {
+   "name": "practiceflags",
+   "default": "0",
+   "flags": 1048832
+  },
+  {
+   "name": "g_proxMineTimeout",
+   "default": "20",
+   "flags": 1310720
+  },
+  {
+   "name": "g_quadDamageFactor",
+   "default": "3",
+   "flags": 1048580
+  },
+  {
+   "name": "g_quadHog",
+   "default": "0",
+   "flags": 1310752
+  },
+  {
+   "name": "g_quadHogIdle",
+   "default": "20",
+   "flags": 1048576
+  },
+  {
+   "name": "g_quadHogPingRate",
+   "default": "1500",
+   "flags": 1048576
+  },
+  {
+   "name": "g_quadHogTime",
+   "default": "60",
+   "flags": 1048576
+  },
+  {
+   "name": "g_railJump",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_range_lg_falloff",
+   "default": "768",
+   "flags": 1048576
+  },
+  {
+   "name": "g_range_sg_falloff",
+   "default": "768",
+   "flags": 1048576
+  },
+  {
+   "name": "g_regenArmor",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_regenArmorAfterHealth",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_regenArmorRate",
+   "default": "100",
+   "flags": 1048576
+  },
+  {
+   "name": "g_regenHealth",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_regenHealthRate",
+   "default": "100",
+   "flags": 1048576
+  },
+  {
+   "name": "g_respawn_delay_max",
+   "default": "2400",
+   "flags": 1048576
+  },
+  {
+   "name": "g_respawn_delay_min",
+   "default": "2100",
+   "flags": 1048576
+  },
+  {
+   "name": "g_restarted",
+   "default": "0",
+   "flags": 64
+  },
+  {
+   "name": "g_returnFlagOnSuicide",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rocketsplashOffset",
+   "default": "-10.0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_roundDrawHealthCount",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_roundDrawLivingCount",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_roundWarmupDelay",
+   "default": "10000",
+   "flags": 1048580
+  },
+  {
+   "name": "roundlimit",
+   "default": "10",
+   "flags": 1049604
+  },
+  {
+   "name": "roundtimelimit",
+   "default": "180",
+   "flags": 1049604
+  },
+  {
+   "name": "g_rrAllowNegativeScores",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrDamageScoreBonus",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrDeathScorePenalty",
+   "default": "-1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfected",
+   "default": "0",
+   "flags": 1310752
+  },
+  {
+   "name": "g_rrInfectedSpreadTime",
+   "default": "40",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedSpreadWarningTime",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedSurvivorMinSpeed",
+   "default": "500.0f",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedSurvivorPingRate",
+   "default": "2000",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedSurvivorScoreBonus",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedSurvivorScoreMethod",
+   "default": "2",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedSurvivorScoreRate",
+   "default": "30",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedZombieFragBonus",
+   "default": "2",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedZombieHealthBonus",
+   "default": "50",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrInfectedZombieSpeed",
+   "default": "1.15",
+   "flags": 1048576
+  },
+  {
+   "name": "g_rrRoundScoreBonus",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_runes",
+   "default": "0",
+   "flags": 1048608
+  },
+  {
+   "name": "scorelimit",
+   "default": "150",
+   "flags": 1049604
+  },
+  {
+   "name": "g_shuffle_automatic",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_shuffle_automatic_minplayers",
+   "default": "6",
+   "flags": 0
+  },
+  {
+   "name": "g_shuffle_minplayers",
+   "default": "3",
+   "flags": 0
+  },
+  {
+   "name": "g_shuffle_timedelay",
+   "default": "5000",
+   "flags": 0
+  },
+  {
+   "name": "ui_singlePlayerActive",
+   "default": "",
+   "flags": 0
+  },
+  {
+   "name": "g_skipTrainingEnable",
+   "default": "0",
+   "flags": 72
+  },
+  {
+   "name": "g_spawnArmor",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_spawnArmorDmgScale",
+   "default": "0.5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_spawnDelay_key",
+   "default": "30",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnDelayRandom_key",
+   "default": "15",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnDelay_powerup",
+   "default": "45",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnDelayRandom_powerup",
+   "default": "15",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnItemAmmo",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnItemArmor",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnItemHealth",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnItemHoldable",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnItemPowerup",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnItemWeapons",
+   "default": "1",
+   "flags": 1310720
+  },
+  {
+   "name": "g_spawnMinDistance",
+   "default": "64",
+   "flags": 1048576
+  },
+  {
+   "name": "g_spawnRandomRatio",
+   "default": "0.5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_specItemTimers",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "g_speed",
+   "default": "320",
+   "flags": 1048576
+  },
+  {
+   "name": "g_splashdamage_bfg",
+   "default": "100",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashdamage_gl",
+   "default": "100",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashdamage_pg",
+   "default": "15",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashdamage_pl",
+   "default": "100",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashdamage_rl",
+   "default": "84",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashdamageOffset",
+   "default": "0.05",
+   "flags": 1048576
+  },
+  {
+   "name": "g_splashradius_bfg",
+   "default": "80",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashradius_gl",
+   "default": "150",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashradius_pg",
+   "default": "20",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashradius_pl",
+   "default": "150",
+   "flags": 1310720
+  },
+  {
+   "name": "g_splashradius_rl",
+   "default": "120",
+   "flags": 1310720
+  },
+  {
+   "name": "g_startingAmmo_bfg",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_cg",
+   "default": "100",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_g",
+   "default": "-1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_gh",
+   "default": "-1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_gl",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_hmg",
+   "default": "50",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_lg",
+   "default": "100",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_mg",
+   "default": "100",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_ng",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_pg",
+   "default": "50",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_pl",
+   "default": "5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_rg",
+   "default": "5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_rl",
+   "default": "5",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingAmmo_sg",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingArmor",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingHealth",
+   "default": "100",
+   "flags": 1048580
+  },
+  {
+   "name": "g_startingHealthBonus",
+   "default": "25",
+   "flags": 1048576
+  },
+  {
+   "name": "g_startingWeapons",
+   "default": "3",
+   "flags": 1048576
+  },
+  {
+   "name": "g_suddenDeathRespawn",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_suddenDeathRespawnIncrement",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_suddenDeathRespawnMax",
+   "default": "10",
+   "flags": 1048576
+  },
+  {
+   "name": "g_suddenDeathRespawnPrint",
+   "default": "1",
+   "flags": 1048576
+  },
+  {
+   "name": "g_suddenDeathRespawnStart",
+   "default": "3",
+   "flags": 1048576
+  },
+  {
+   "name": "g_suddenDeathRespawnTick",
+   "default": "60",
+   "flags": 1048576
+  },
+  {
+   "name": "g_switchTeamDelay",
+   "default": "3",
+   "flags": 1048576
+  },
+  {
+   "name": "g_tackleFlag",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "g_teamAutoJoin",
+   "default": "0",
+   "flags": 1
+  },
+  {
+   "name": "g_teamForceBalance",
+   "default": "1",
+   "flags": 5
+  },
+  {
+   "name": "g_teamForcePresent",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "teamsize",
+   "default": "0",
+   "flags": 4
+  },
+  {
+   "name": "g_teamSizeMin",
+   "default": "1",
+   "flags": 4
+  },
+  {
+   "name": "g_teamSpawnAsSpec",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_teamSpecFreeCam",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_teamSpecSayEnable",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "g_throwFlagVelocity",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_throwFlagForwardMult",
+   "default": "2.5",
+   "flags": 0
+  },
+  {
+   "name": "timelimit",
+   "default": "0",
+   "flags": 1049604
+  },
+  {
+   "name": "g_timeoutCount",
+   "default": "0",
+   "flags": 1048580
+  },
+  {
+   "name": "g_timeoutLen",
+   "default": "60",
+   "flags": 1048576
+  },
+  {
+   "name": "g_training",
+   "default": "0",
+   "flags": 1048584
+  },
+  {
+   "name": "g_vampiricDamage",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "g_velocity_bfg",
+   "default": "1800",
+   "flags": 1310720
+  },
+  {
+   "name": "g_velocity_gh",
+   "default": "1800",
+   "flags": 1310720
+  },
+  {
+   "name": "g_velocity_gl",
+   "default": "700",
+   "flags": 1310720
+  },
+  {
+   "name": "g_velocity_pg",
+   "default": "2000",
+   "flags": 1310720
+  },
+  {
+   "name": "g_velocity_rl",
+   "default": "1000",
+   "flags": 1310720
+  },
+  {
+   "name": "g_voteFlags",
+   "default": "0",
+   "flags": 5
+  },
+  {
+   "name": "g_voteDelay",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_voteLimit",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_warmup",
+   "default": "10",
+   "flags": 1
+  },
+  {
+   "name": "g_warmupDelay",
+   "default": "15",
+   "flags": 0
+  },
+  {
+   "name": "g_warmupReadyDelay",
+   "default": "0",
+   "flags": 0
+  },
+  {
+   "name": "g_warmupReadyDelayAction",
+   "default": "1",
+   "flags": 0
+  },
+  {
+   "name": "sv_warmupReadyPercentage",
+   "default": "0.51",
+   "flags": 33
+  },
+  {
+   "name": "g_weaponRespawn",
+   "default": "5",
+   "flags": 1048580
+  },
+  {
+   "name": "pmove_AirAccel",
+   "default": "1.0f",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_AirControl",
+   "default": "0",
+   "flags": 1310720
+  },
+  {
+   "name": "pmove_AirStepFriction",
+   "default": "0.03f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_AirSteps",
+   "default": "1",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_AirStopAccel",
+   "default": "1.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_AutoHop",
+   "default": "1",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_BunnyHop",
+   "default": "1",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_ChainJump",
+   "default": "1",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_ChainJumpVelocity",
+   "default": "110.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_CircleStrafeFriction",
+   "default": "6.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_CrouchSlide",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "pmove_CrouchSlideFriction",
+   "default": "0.5",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_CrouchSlideTime",
+   "default": "2000",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_CrouchStepJump",
+   "default": "1",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_DoubleJump",
+   "default": "0",
+   "flags": 1048576
+  },
+  {
+   "name": "pmove_JumpTimeDeltaMin",
+   "default": "100.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_JumpVelocity",
+   "default": "275.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_JumpVelocityMax",
+   "default": "700.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_JumpVelocityScaleAdd",
+   "default": "0.4f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_JumpVelocityTimeThreshold",
+   "default": "500.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_JumpVelocityTimeThresholdOffset",
+   "default": "0.6f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_noPlayerClip",
+   "default": "0",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_RampJump",
+   "default": "0",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_RampJumpScale",
+   "default": "1.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_StepHeight",
+   "default": "22.0f",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_StepJump",
+   "default": "1",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_StepJumpVelocity",
+   "default": "48.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_StrafeAccel",
+   "default": "1.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_velocity_gh",
+   "default": "800",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_WalkAccel",
+   "default": "10.0f",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_WalkFriction",
+   "default": "6.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_WaterSwimScale",
+   "default": "0.6f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_WaterWadeScale",
+   "default": "0.8f",
+   "flags": 1064960
+  },
+  {
+   "name": "pmove_WeaponDropTime",
+   "default": "200",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_WeaponRaiseTime",
+   "default": "200",
+   "flags": 1327104
+  },
+  {
+   "name": "pmove_WishSpeed",
+   "default": "400.0f",
+   "flags": 1064960
+  },
+  {
+   "name": "sv_fps",
+   "default": "40",
+   "flags": 64
+  },
+  {
+   "name": "weapon_gravity_bfg",
+   "default": "0",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_gravity_ng",
+   "default": "0",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_gravity_pg",
+   "default": "0",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_gravity_rl",
+   "default": "0",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_bfg",
+   "default": "300",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_cg",
+   "default": "50",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_gauntlet",
+   "default": "400",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_gh",
+   "default": "100",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_gl",
+   "default": "800",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_hmg",
+   "default": "75",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_hook",
+   "default": "100",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_lg",
+   "default": "50",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_mg",
+   "default": "100",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_ng",
+   "default": "1000",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_pg",
+   "default": "100",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_prox",
+   "default": "800",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_rg",
+   "default": "1500",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_rl",
+   "default": "800",
+   "flags": 1343488
+  },
+  {
+   "name": "weapon_reload_sg",
+   "default": "1000",
+   "flags": 1343488
+  }
+ ]
 }

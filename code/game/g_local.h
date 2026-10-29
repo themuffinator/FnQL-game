@@ -26,6 +26,28 @@
 #define	INTERMISSION_DELAY_TIME	1000
 #define	SP_INTERMISSION_DELAY_TIME	5000
 
+// Team item control (level.teamStats; the team scoreboards' header)
+typedef enum {
+	TEAM_STAT_RED_ARMOR,
+	TEAM_STAT_YELLOW_ARMOR,
+	TEAM_STAT_GREEN_ARMOR,
+	TEAM_STAT_MEGA_HEALTH,
+	TEAM_STAT_QUAD,
+	TEAM_STAT_BATTLESUIT,
+	TEAM_STAT_REGEN,
+	TEAM_STAT_HASTE,
+	TEAM_STAT_INVIS,
+	TEAM_STAT_QUAD_TIME,			// seconds held
+	TEAM_STAT_BATTLESUIT_TIME,
+	TEAM_STAT_REGEN_TIME,
+	TEAM_STAT_HASTE_TIME,
+	TEAM_STAT_INVIS_TIME,
+	TEAM_STAT_FLAG_PICKUPS,			// flags taken from their base (retail 0x10069fbf)
+	TEAM_STAT_MEDKIT,
+	TEAM_STAT_FLAG_TIME,			// seconds a flag was carried
+	TEAM_STAT_NUM
+} teamStat_t;
+
 // gentity->flags
 #define	FL_GODMODE				0x00000010
 #define	FL_NOTARGET				0x00000020
@@ -35,6 +57,7 @@
 #define FL_NO_BOTS				0x00002000	// spawn point not for bot use
 #define FL_NO_HUMANS			0x00004000	// spawn point just for bots
 #define FL_FORCE_GESTURE		0x00008000	// force gesture on client
+#define FL_ITEM_TIMER			0x00100000	// a taken item that clients see counting down (g_itemTimers)
 
 // movers are things like doors, plats, buttons, etc
 typedef enum {
@@ -115,6 +138,7 @@ struct gentity_s {
 
 	int			nextthink;
 	void		(*think)(gentity_t *self);
+	void		(*frameThink)(gentity_t *self);	// Quake Live: every frame, before think (retail +0x2fc)
 	void		(*reached)(gentity_t *self);	// movers call this when hitting endpoint
 	void		(*blocked)(gentity_t *self, gentity_t *other);
 	void		(*touch)(gentity_t *self, gentity_t *other, trace_t *trace);
@@ -135,6 +159,8 @@ struct gentity_s {
 	int			splashRadius;
 	int			methodOfDeath;
 	int			splashMethodOfDeath;
+	int			damageFactor;		// quad multiplier a rocket carries for its splash (retail +0x32c)
+	int			bounceCount;		// wall bounces a nail has made (retail +0x36c, g_nailbounce)
 
 	int			count;
 
@@ -159,6 +185,8 @@ struct gentity_s {
 	float		random;
 
 	gitem_t		*item;			// for bonus items
+	int			itemSpawnTime;	// level.time the item last appeared
+	int			itemPickups;	// times it has been taken
 
 	// team for spawn spot
 	team_t		fteam;
@@ -224,6 +252,10 @@ typedef struct {
 	int			spectatorClient;	// for chasecam and follow mode
 	int			wins, losses;		// tournament stats
 	qboolean	teamLeader;			// true when this client is a team leader
+	int			loadoutWeapon;		// g_loadout's weapon (retail gclient +0x358)
+	int			spectateOnly;		// so: a duel spectator not queueing to play (+0x36c)
+	int			queuePosition;		// pq: place in the duel queue, 0 for none (+0x370)
+	qboolean	queueChanged;		// pq changed; the player keys go out again (+0x374)
 } clientSession_t;
 
 //
@@ -247,8 +279,8 @@ typedef struct {
 	qboolean	teamInfo;			// send team overlay updates?
 	int			voted;
 	int			teamVoted;
-
-	qboolean	inGame;
+	int			mapVote;			// the end-of-match map voted for, 1-3 (retail pers +0xf0)
+	int			mapVoteTime;		// level.time of that vote (retail pers +0xec)
 
 	// Quake Live CS_PLAYERS state (keys rp, p, so, pq, st, c).  Ready-up,
 	// privileges, spectate-only and the join queue are driven by the match
@@ -256,10 +288,53 @@ typedef struct {
 	unsigned long long	steamId;		// from import 200 at connect, like retail
 	int			readyToPlay;		// rp
 	int			privileges;			// p
-	int			spectateOnly;		// so
-	int			queuePosition;		// pq
 	char		country[24];		// c, userinfo "country"
 } clientPersistant_t;
+
+// One controlled item's pickups (retail gclient +0x81c onwards): those that
+// were the item's first since the level began, all of them, and the msec it
+// stood waiting before each later one.
+typedef struct {
+	int			first;
+	int			pickups;
+	int			waited;
+} itemControl_t;
+
+// Per-match player statistics (retail gclient +0x568): they survive respawns
+// and restart on connect and on every team change (G_ResetClientStats).  The
+// scoreboard, medals and match reports read them.
+typedef struct {
+	int			key;				// a fresh random key at each restart
+	int			startTime;			// level.time of the restart
+	int			startMatchTime;		// that time into the level
+	int			kills;				// enemies killed
+	int			deaths;				// times killed, team switches aside
+	int			suicides;			// killed by the world or by the kill command
+	int			teamKills;
+	int			teamKilled;
+	int			weaponKills[WP_MAX_WEAPONS];
+	int			weaponDeaths[WP_MAX_WEAPONS];	// by the killer's weapon
+	int			weaponShots[WP_MAX_WEAPONS];
+	int			weaponHits[WP_MAX_WEAPONS];
+	int			weaponDamageGiven[WP_MAX_WEAPONS];
+	int			weaponDamageTaken[WP_MAX_WEAPONS];
+	int			damageGiven;		// to enemies
+	int			damageTaken;		// from enemies, capped at what was left to take
+	int			quadKills;			// kills while holding the quad
+	int			killStreak;			// kills since the last death
+	int			maxKillStreak;
+	int			midairShotgunKills;	// shotgun kills of airborne enemies
+	itemControl_t	mega, redArmor, yellowArmor, greenArmor;
+	int			healthPickups;		// every other health
+	int			shardPickups;
+	int			ammoPickups;
+	int			medkitPickups;
+	int			quadPickups, battleSuitPickups, regenPickups, hastePickups, invisPickups;
+	int			weaponPickups[WP_MAX_WEAPONS];
+	int			powerupPickups[PW_NUM_POWERUPS];
+	int			holdablePickups[HI_NUM_HOLDABLE];
+	int			denies;				// powerups taken from under an enemy's nose
+} clientStats_t;
 
 // unlagged
 #define NUM_CLIENT_HISTORY 18
@@ -280,7 +355,6 @@ struct gclient_s {
 	clientPersistant_t	pers;
 	clientSession_t		sess;
 
-	qboolean	readyToExit;		// wishes to leave the intermission
 
 	qboolean	noclip;
 
@@ -308,8 +382,23 @@ struct gclient_s {
 
 	//
 	int			lastkilled_client;	// last client that this client killed
-	int			lasthurt_client;	// last client that damaged this client
+	int			lastKiller;			// the last killer of this client
+	int			flagCarryTime;		// msec since the last flag pickup (retail +0x314)
+	int			droppedFlagPickups;	// dropped flags picked up since one was taken from its base (retail +0x318)
+	int			lasthurt_client;	// last client that damaged this client (-1 for none)
 	int			lasthurt_mod;		// type of damage the client did
+	int			lasthurt_time;		// level.time of that damage
+	int			prevhurt_client;	// the damage before it, for combo kills (-1 for none)
+	int			prevhurt_mod;
+	int			prevhurt_time;
+
+	int			medals[MEDAL_NUM_MEDALS];	// medals earned this match
+	int			killedBy[MAX_CLIENTS];	// kills by each client since this one killed it back (revenge)
+	int			gibStreak;			// gibs in quick succession (rampage)
+	int			deferredSpawnTime;	// a spawn with no free spot tries again then
+	int			deferredSpawns;		// spawns deferred in a row (g_maxDeferredSpawns)
+	int			lastGibTime;
+	clientStats_t	stats;
 
 	// timers
 	int			respawnTime;		// can respawn when time > this, force after g_forcerespwan
@@ -335,6 +424,7 @@ struct gclient_s {
 	int			portalID;
 	int			ammoTimes[WP_NUM_WEAPONS];
 	int			invulnerabilityTime;
+	int			shotgunDamage[MAX_CLIENTS];	// one blast's damage per target, for its damage plum
 #endif
 
 	char		*areabits;
@@ -347,12 +437,6 @@ struct gclient_s {
 	int			frameOffset;
 	int			lastUpdateFrame;
 
-	// hitsounds
-	struct {
-		int		team;
-		int		enemy;
-		int		amount;
-	} damage;
 };
 
 
@@ -373,6 +457,12 @@ typedef struct {
 	int			num_entities;		// current number, <= MAX_GENTITIES
 
 	int			warmupTime;			// restart match at this time
+	int			timeoutStartTime;	// CS_TIMEOUT_START_TIME (retail level +0x1bc8)
+	int			timeoutEndTime;		// CS_TIMEOUT_END_TIME
+	int			timeoutsUsed[2];	// red, blue: CS_RED/BLUE_TIMEOUTS_LEFT count down from g_timeoutCount
+	int			keySpawnDelay;		// g_spawnDelay_key plus up to g_spawnDelayRandom_key, drawn at worldspawn
+	int			powerupSpawnDelay;	// the same for powerups
+	qboolean	trainingMap;		// worldspawn trainingMap
 
 	fileHandle_t	logFile;
 
@@ -387,7 +477,7 @@ typedef struct {
 	int			msec;					// current frame duration
 
 	int			teamScores[TEAM_NUM_TEAMS];
-	int			lastTeamLocationTime;		// last time of client team location update
+	int			teamInfoTime;			// when the team overlay goes out next (-1: not due)
 
 	qboolean	newSession;				// don't use any old session data, because
 										// we changed gametype
@@ -427,13 +517,17 @@ typedef struct {
 	int			numSpawnVarChars;
 	char		spawnVarChars[MAX_SPAWN_VARS_CHARS];
 
-#ifndef OLD_CHECK_EXIT_RULES
-	// `CheckExitRulesLater()` has been called, and we'll need to
-	// `CheckExitRules()` when we're done doing stuff.
-	qboolean	needToCheckExitRules;
-#endif
-
 	// intermission state
+	char		firstScorer[MAX_NETNAME + 4];	// the match's first and latest scorers
+	char		lastScorer[MAX_NETNAME + 4];
+	char		firstFragger[MAX_NETNAME + 4];	// whoever took the first frag
+
+	int			teamStats[TEAM_STAT_NUM][TEAM_NUM_TEAMS];	// item control by team (retail 0x105df424)
+	int			duelRowClient;			// the lower-numbered duelist when two last played
+	char		duelRows[2][MAX_STRING_CHARS];	// each duelist's latest full scores_duel entry
+	vec3_t		redFlagBase, blueFlagBase;	// where the team flags spawn, for item sides
+	int			timedItemCount[MAX_ITEMS];	// timed items of each kind on the map
+
 	int			intermissionQueued;		// intermission was qualified, but
 										// wait INTERMISSION_DELAY_TIME before
 										// actually going there so the last
@@ -442,6 +536,17 @@ typedef struct {
 	int			intermissiontime;		// time the intermission was started
 	qboolean	readyToExit;			// at least one client wants to exit
 	int			exitTime;
+	qboolean	intermissionExitShown;	// CS_INTERMISSION_EXIT went out
+	int			overtimeAdded;			// msec of g_overtime added to the timelimit
+	qboolean	forfeited;				// the match ended by forfeit
+	qboolean	matchReported;			// the end of the match went to the stats report
+
+	// the end-of-match map vote (retail level +0x2778): the three
+	// "nextmaps" choices, their titles and factories, and their votes
+	char		voteMaps[3][MAX_QPATH];
+	char		voteTitles[3][MAX_QPATH];
+	char		voteFactories[3][MAX_QPATH];
+	int			mapVotes[3];
 	
 	vec3_t		intermission_origin;	// also used for spectator spawns
 	vec3_t		intermission_angle;
@@ -467,6 +572,7 @@ typedef struct {
 	// unlagged
 	int			frameStartTime;
 
+	pmoveSettings_t	pmoveSettings;	// from the pmove_* cvars; see G_UpdatePmoveSettings
 } level_locals_t;
 
 
@@ -487,7 +593,7 @@ char *G_NewString( const char *string );
 void Cmd_Score_f (gentity_t *ent);
 void StopFollowing( gentity_t *ent, qboolean release );
 void BroadcastTeamChange( gclient_t *client, team_t oldTeam );
-qboolean SetTeam( gentity_t *ent, const char *s );
+int SetTeam( gentity_t *ent, const char *s );
 void Cmd_FollowCycle_f( gentity_t *ent, int dir );
 void G_RevertVote( gclient_t *client );
 
@@ -497,7 +603,12 @@ void G_RevertVote( gclient_t *client );
 void G_CheckTeamItems( void );
 void G_RunItem( gentity_t *ent );
 void RespawnItem( gentity_t *ent );
-int SpawnTime( gentity_t *ent, qboolean firstSpawn );
+void G_ResetKey( int key );
+void G_InitItemSides( void );
+void G_SendItemTimers( int clientNum );
+gclient_t *G_NextInLine( void );
+void G_NumberDuelQueue( void );
+void G_RefreshDuelQueue( void );
 
 void UseHoldableItem( gentity_t *ent );
 void PrecacheItem (gitem_t *it);
@@ -512,6 +623,7 @@ void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace);
 
 void ClearRegisteredItems( void );
 void RegisterItem( gitem_t *item );
+extern qboolean itemRegistered[MAX_ITEMS];
 void SaveRegisteredItems( void );
 
 //
@@ -552,10 +664,19 @@ const char *BuildShaderStateConfig( void );
 // g_combat.c
 //
 qboolean CanDamage (gentity_t *targ, vec3_t origin);
+int G_HitTier( int damage );
+int G_WeaponForMod( int mod );
+void G_DamagePlum( gentity_t *attacker, const vec3_t origin, int damage, int weapon );
 void G_Damage (gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec3_t dir, vec3_t point, int damage, int dflags, int mod);
-qboolean G_RadiusDamage (gentity_t *self, vec3_t origin, gentity_t *attacker, float damage, float radius, gentity_t *ignore, int mod);
+qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore, const trace_t *trace, const vec3_t dir );
+qboolean G_FreezeTagActive( void );
+void G_UpdateSettingsConfigstrings( void );
+void G_UpdateTimeoutConfigstrings( void );
 int G_InvulnerabilityEffect( gentity_t *targ, vec3_t dir, vec3_t point, vec3_t impactpoint, vec3_t bouncedir );
 void body_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int meansOfDeath );
+void G_StatsDamage( gentity_t *targ, gentity_t *attacker, int mod, int damage );
+void G_StatsKill( gentity_t *victim, gentity_t *attacker, int mod );
+void G_StatsHit( gclient_t *client, int weapon );
 void TossClientItems( gentity_t *self );
 #ifdef MISSIONPACK
 void TossClientPersistantPowerups( gentity_t *self );
@@ -610,11 +731,15 @@ void DropPortalDestination( gentity_t *ent );
 #endif
 
 
+// Quake III's random() and crandom() as the retail x87 modules evaluate them:
+// in double, without the float rounding the q_shared.h macros get on SSE2.
+#define G_Random()	( (double)( rand() & 0x7fff ) / 32767.0 )
+#define G_CRandom()	( 2.0 * ( G_Random() - 0.5 ) )
+
 //
 // g_weapon.c
 //
 qboolean LogAccuracyHit( gentity_t *target, gentity_t *attacker );
-void CalcMuzzlePoint ( gentity_t *ent, vec3_t forward, vec3_t right, vec3_t up, vec3_t muzzlePoint );
 void SnapVectorTowards( vec3_t v, vec3_t to );
 qboolean CheckGauntletAttack( gentity_t *ent );
 void Weapon_HookFree (gentity_t *ent);
@@ -633,6 +758,13 @@ gentity_t *SelectSpawnPoint( gentity_t *ent, vec3_t avoidPoint, vec3_t origin, v
 void CopyToBodyQue( gentity_t *ent );
 void respawn (gentity_t *ent);
 void BeginIntermission (void);
+qboolean G_IsTeamGametype( int gametype );
+void LogExit( const char *string );
+void G_Forfeit( void );
+qboolean G_RoundInProgress( void );
+qboolean G_IsRoundBasedGametype( int gametype );
+void G_ClearVote( void );
+void G_CountMapVotes( void );
 void InitBodyQue (void);
 void ClientSpawn( gentity_t *ent );
 void player_die (gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod);
@@ -717,6 +849,9 @@ void G_InitWorldSession( void );
 void G_WriteSessionData( void );
 
 void G_InitSessionData( gclient_t *client, const char *team, qboolean isBot );
+int G_ClientPrivilege( int clientNum );
+void G_ResetClientStats( gclient_t *client );
+int G_StartingAmmo( int weapon );
 void G_ReadClientSessionData( gclient_t *client );
 void G_WriteClientSessionData( gclient_t *client );
 void G_ClearClientSessionData( gclient_t *client );
@@ -795,6 +930,7 @@ void	trap_Print( const char *text );
 void	trap_Error( const char *text );
 int		trap_Milliseconds( void );
 int		trap_RealTime( qtime_t *qtime );
+void	trap_GenerateMatchGuid( char *buffer, int bufferSize );
 int		trap_Argc( void );
 void	trap_Argv( int n, char *buffer, int bufferLength );
 void	trap_Args( char *buffer, int bufferLength );
@@ -819,6 +955,7 @@ void	trap_DropClient( int clientNum, const char *reason );
 void	trap_SendServerCommand( int clientNum, const char *text );
 void	trap_SetConfigstring( int num, const char *string );
 void	trap_GetConfigstring( int num, char *buffer, int bufferSize );
+void	trap_ResendConfigstring( int num );
 void	trap_GetUserinfo( int num, char *buffer, int bufferSize );
 void	trap_SetUserinfo( int num, const char *buffer );
 void	trap_GetServerinfo( char *buffer, int bufferSize );

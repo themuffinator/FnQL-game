@@ -57,59 +57,63 @@ TELEPORTERS
 */
 
 void TeleportPlayer( gentity_t *player, vec3_t origin, vec3_t angles ) {
-	gentity_t	*tent;
+	gclient_t	*client = player->client;
+	const qboolean spectating = client->ps.pm_type == PM_SPECTATOR;
+	int			i;
 
 	// use temp events at source and destination to prevent the effect
 	// from getting dropped by a second player event
-	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
-		tent = G_TempEntity( player->client->ps.origin, EV_PLAYER_TELEPORT_OUT );
-		tent->s.clientNum = player->s.clientNum;
-
-		tent = G_TempEntity( origin, EV_PLAYER_TELEPORT_IN );
-		tent->s.clientNum = player->s.clientNum;
+	if ( !spectating ) {
+		G_TempEntity( client->ps.origin, EV_PLAYER_TELEPORT_OUT );
+		G_TempEntity( origin, EV_PLAYER_TELEPORT_IN );
 	}
 
 	// unlink to make sure it can't possibly interfere with G_KillBox
 	trap_UnlinkEntity( player );
 
-	VectorCopy( origin, player->client->ps.origin );
-	player->client->ps.origin[2] += 1.0f;
+	VectorCopy( origin, client->ps.origin );
+	client->ps.origin[2] += 1.0f;
 
-	// spit the player out
-	if ( angles )
-		AngleVectors( angles, player->client->ps.velocity, NULL, NULL );
-
-	if ( player->client->sess.sessionTeam == TEAM_SPECTATOR ) {
-		VectorScale( player->client->ps.velocity, 1.25f, player->client->ps.velocity );
-	} else {
-		VectorScale( player->client->ps.velocity, g_speed.value * 1.25f, player->client->ps.velocity );
+	// spit the player out at 400 units a second (retail qagamex86 0x1005a420);
+	// a spectator slipping through a door (no angles) keeps going as it was
+	if ( angles ) {
+		PM_AngleVectors( angles, client->ps.velocity, NULL, NULL );
+		for ( i = 0; i < 3; i++ ) {
+			client->ps.velocity[i] = (float)( (double)client->ps.velocity[i] * 400.0 );
+		}
 	}
 
-	player->client->ps.pm_time = 160; // hold time
-	player->client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
+	client->ps.pm_time = 160; // hold time
+	client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
 
 	// toggle the teleport bit so the client knows to not lerp
-	player->client->ps.eFlags ^= EF_TELEPORT_BIT;
+	client->ps.eFlags ^= EF_TELEPORT_BIT;
+
+	// a grapple does not follow through a teleporter
+	if ( client->hook ) {
+		Weapon_HookFree( client->hook );
+	}
 
 	// set angles
-	if ( angles )
+	if ( angles ) {
 		SetClientViewAngle( player, angles );
+	}
 
 	// unlagged
 	G_ResetHistory( player );
 
-	// kill anything at the destination
-	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+	// kill anything at the destination, unless players do not clip
+	if ( !spectating && !pmove_noPlayerClip.integer ) {
 		G_KillBox( player );
 	}
 
 	// save results of pmove
-	BG_PlayerStateToEntityState( &player->client->ps, &player->s, qtrue );
+	BG_PlayerStateToEntityState( &client->ps, &player->s, qtrue );
 
 	// use the precise origin for linking
-	VectorCopy( player->client->ps.origin, player->r.currentOrigin );
+	VectorCopy( client->ps.origin, player->r.currentOrigin );
 
-	if ( player->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+	if ( !spectating ) {
 		trap_LinkEntity( player );
 	}
 }

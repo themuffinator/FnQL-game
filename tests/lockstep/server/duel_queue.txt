@@ -1,0 +1,33 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory duel --scenario ...):
+# three scripted clients in a duel on campgrounds.  Alpha and bravo join and
+# play, charlie joins and waits in the queue, both players ask for the
+# scoreboard, alpha kills itself, and then alpha goes to spectate so that
+# charlie comes in.  This exercises the duel queue (the so and pq player
+# keys), duel joining and leaving, scores_duel and the duel's warmup.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+at 0   charlie weapon=2
+at 20  alpha forward=127
+at 60  alpha forward=0
+at 20  bravo forward=-127 right=64
+at 60  bravo forward=0 right=0
+clientcmd 80 alpha score
+clientcmd 80 bravo score
+clientcmd 80 charlie score
+clientcmd 100 alpha kill
+clientcmd 200 alpha team s
+clientcmd 260 charlie score
+at 270 charlie forward=127
+at 320 charlie forward=0

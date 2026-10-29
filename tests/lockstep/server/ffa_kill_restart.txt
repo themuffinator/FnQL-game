@@ -1,0 +1,34 @@
+# Gate G3 scenario (scripts/server_lockstep.py --scenario ...): two scripted
+# players on an FFA map and no bots, so nothing depends on bot AI parity
+# (milestone 9).  Bravo kills itself and respawns, both fire, and the match
+# restarts (map_restart 0) and they move again.  This exercises death, the
+# body queue, respawning, the scoreboard and the restart path.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+at 20  alpha forward=127 dyaw=1
+at 60  alpha forward=0 dyaw=0 buttons=attack
+at 90  alpha buttons=0
+at 30  bravo forward=127 right=64
+at 70  bravo forward=0 right=0
+clientcmd 80 bravo kill
+clientcmd 90 alpha score
+# a self-kill holds the respawn for g_respawn_delay_min plus g_allowKill
+at 230 bravo buttons=attack
+at 236 bravo buttons=0
+at 240 bravo forward=127
+at 280 bravo forward=0
+cmd 300 map_restart 0
+at 310 alpha forward=127 right=-64
+at 310 bravo forward=127 dyaw=-1.5
+at 360 alpha forward=0 right=0
+at 360 bravo forward=0 dyaw=0

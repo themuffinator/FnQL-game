@@ -24,14 +24,17 @@ void G_WriteClientSessionData( gclient_t *client ) {
 	const char	*s;
 	const char	*var;
 
-	s = va("%i %i %i %i %i %i %i", 
+	s = va("%i %i %i %i %i %i %i %i %i %i", 
 		client->sess.sessionTeam,
 		client->sess.spectatorTime,
 		client->sess.spectatorState,
 		client->sess.spectatorClient,
 		client->sess.wins,
 		client->sess.losses,
-		client->sess.teamLeader
+		client->sess.teamLeader,
+		client->sess.loadoutWeapon,
+		client->sess.spectateOnly,
+		client->sess.queuePosition
 		);
 
 	var = va( "session%i", client - level.clients );
@@ -57,14 +60,17 @@ void G_ReadClientSessionData( gclient_t *client ) {
 	var = va( "session%i", client - level.clients );
 	trap_Cvar_VariableStringBuffer( var, s, sizeof(s) );
 
-	Q_sscanf( s, "%i %i %i %i %i %i %i",
+	Q_sscanf( s, "%i %i %i %i %i %i %i %i %i %i",
 		&sessionTeam,
 		&client->sess.spectatorTime,
 		&spectatorState,
 		&client->sess.spectatorClient,
 		&client->sess.wins,
 		&client->sess.losses,
-		&teamLeader
+		&teamLeader,
+		&client->sess.loadoutWeapon,
+		&client->sess.spectateOnly,
+		&client->sess.queuePosition
 		);
 
 	client->sess.sessionTeam = (team_t)sessionTeam;
@@ -100,69 +106,26 @@ Called on a first-time connect
 */
 void G_InitSessionData( gclient_t *client, const char *team, qboolean isBot ) {
 	clientSession_t	*sess;
-	
+
 	sess = &client->sess;
 
-	// initial team determination
-	if ( g_gametype.integer >= GT_TEAM ) {
-		if ( team[0] == 's' || team[0] == 'S' ) {
-			// a willing spectator, not a waiting-in-line
-			sess->sessionTeam = TEAM_SPECTATOR;
-		} else {
-			if ( g_autoJoin.integer & 2 ) {
-				sess->sessionTeam = PickTeam( -1 );
-			} else {
-				// always spawn as spectator in team games
-				if ( isBot == qfalse ) {
-					sess->sessionTeam = TEAM_SPECTATOR;	
-				} else  {
-					// bind player to specified team
-					if ( team[0] == 'r' || team[0] == 'R' ) {
-						sess->sessionTeam = TEAM_RED;
-					} else if ( team[0] == 'b' || team[0] == 'B' ) {
-						sess->sessionTeam = TEAM_BLUE;
-					} else {
-						// or choose new
-						sess->sessionTeam = PickTeam( -1 );
-					}
-				}
-			}
-		}
+	// Quake Live (retail qagamex86 0x10065a40): everyone, bots included,
+	// starts as a spectator, except that g_teamAutoJoin places new players
+	// in team games.  Players join with the team command; bots send theirs
+	// once their AI is set up.
+	if ( g_gametype.integer >= GT_TEAM && g_teamAutoJoin.integer ) {
+		sess->sessionTeam = PickTeam( -1 );
+		BroadcastTeamChange( client, -1 );
 	} else {
-		if ( team[0] == 's' || team[0] == 'S' ) {
-			// a willing spectator, not a waiting-in-line
-			sess->sessionTeam = TEAM_SPECTATOR;
-		} else {
-			switch ( g_gametype.integer ) {
-			default:
-			case GT_FFA:
-			case GT_RACE:
-				if ( g_maxGameClients.integer > 0 && level.numNonSpectatorClients >= g_maxGameClients.integer ) {
-					sess->sessionTeam = TEAM_SPECTATOR;
-				} else {
-					if ( g_autoJoin.integer & 1 || isBot || G_IsSinglePlayer() )
-						sess->sessionTeam = TEAM_FREE;
-					else
-						sess->sessionTeam = TEAM_SPECTATOR;
-				}
-				break;
-			case GT_TOURNAMENT:
-				// if the game is full, go into a waiting mode
-				if ( level.numNonSpectatorClients >= 2 ) {
-					sess->sessionTeam = TEAM_SPECTATOR;
-				} else {
-					if ( g_autoJoin.integer & 1 || isBot )
-						sess->sessionTeam = TEAM_FREE;
-					else
-						sess->sessionTeam = TEAM_SPECTATOR;
-				}
-				break;
-			}
-		}
+		sess->sessionTeam = TEAM_SPECTATOR;
 	}
 
 	sess->spectatorState = SPECTATOR_FREE;
-	sess->spectatorTime = 0;
+	// the duel queue orders spectators by when they arrived, in wall-clock
+	// seconds; a duel spectator starts out spectate-only
+	sess->spectatorTime = trap_RealTime( NULL );
+	sess->spectateOnly = g_gametype.integer == GT_TOURNAMENT;
+	sess->queuePosition = 0;
 }
 
 
@@ -204,4 +167,19 @@ void G_WriteSessionData( void ) {
 			G_WriteClientSessionData( &level.clients[i] );
 		}
 	}
+}
+
+
+/*
+================
+G_ClientPrivilege
+
+The admin tier retail reads from access.txt (qagamex86 0x10032460): 0 for
+a player.  The access list arrives with milestone 5; until then everyone
+is a player.
+================
+*/
+int G_ClientPrivilege( int clientNum ) {
+	(void)clientNum;
+	return 0;
 }

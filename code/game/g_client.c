@@ -240,6 +240,245 @@ gentity_t *SelectInitialSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angles
 
 /*
 ===========
+G_PickSpawnPoint
+
+The Quake Live spawn picker (retail qagamex86 0x10039080).  Each spot of
+the class scores the distance, along the longest axis, to the nearest live
+player, players of team weightTeam counting g_enemyTeamRespawnRatio times as
+far (and not at all when that is 0).  Up to 26 spots are ranked furthest
+first, and the pick is random among the best ceil(spots *
+g_spawnRandomRatio) (at least 3), less those within g_spawnMinDistance of a
+player when minDistance is set.  With nobody to avoid any spot will do.
+Spawnflag 2 spots are never used, and initial spawns want spawnflag 1 in
+non-team classes.
+===========
+*/
+#define	MAX_RANKED_SPAWNS	26
+
+static gentity_t *G_PickSpawnPoint( int weightTeam, qboolean initial, int teamClass, qboolean minDistance,
+									vec3_t origin, vec3_t angles ) {
+	const char	*classname;
+	gentity_t	*spot, *pick;
+	gentity_t	*rankedSpot[MAX_RANKED_SPAWNS];
+	float		rankedDist[MAX_RANKED_SPAWNS];
+	float		ratio, best, threshold, weight, score, d[3];
+	int			ranked, spots, selection, i, j;
+	gclient_t	*cl;
+
+	for ( ;; ) {
+		ratio = g_spawnRandomRatio.value;
+		if ( ratio < 0.1f ) {
+			ratio = 0.1f;
+		} else if ( ratio > 1.0f ) {
+			ratio = 1.0f;
+		}
+
+		if ( teamClass == TEAM_RED ) {
+			classname = initial ? "team_CTF_redplayer" : "team_CTF_redspawn";
+		} else if ( teamClass == TEAM_BLUE ) {
+			classname = initial ? "team_CTF_blueplayer" : "team_CTF_bluespawn";
+		} else {
+			classname = "info_player_deathmatch";
+		}
+
+		ranked = 0;
+		spots = 0;
+		selection = 3;
+		for ( spot = G_Find( NULL, FOFS( classname ), classname ); spot && ranked < MAX_RANKED_SPAWNS;
+			  spot = G_Find( spot, FOFS( classname ), classname ) ) {
+			if ( spot->spawnflags & 2 ) {
+				continue;
+			}
+			if ( !teamClass && initial && !( spot->spawnflags & 1 ) ) {
+				continue;
+			}
+
+			spots++;
+			selection = (int)ceil( spots * (double)ratio );
+			if ( selection > MAX_RANKED_SPAWNS ) {
+				selection = MAX_RANKED_SPAWNS;
+			} else if ( selection < 3 ) {
+				selection = 3;
+			}
+			threshold = ( ranked >= selection && ranked >= 5 ) ? rankedDist[ranked - 1] : 0.0f;
+
+			best = -1.0f;
+			for ( i = 0; i < level.maxclients; i++ ) {
+				cl = &level.clients[i];
+				if ( cl->pers.connected == CON_DISCONNECTED || cl->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR
+					|| cl->ps.stats[STAT_HEALTH] <= 0 ) {
+					continue;
+				}
+				weight = 1.0f;
+				if ( weightTeam && cl->ps.persistant[PERS_TEAM] == weightTeam ) {
+					if ( g_enemyTeamRespawnRatio.value == 0.0f ) {
+						continue;
+					}
+					weight = g_enemyTeamRespawnRatio.value;
+				}
+				for ( j = 0; j < 3; j++ ) {
+					d[j] = (float)fabs( spot->s.origin[j] - cl->ps.origin[j] );
+				}
+				if ( d[1] > d[0] ) {
+					d[0] = d[1];
+				}
+				if ( d[2] > d[0] ) {
+					d[0] = d[2];
+				}
+				score = d[0] * weight;
+				if ( best == -1.0f || score < best ) {
+					best = score;
+					// no better than the worst ranked spot: stop looking
+					if ( threshold != 0.0f && threshold >= score ) {
+						break;
+					}
+				}
+			}
+			if ( level.trainingMap && best == -1.0f ) {
+				best = 1.0f;
+			}
+			if ( best <= threshold ) {
+				continue;
+			}
+
+			// insert, furthest first
+			for ( j = ranked < MAX_RANKED_SPAWNS - 1 ? ranked : MAX_RANKED_SPAWNS - 1; j > 0; j-- ) {
+				if ( rankedDist[j - 1] >= best ) {
+					break;
+				}
+				rankedDist[j] = rankedDist[j - 1];
+				rankedSpot[j] = rankedSpot[j - 1];
+			}
+			rankedDist[j] = best;
+			rankedSpot[j] = spot;
+			ranked++;
+		}
+
+		if ( spots ) {
+			break;
+		}
+		if ( initial ) {
+			initial = qfalse;	// no initial spots: any spot will do
+			continue;
+		}
+		if ( minDistance ) {
+			return NULL;
+		}
+		// retail (qagamex86 0x1003952a) warns and lets the spawn be deferred
+		{
+			char serverinfo[MAX_INFO_STRING];
+
+			trap_GetServerinfo( serverinfo, sizeof( serverinfo ) );
+			G_Printf( "No spawns for this gametype: classname %s, mapname %s, gametype %d\n", classname,
+				Info_ValueForKey( serverinfo, "mapname" ), g_gametype.integer );
+		}
+		return NULL;
+	}
+
+	pick = NULL;
+	if ( !ranked ) {
+		// nobody to avoid: any spot of the class
+		const int choice = (int)( G_Random() * spots );
+
+		for ( spot = G_Find( NULL, FOFS( classname ), classname ), i = 0; spot;
+			  spot = G_Find( spot, FOFS( classname ), classname ) ) {
+			if ( !teamClass && initial && !( spot->spawnflags & 1 ) ) {
+				continue;
+			}
+			if ( i == choice ) {
+				pick = spot;
+				break;
+			}
+			i++;
+		}
+	}
+
+	if ( !pick ) {
+		if ( selection > ranked ) {
+			selection = ranked;
+		}
+		if ( minDistance ) {
+			while ( selection > 0 && rankedDist[selection - 1] < (float)g_spawnMinDistance.integer ) {
+				selection--;
+			}
+			if ( !selection ) {
+				return NULL;	// everything is too close: retail defers the spawn
+			}
+		}
+		if ( !selection ) {
+			selection = 1;
+		}
+		pick = rankedSpot[ (int)( G_Random() * selection ) ];
+	}
+
+	VectorCopy( pick->s.origin, origin );
+	origin[2] = (float)( origin[2] + 9.0 );
+	VectorCopy( pick->s.angles, angles );
+	return pick;
+}
+
+
+/*
+===========
+G_SelectSpawnPoint
+
+Retail SelectSpawnPoint (qagamex86 0x10039730): duel and training maps take
+initial spots for a player's first spawn, and the base gametypes (clan arena
+through attack and defend) use the team spot classes, weighing the enemy team.
+Retail also draws one rand() here that it does not use.
+===========
+*/
+static gentity_t *G_SelectSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angles ) {
+	gclient_t	*client = ent->client;
+	qboolean	initial = qfalse;
+	int			weightTeam = 0, teamClass = 0;
+	gentity_t	*spot;
+
+	(void)rand();
+
+	if ( g_gametype.integer == GT_TOURNAMENT && !client->pers.initialSpawn ) {
+		client->pers.initialSpawn = qtrue;
+		initial = qtrue;
+	}
+	if ( level.trainingMap ) {
+		if ( level.warmupTime && !client->pers.initialSpawn ) {
+			client->pers.initialSpawn = qtrue;
+			initial = qtrue;
+		}
+		if ( !level.warmupTime ) {
+			initial = qfalse;
+		}
+	}
+	if ( g_gametype.integer >= GT_CLAN_ARENA && g_gametype.integer <= GT_ATTACK_DEFEND ) {
+		if ( client->pers.teamState.state == TEAM_BEGIN
+			|| ( g_gametype.integer == GT_ATTACK_DEFEND && !level.warmupTime ) ) {
+			initial = qtrue;
+		}
+		teamClass = client->sess.sessionTeam == TEAM_RED ? TEAM_RED : TEAM_BLUE;
+		weightTeam = client->sess.sessionTeam == TEAM_RED ? TEAM_BLUE : TEAM_RED;
+	}
+
+	spot = G_PickSpawnPoint( weightTeam, initial, teamClass, !level.trainingMap, origin, angles );
+	if ( !spot ) {
+		// retail retries with the initial spots, then, past
+		// g_maxDeferredSpawns, takes any spot; it defers the spawn in between
+		// (not yet: the spawn goes ahead at the closest acceptable spot)
+		spot = G_PickSpawnPoint( 0, qtrue, teamClass, qtrue, origin, angles );
+		if ( !spot ) {
+			spot = G_PickSpawnPoint( 0, qfalse, teamClass, qfalse, origin, angles );
+		}
+	}
+	// after g_maxDeferredSpawns deferrals any deathmatch spot will do
+	// (retail qagamex86 0x1003994f)
+	if ( !spot && client->deferredSpawns >= g_maxDeferredSpawns.integer ) {
+		spot = G_PickSpawnPoint( 0, qfalse, 0, qfalse, origin, angles );
+	}
+	return spot;
+}
+
+
+/*
+===========
 SelectSpectatorSpawnPoint
 
 ============
@@ -317,10 +556,8 @@ void CopyToBodyQue( gentity_t *ent ) {
 
 	trap_UnlinkEntity (ent);
 
-	// don't leave a corpse if already gibbed
-	if ( ent->s.eType == ET_INVISIBLE && ent->health <= GIB_HEALTH ) {
-		return;
-	}
+	// retail (qagamex86 0x10039b50) queues a gibbed player's invisible body
+	// as well, one that can no longer be damaged
 
 	// if client is in a nodrop area, don't leave the body
 	contents = trap_PointContents( ent->s.origin, -1 );
@@ -402,7 +639,7 @@ void CopyToBodyQue( gentity_t *ent ) {
 
 	body->die = body_die;
 
-	body->takedamage = ent->takedamage;
+	body->takedamage = ent->health > GIB_HEALTH;
 
 	VectorCopy ( body->s.pos.trBase, body->r.currentOrigin );
 	trap_LinkEntity( body );
@@ -440,24 +677,19 @@ respawn
 void respawn( gentity_t *ent ) {
 	gentity_t	*tent;
 
-	if ( ent->health <= 0 )
+	// freeze tag leaves no body (retail qagamex86 0x10039fee)
+	if ( ent->health <= 0 && g_gametype.integer != GT_FREEZE )
 		CopyToBodyQue( ent );
 
+	ent->client->ps.pm_type = PM_NORMAL;
 	ClientSpawn( ent );
 
 	// bots doesn't need to see any effects
 	if ( level.intermissiontime && ent->r.svFlags & SVF_BOT )
 		return;
 
-	// add a teleportation effect
-	tent = G_TempEntity( ent->client->ps.origin, EV_PLAYER_TELEPORT_IN );
-	tent->s.clientNum = ent->s.clientNum;
-
-	// optimize bandwidth
-	if ( level.intermissiontime ) {
-		tent->r.svFlags = SVF_SINGLECLIENT;
-		tent->r.singleClient = ent->s.clientNum;
-	}
+	// the teleport effect comes from ClientSpawn, as in retail
+	(void)tent;
 }
 
 
@@ -582,6 +814,128 @@ static const char *G_SteamIdString( unsigned long long steamId ) {
 		steamId /= 10;
 	} while ( steamId && p > text );
 	return p;
+}
+
+
+/*
+===========
+G_NextInLine
+
+Retail qagamex86 0x10055710: the duel spectator who has queued longest,
+among those connected (or still queued from the last map) who follow no one
+and are not spectate-only.
+===========
+*/
+gclient_t *G_NextInLine( void ) {
+	gclient_t	*client, *next = NULL;
+	int			i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		client = &level.clients[i];
+		if ( client->pers.connected != CON_CONNECTED && !client->sess.spectatorTime ) {
+			continue;
+		}
+		if ( client->sess.sessionTeam != TEAM_SPECTATOR || client->sess.spectatorClient < 0
+			|| client->sess.spectateOnly ) {
+			continue;
+		}
+		if ( !next || client->sess.spectatorTime < next->sess.spectatorTime ) {
+			next = client;
+		}
+	}
+	return next;
+}
+
+
+/*
+===========
+G_SortQueue
+===========
+*/
+static int QDECL G_SortQueue( const void *a, const void *b ) {
+	const int ta = level.clients[*(const int *)a].sess.spectatorTime;
+	const int tb = level.clients[*(const int *)b].sess.spectatorTime;
+
+	if ( ta > tb ) {
+		return 1;
+	}
+	return ta >= tb ? 0 : -1;
+}
+
+
+/*
+===========
+G_NumberDuelQueue
+
+Retail qagamex86 0x1003a270: the queueing duel spectators take places 1, 2,
+... by arrival; a changed place is marked for G_RefreshDuelQueue.
+===========
+*/
+void G_NumberDuelQueue( void ) {
+	int		queue[MAX_CLIENTS];
+	int		count = 0, i;
+	gclient_t	*client;
+
+	if ( g_gametype.integer != GT_TOURNAMENT ) {
+		return;
+	}
+	for ( i = 0; i < level.numConnectedClients; i++ ) {
+		client = &level.clients[level.sortedClients[i]];
+		if ( client->sess.sessionTeam == TEAM_SPECTATOR && !client->sess.spectateOnly ) {
+			queue[count++] = level.sortedClients[i];
+		}
+	}
+	qsort( queue, count, sizeof( queue[0] ), G_SortQueue );
+	for ( i = 0; i < count; i++ ) {
+		client = &level.clients[queue[i]];
+		if ( client->sess.queuePosition != i + 1 ) {
+			client->sess.queuePosition = i + 1;
+			client->sess.queueChanged = qtrue;
+		}
+	}
+}
+
+
+/*
+===========
+G_RefreshDuelQueue
+
+Retail qagamex86 0x10058410, every frame: once any place changed, every
+queueing player's keys go out again.
+===========
+*/
+void G_RefreshDuelQueue( void ) {
+	gclient_t	*client;
+	qboolean	changed = qfalse;
+	int			i;
+
+	if ( g_gametype.integer != GT_TOURNAMENT ) {
+		return;
+	}
+	for ( i = 0; i < level.numConnectedClients; i++ ) {
+		client = &level.clients[level.sortedClients[i]];
+		if ( client->sess.queueChanged ) {
+			client->sess.queueChanged = qfalse;
+			changed = qtrue;
+		}
+	}
+	if ( !changed ) {
+		return;
+	}
+	for ( i = 0; i < level.numConnectedClients; i++ ) {
+		const int	clientNum = level.sortedClients[i];
+		char		userinfo[MAX_INFO_STRING];
+
+		client = &level.clients[clientNum];
+		if ( client->sess.spectateOnly || !client->sess.queuePosition ) {
+			continue;
+		}
+		// retail flips the teamtask key so the userinfo counts as changed
+		trap_GetUserinfo( clientNum, userinfo, sizeof( userinfo ) );
+		Info_SetValueForKey( userinfo, "teamtask", atoi( Info_ValueForKey( userinfo, "teamtask" ) ) ? "0" : "1" );
+		trap_SetUserinfo( clientNum, userinfo );
+		ClientUserinfoChanged( clientNum );
+	}
 }
 
 
@@ -720,6 +1074,10 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 
 	// send over a subset of the userinfo keys so other clients can
 	// print scoreboards, display models, and play custom sounds.  The key
+	// the duel queue is renumbered before the keys are built (retail
+	// qagamex86 0x1003a9b2)
+	G_NumberDuelQueue();
+
 	// sets are the retail ones (retail qagamex86 format strings): bots add
 	// "skill", humans add their SteamID and country.
 	if ( ent->r.svFlags & SVF_BOT ) {
@@ -728,15 +1086,15 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 			client->pers.netname, client->sess.sessionTeam, model, headModel, c1, c2,
 			client->pers.maxHealth, client->sess.wins, client->sess.losses,
 			Info_ValueForKey( userinfo, "skill" ), teamTask, teamLeader,
-			client->pers.readyToPlay, client->pers.privileges, client->pers.spectateOnly,
-			client->pers.queuePosition );
+			1, client->pers.privileges, client->sess.spectateOnly,	// retail: bots always show ready
+			client->sess.queuePosition );
 	} else {
 		s = va("n\\%s\\t\\%i\\model\\%s\\hmodel\\%s\\c1\\%s\\c2\\%s\\hc\\%i\\w\\%i\\l\\%i\\tt\\%d\\tl\\%d"
 			"\\rp\\%d\\p\\%d\\so\\%i\\pq\\%i\\st\\%s\\c\\%s",
 			client->pers.netname, client->sess.sessionTeam, model, headModel, c1, c2,
 			client->pers.maxHealth, client->sess.wins, client->sess.losses, teamTask, teamLeader,
-			client->pers.readyToPlay, client->pers.privileges, client->pers.spectateOnly,
-			client->pers.queuePosition, G_SteamIdString( client->pers.steamId ), client->pers.country );
+			client->pers.readyToPlay, client->pers.privileges, client->sess.spectateOnly,
+			client->sess.queuePosition, G_SteamIdString( client->pers.steamId ), client->pers.country );
 	}
 
 	trap_SetConfigstring( CS_PLAYERS+clientNum, s );
@@ -745,6 +1103,23 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	G_LogPrintf( "ClientUserinfoChanged: %i %s\n", clientNum, s );
 
 	return qtrue;
+}
+
+
+/*
+===========
+G_ResetClientStats
+
+Retail qagamex86 0x10078400, on connect and on every team change: the
+per-match stats restart, keyed by a fresh random draw that also keeps the
+random stream in step with retail.
+===========
+*/
+void G_ResetClientStats( gclient_t *client ) {
+	memset( &client->stats, 0, sizeof( client->stats ) );
+	client->stats.startTime = level.time;
+	client->stats.startMatchTime = level.time - level.startTime;
+	client->stats.key = level.time + rand();
 }
 
 
@@ -847,11 +1222,14 @@ const char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 		return ban_reason;
 	}
 
-	// read or initialize the session data
+	// read or initialize the session data; a new session also stamps the
+	// cleared match stats with a fresh key and start time, which a
+	// map_restart's reconnect leaves at zero (retail qagamex86 0x1003ade2)
 	if ( firstTime || level.newSession ) {
 		value = Info_ValueForKey( userinfo, "team" );
 		G_InitSessionData( client, value, isBot );
 		G_WriteClientSessionData( client );
+		G_ResetClientStats( client );
 	}
 
 	G_ReadClientSessionData( client );
@@ -872,14 +1250,19 @@ const char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 
 	ClientUserinfoChanged( clientNum );
 
-	// don't do the "xxx connected" messages if they were caried over from previous level
-	if ( firstTime ) {
-		G_BroadcastServerCommand( -1, va( "print \"%s" S_COLOR_WHITE " connected\n\"", client->pers.netname ) );
-
-		// mute all prints until completely in game
-		client->pers.inGame = qfalse;
-	} else {
-		client->pers.inGame = qtrue; // FIXME: read from session data?
+	// retail (qagamex86 0x1003aede) greets only a first connection outside
+	// training, never one carried over from the previous level or a
+	// map_restart: every client, bots too, learns its admin privilege, the
+	// server hears "connected" after the level's first five seconds, and a
+	// team game announces the team
+	if ( firstTime && !g_training.integer ) {
+		trap_SendServerCommand( clientNum, va( "priv %i", G_ClientPrivilege( clientNum ) ) );
+		if ( level.time > 5000 ) {
+			G_BroadcastServerCommand( -1, va( "print \"%s" S_COLOR_WHITE " connected\n\"", client->pers.netname ) );
+		}
+		if ( g_gametype.integer >= GT_TEAM && client->sess.sessionTeam != TEAM_SPECTATOR ) {
+			BroadcastTeamChange( client, -1 );
+		}
 	}
 
 	// count current clients and rank for scoreboard
@@ -900,15 +1283,20 @@ ClientBegin
 
 called when a client has finished connecting, and is ready
 to be placed into the level.  This will happen every level load,
-and on transition between teams, but doesn't happen on respawns
+and on transition between teams, but doesn't happen on respawns.
+
+Retail qagamex86 0x1003b030: the whole player state starts over (the spawn
+count too, so a player moved to the spectators reports none), the kill and
+complaint records are cleared, and a duel bot always queues to play.  Race,
+clan arena, freeze tag, attack and defend and red rover place the client
+through their own round rules there (0x100634f0, 0x10038160, 0x1004bde0,
+0x100645a0); until milestone 6 they take the plain spawn.
 ============
 */
 void ClientBegin( int clientNum ) {
 	gentity_t	*ent;
 	gclient_t	*client;
-	gentity_t	*tent;
 	int			flags;
-	int			spawns;
 
 	ent = g_entities + clientNum;
 
@@ -917,7 +1305,6 @@ void ClientBegin( int clientNum ) {
 	if ( ent->r.linked ) {
 		trap_UnlinkEntity( ent );
 	}
-
 	G_InitGentity( ent );
 	ent->touch = 0;
 	ent->pain = 0;
@@ -929,7 +1316,6 @@ void ClientBegin( int clientNum ) {
 	client->pers.connected = CON_CONNECTED;
 	client->pers.enterTime = level.time;
 	client->pers.teamState.state = TEAM_BEGIN;
-	spawns = client->ps.persistant[PERS_SPAWN_COUNT];
 
 	// save eflags around this, because changing teams will
 	// cause this to happen with a valid entity, and we
@@ -939,35 +1325,269 @@ void ClientBegin( int clientNum ) {
 	flags = client->ps.eFlags;
 	memset( &client->ps, 0, sizeof( client->ps ) );
 	client->ps.eFlags = flags;
-	client->ps.persistant[PERS_SPAWN_COUNT] = spawns;
+	client->ps.pm_type = client->sess.sessionTeam == TEAM_SPECTATOR ? PM_SPECTATOR : PM_NORMAL;
+
+	client->lastkilled_client = -1;
+	client->lastKiller = -1;
 
 	// locate ent at a spawn point
 	ClientSpawn( ent );
 
-	if ( !client->pers.inGame ) {
-		BroadcastTeamChange( client, -1 );
-		if ( client->sess.sessionTeam == TEAM_RED || client->sess.sessionTeam == TEAM_BLUE )
-			CheckTeamLeader( client->sess.sessionTeam );
-	}
-
-	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
-		// send event
-		tent = G_TempEntity( client->ps.origin, EV_PLAYER_TELEPORT_IN );
-		tent->s.clientNum = ent->s.clientNum;
-
-		client->sess.spectatorTime = 0;
-
-		if ( g_gametype.integer != GT_TOURNAMENT && !client->pers.inGame ) {
-			G_BroadcastServerCommand( -1, va("print \"%s" S_COLOR_WHITE " entered the game\n\"", client->pers.netname) );
+	// a duel bot never waits as a spectator
+	if ( g_gametype.integer == GT_TOURNAMENT && ( ent->r.svFlags & SVF_BOT ) ) {
+		client->sess.spectateOnly = qfalse;
+		if ( !client->sess.spectatorTime ) {
+			client->sess.spectatorTime = trap_RealTime( NULL );
 		}
+		ClientUserinfoChanged( clientNum );
 	}
-	
-	client->pers.inGame = qtrue;
 
 	G_LogPrintf( "ClientBegin: %i\n", clientNum );
 
 	// count current clients and rank for scoreboard
 	CalculateRanks();
+}
+
+
+/*
+===========
+G_GiveSpawnLoadout
+
+Retail qagamex86 0x1003b6c0 without the g_loadout choices (milestone 5):
+the g_startingWeapons kit (bit w-1 is weapon w) with g_startingAmmo_*,
+g_startingHealth plus g_startingHealthBonus, g_startingArmor, and during
+warmup every weapon the map places, with the warmup ammo of the retail
+weapon table.  With bit 14 of g_startingWeapons the kit is instead every
+weapon on the map, at its starting ammo.
+===========
+*/
+static const char *const weaponShortNames[WP_NUM_WEAPONS] = {
+	"", "g", "mg", "sg", "gl", "rl", "lg", "rg", "pg", "bfg", "gh", "ng", "pl", "cg", "hmg"
+};
+
+
+int G_StartingAmmo( int weapon ) {
+	return (int)trap_Cvar_VariableValue( va( "g_startingAmmo_%s", weaponShortNames[weapon] ) );
+}
+
+static qboolean G_WeaponOnMap( int weapon ) {
+	const gitem_t *item = BG_FindItemForWeapon( weapon );
+	return item && itemRegistered[ item - bg_itemlist ];
+}
+
+// the weapons g_loadout offers (retail weapon table, qagamex86 0x1008ff1c)
+static const qboolean weaponInLoadout[WP_NUM_WEAPONS] = {
+	qfalse, qfalse, qfalse, qtrue, qfalse, qtrue, qtrue, qtrue, qtrue, qfalse, qfalse, qfalse, qfalse, qfalse, qtrue
+};
+
+static qboolean G_IsLoadoutWeapon( int weapon ) {
+	return weapon >= 0 && weapon < WP_NUM_WEAPONS && weaponInLoadout[weapon];
+}
+
+/*
+===========
+G_PickLoadoutWeapon
+
+Retail qagamex86 0x1003b877: a player without a usable loadout weapon gets
+the heavy machinegun, a bot up to sixteen random draws at the loadout
+weapons (the heavy machinegun if none lands).
+===========
+*/
+static void G_PickLoadoutWeapon( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+	int			w = client->sess.loadoutWeapon;
+	int			tries, pick;
+
+	if ( G_IsLoadoutWeapon( w ) && !( g_disableLoadout.integer & ( 1 << w ) ) ) {
+		return;
+	}
+	if ( !( ent->r.svFlags & SVF_BOT ) ) {
+		client->sess.loadoutWeapon = WP_HEAVY_MACHINEGUN;
+		return;
+	}
+	pick = 0;
+	for ( tries = 0; !pick; tries++ ) {
+		if ( tries >= 16 ) {
+			pick = WP_HEAVY_MACHINEGUN;
+			break;
+		}
+		w = (int)( G_Random() * 16.0 );
+		if ( G_IsLoadoutWeapon( w ) ) {
+			pick = w;
+		}
+	}
+	client->sess.loadoutWeapon = pick;
+}
+
+/*
+===========
+G_SelectSpawnWeapon
+
+Retail qagamex86 0x1003b5a0: the weapon raised at spawn.  The infected hold
+the gauntlet; under g_loadout the loadout weapon; otherwise the first weapon
+held from g_bestStartingWeapons, a list of short names or numbers.
+===========
+*/
+static void G_SelectSpawnWeapon( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+	const char	*list;
+	char		*token;
+	int			w, i;
+
+	if ( client->ps.pm_flags & PMF_INFECTED ) {
+		client->ps.weapon = WP_GAUNTLET;
+		return;
+	}
+	w = client->sess.loadoutWeapon;
+	if ( g_loadout.integer && w > 0 && !( g_disableLoadout.integer & ( 1 << w ) ) ) {
+		client->ps.weapon = w;
+		return;
+	}
+
+	list = g_bestStartingWeapons.string;
+	w = 0;	// as in retail, a number only counts when no name has matched yet
+	for ( ;; ) {
+		token = COM_Parse( &list );
+		if ( !token[0] ) {
+			return;
+		}
+		for ( i = WP_GAUNTLET; i < WP_NUM_WEAPONS; i++ ) {
+			if ( !Q_stricmp( token, weaponShortNames[i] ) ) {
+				w = i;
+			}
+		}
+		if ( !w ) {
+			w = atoi( token );
+		}
+		if ( w >= WP_GAUNTLET && w <= WP_HEAVY_MACHINEGUN && ( client->ps.stats[STAT_WEAPONS] & ( 1 << w ) ) ) {
+			client->ps.weapon = w;
+			return;
+		}
+	}
+}
+
+/*
+===========
+G_SpawnUsesTargets
+
+Retail qagamex86 0x1003ba11: whether a spawn fires its spawn point's targets
+and raises its spawn weapon.  Warmup's everything-on-the-map kit skips both
+outside race, clan arena, domination and red rover; instagib skips both
+unless red rover infects.
+===========
+*/
+static qboolean G_SpawnUsesTargets( void ) {
+	if ( g_instaGib.integer && !( g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer ) ) {
+		return qfalse;
+	}
+	if ( !level.warmupTime || g_training.integer || ( practiceflags.integer & 1 ) || g_loadout.integer ) {
+		return qtrue;
+	}
+	switch ( g_gametype.integer ) {
+	case GT_RACE:
+	case GT_CLAN_ARENA:
+	case GT_DOMINATION:
+	case GT_RED_ROVER:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+static void G_GiveSpawnLoadout( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+	int			w, health, armor;
+
+	// the base weapons are always precached, after CS_ITEMS went out
+	RegisterItem( BG_FindItemForWeapon( WP_GAUNTLET ) );
+	RegisterItem( BG_FindItemForWeapon( WP_MACHINEGUN ) );
+	RegisterItem( BG_FindItemForWeapon( WP_GRAPPLING_HOOK ) );
+
+	client->ps.ammo[WP_GAUNTLET] = -1;
+	client->ps.ammo[WP_GRAPPLING_HOOK] = -1;
+	client->ps.weaponstate = WEAPON_READY;
+	client->ps.weaponTime = 0;
+
+	if ( g_playerCylinders.integer ) {
+		ent->r.svFlags |= SVF_CAPSULE;
+	} else {
+		ent->r.svFlags &= ~SVF_CAPSULE;
+	}
+
+	client->ps.stats[STAT_WEAPONS] = 0;
+
+	// g_loadout adds the loadout weapon to the kit (retail qagamex86 0x1003b313)
+	if ( g_loadout.integer && !( client->ps.pm_flags & PMF_INFECTED ) ) {
+		G_PickLoadoutWeapon( ent );
+		w = client->sess.loadoutWeapon;
+		if ( G_IsLoadoutWeapon( w ) && !( g_disableLoadout.integer & ( 1 << w ) ) ) {
+			client->ps.stats[STAT_WEAPONS] |= 1 << w;
+			client->ps.ammo[w] = G_StartingAmmo( w );
+			RegisterItem( BG_FindItemForWeapon( w ) );
+		}
+	}
+
+	if ( g_startingWeapons.integer & ( 1 << 14 ) ) {
+		for ( w = WP_HEAVY_MACHINEGUN; w > WP_NONE; w-- ) {
+			if ( ( w == WP_GAUNTLET || w == WP_MACHINEGUN || w == WP_GRAPPLING_HOOK )
+				&& !( g_startingWeapons.integer & ( 1 << ( w - 1 ) ) ) ) {
+				continue;
+			}
+			if ( G_WeaponOnMap( w ) ) {
+				client->ps.stats[STAT_WEAPONS] |= 1 << w;
+				client->ps.ammo[w] = G_StartingAmmo( w );
+			}
+		}
+	} else {
+		for ( w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++ ) {
+			if ( g_startingWeapons.integer & ( 1 << ( w - 1 ) ) ) {
+				client->ps.stats[STAT_WEAPONS] |= 1 << w;
+				client->ps.ammo[w] = G_StartingAmmo( w );
+				client->ps.weapon = w;
+			}
+		}
+	}
+
+	if ( g_infiniteAmmo.integer || g_instaGib.integer ) {
+		for ( w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++ ) {
+			client->ps.ammo[w] = -1;
+		}
+	}
+
+	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		// health will count down towards max_health
+		health = g_startingHealth.integer + g_startingHealthBonus.integer;
+		if ( health <= 0 ) {
+			health = client->ps.stats[STAT_MAX_HEALTH];
+		} else if ( health > 999 ) {
+			health = 999;
+		}
+		ent->health = ent->s.health = client->ps.stats[STAT_HEALTH] = health;
+	}
+
+	armor = g_startingArmor.integer;
+	ent->s.armor = client->ps.stats[STAT_ARMOR] = armor;
+	if ( armor_tiered.integer && armor ) {
+		client->ps.stats[STAT_ARMOR_TIER] = armor >= 150 ? 2 : ( armor >= 100 ? 1 : 0 );
+	}
+
+	// warmup hands players (not spectators, as retail recordings show)
+	// everything the map places; the machinegun and the hook only when they
+	// are in the kit
+	if ( level.warmupTime && client->sess.sessionTeam != TEAM_SPECTATOR && !g_training.integer
+		&& !( practiceflags.integer & 1 ) && !g_loadout.integer && !g_instaGib.integer ) {
+		for ( w = WP_MACHINEGUN; w < WP_NUM_WEAPONS; w++ ) {
+			if ( !G_WeaponOnMap( w ) ) {
+				continue;
+			}
+			if ( ( w == WP_MACHINEGUN || w == WP_GRAPPLING_HOOK )
+				&& !( g_startingWeapons.integer & ( 1 << ( w - 1 ) ) ) ) {
+				continue;
+			}
+			client->ps.stats[STAT_WEAPONS] |= 1 << w;
+			client->ps.ammo[w] = g_infiniteAmmo.integer ? -1 : bg_weaponMaxAmmo[w];
+		}
+	}
 }
 
 
@@ -993,6 +1613,10 @@ void ClientSpawn(gentity_t *ent) {
 	int		savedPing;
 //	char	*savedAreaBits;
 	int		accuracy_hits, accuracy_shots;
+	int		lastkilled_client, lastKiller;
+	clientStats_t	savedStats;
+	int		savedMedals[MEDAL_NUM_MEDALS];
+	int		savedKilledBy[MAX_CLIENTS];
 	int		eventSequence;
 	char	userinfo[MAX_INFO_STRING];
 	qboolean isSpectator;
@@ -1008,33 +1632,19 @@ void ClientSpawn(gentity_t *ent) {
 	// ranging doesn't count this client
 	if ( isSpectator ) {
 		spawnPoint = SelectSpectatorSpawnPoint( spawn_origin, spawn_angles );
-	} else if (g_gametype.integer >= GT_CTF ) {
-		// all base oriented team games use the CTF spawn points
-		spawnPoint = SelectCTFSpawnPoint( ent, client->sess.sessionTeam, client->pers.teamState.state, spawn_origin, spawn_angles );
 	} else {
-		do {
-			// the first spawn should be at a good looking spot
-			if ( !client->pers.initialSpawn && client->pers.localClient ) {
-				client->pers.initialSpawn = qtrue;
-				spawnPoint = SelectInitialSpawnPoint( ent, spawn_origin, spawn_angles );
-			} else {
-				// don't spawn near existing origin if possible
-				spawnPoint = SelectSpawnPoint( ent, client->ps.origin, spawn_origin, spawn_angles );
-			}
-
-			// Tim needs to prevent bots from spawning at the initial point
-			// on q3dm0...
-			if ( ( spawnPoint->flags & FL_NO_BOTS ) && ( ent->r.svFlags & SVF_BOT ) ) {
-				continue;	// try again
-			}
-			// just to be symetric, we have a nohumans option...
-			if ( ( spawnPoint->flags & FL_NO_HUMANS ) && !( ent->r.svFlags & SVF_BOT ) ) {
-				continue;	// try again
-			}
-
-			break;
-
-		} while ( 1 );
+		spawnPoint = G_SelectSpawnPoint( ent, spawn_origin, spawn_angles );
+		if ( !spawnPoint ) {
+			// no free spot: wait 600 msec as a spectator and try again
+			// (retail qagamex86 0x1003bcfa)
+			client->deferredSpawnTime = level.time + 600;
+			client->ps.pm_type = PM_SPECTATOR;
+			client->deferredSpawns++;
+			return;
+		}
+		client->deferredSpawns = 0;
+		// retail announces every spawn at the spot itself (qagamex86 0x1003bd57)
+		G_TempEntity( spawn_origin, EV_PLAYER_TELEPORT_IN );
 	}
 	client->pers.teamState.state = TEAM_ACTIVE;
 
@@ -1047,6 +1657,11 @@ void ClientSpawn(gentity_t *ent) {
 	// and never clear the voted flag
 	flags = client->ps.eFlags & (EF_TELEPORT_BIT | EF_VOTED | EF_TEAMVOTED);
 	flags ^= EF_TELEPORT_BIT;
+	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
+		flags |= EF_SPECTATOR;
+	} else {
+		flags &= ~EF_SPECTATOR;
+	}
 
 	// unlagged
 	G_ResetHistory( ent );
@@ -1060,10 +1675,17 @@ void ClientSpawn(gentity_t *ent) {
 //	savedAreaBits = client->areabits;
 	accuracy_hits = client->accuracy_hits;
 	accuracy_shots = client->accuracy_shots;
+	lastkilled_client = client->lastkilled_client;
+	lastKiller = client->lastKiller;
 	for ( i = 0 ; i < MAX_PERSISTANT ; i++ ) {
 		persistant[i] = client->ps.persistant[i];
 	}
 	eventSequence = client->ps.eventSequence;
+	// retail (qagamex86 0x1003bdcc) also keeps the match stats, medals and
+	// revenge counts
+	savedStats = client->stats;
+	memcpy( savedMedals, client->medals, sizeof( savedMedals ) );
+	memcpy( savedKilledBy, client->killedBy, sizeof( savedKilledBy ) );
 
 	Com_Memset (client, 0, sizeof(*client));
 
@@ -1073,14 +1695,23 @@ void ClientSpawn(gentity_t *ent) {
 //	client->areabits = savedAreaBits;
 	client->accuracy_hits = accuracy_hits;
 	client->accuracy_shots = accuracy_shots;
-	client->lastkilled_client = -1;
+	client->lastkilled_client = lastkilled_client;
+	client->lastKiller = lastKiller;
+	client->lasthurt_client = -1;
+	client->prevhurt_client = -1;
+	client->stats = savedStats;
+	memcpy( client->medals, savedMedals, sizeof( client->medals ) );
+	memcpy( client->killedBy, savedKilledBy, sizeof( client->killedBy ) );
 
 	for ( i = 0 ; i < MAX_PERSISTANT ; i++ ) {
 		client->ps.persistant[i] = persistant[i];
 	}
 	client->ps.eventSequence = eventSequence;
-	// increment the spawncount so the client will detect the respawn
-	client->ps.persistant[PERS_SPAWN_COUNT]++;
+	// increment the spawncount so the client will detect the respawn;
+	// retail does not count a spectator's spawn
+	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		client->ps.persistant[PERS_SPAWN_COUNT]++;
+	}
 	client->ps.persistant[PERS_TEAM] = client->sess.sessionTeam;
 
 	client->airOutTime = level.time + 12000;
@@ -1119,29 +1750,40 @@ void ClientSpawn(gentity_t *ent) {
 
 	client->ps.clientNum = index;
 
-	client->ps.stats[STAT_WEAPONS] = ( 1 << WP_MACHINEGUN );
-	if ( g_gametype.integer == GT_TEAM ) {
-		client->ps.ammo[WP_MACHINEGUN] = 50;
-	} else {
-		client->ps.ammo[WP_MACHINEGUN] = 100;
-	}
-
-	client->ps.stats[STAT_WEAPONS] |= ( 1 << WP_GAUNTLET );
-	client->ps.ammo[WP_GAUNTLET] = -1;
-	client->ps.ammo[WP_GRAPPLING_HOOK] = -1;
-
-	// health will count down towards max_health
-	ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] + 25;
+	G_GiveSpawnLoadout( ent );
 
 	G_SetOrigin( ent, spawn_origin );
 	VectorCopy( spawn_origin, client->ps.origin );
+
+	// Quake Live movement options are per-player flags fixed at spawn: a
+	// player whose cg_autoHop is off must release jump between jumps
+	if ( pmove_AutoHop.integer ) {
+		trap_GetUserinfo( index, userinfo, sizeof( userinfo ) );
+		if ( atoi( Info_ValueForKey( userinfo, "cg_autoHop" ) ) ) {
+			client->ps.pm_flags &= ~PMF_REQUIRE_JUMP_RELEASE;
+		} else {
+			client->ps.pm_flags |= PMF_REQUIRE_JUMP_RELEASE;
+		}
+	}
+	if ( pmove_CrouchSlide.integer ) {
+		client->ps.pm_flags |= PMF_CROUCH_SLIDE;
+	}
+	if ( pmove_DoubleJump.integer ) {
+		client->ps.pm_flags |= PMF_DOUBLE_JUMP;
+	}
+	if ( pmove_AirControl.integer ) {
+		client->ps.pm_flags |= PMF_AIR_CONTROL;
+	}
 
 	// the respawned flag will be cleared after the attack and jump keys come up
 	client->ps.pm_flags |= PMF_RESPAWNED;
 
 	client->ps.viewheight = DEFAULT_VIEWHEIGHT;
-	client->ps.gravity = g_gravity.integer;
-	client->ps.speed = g_speed.integer;
+	if ( !isSpectator ) {
+		// a spectator keeps retail's zero gravity; SpectatorThink sets its speed
+		client->ps.gravity = g_gravity.integer;
+		client->ps.speed = g_speed.integer;
+	}
 
 	trap_GetUsercmd( client - level.clients, &client->pers.cmd );
 	SetClientViewAngle( ent, spawn_angles );
@@ -1171,18 +1813,17 @@ void ClientSpawn(gentity_t *ent) {
 	} else {
 		if ( !isSpectator )
 			trap_LinkEntity( ent );
-		// fire the targets of the spawn point
-		G_UseTargets( spawnPoint, ent );
-
-		// select the highest weapon number available, after any
-		// spawn given items have fired
-		client->ps.weapon = 1;
-		for ( i = WP_NUM_WEAPONS - 1 ; i > 0 ; i-- ) {
-			if ( client->ps.stats[STAT_WEAPONS] & ( 1 << i ) ) {
-				client->ps.weapon = i;
-				break;
+		// fire the targets of the spawn point, and raise the spawn weapon
+		if ( G_SpawnUsesTargets() ) {
+			G_UseTargets( spawnPoint, ent );
+			// retail recordings show spectators keeping the kit's weapon
+			if ( !( practiceflags.integer & 1 ) && !isSpectator ) {
+				G_SelectSpawnWeapon( ent );
 			}
 		}
+
+		// retail keeps the kit's last weapon (G_GiveSpawnLoadout) rather
+		// than Quake III's highest weapon
 	}
 
 	// run a client frame to drop exactly to the floor,
@@ -1196,6 +1837,12 @@ void ClientSpawn(gentity_t *ent) {
 
 	// run the presend to set anything else
 	ClientEndFrame( ent );
+
+	// a team-mode spawn sends the team overlay a second later (retail
+	// qagamex86 0x1003c71f)
+	if ( g_gametype.integer >= GT_TEAM ) {
+		level.teamInfoTime = level.time + 1000;
+	}
 
 	// clear entity state values
 	BG_PlayerStateToEntityState( &client->ps, &ent->s, qtrue );
@@ -1227,6 +1874,9 @@ void ClientDisconnect( int clientNum ) {
 	if (!ent->client || ent->client->pers.connected == CON_DISCONNECTED) {
 		return;
 	}
+
+	// the team overlay is resent a second later (retail qagamex86 0x1003c870)
+	level.teamInfoTime = level.time + 1000;
 
 	// stop any following clients
 	for ( i = 0 ; i < level.maxclients ; i++ ) {

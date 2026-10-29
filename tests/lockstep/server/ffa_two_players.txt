@@ -1,0 +1,37 @@
+# Gate G3 scenario (scripts/server_lockstep.py): two scripted players on an
+# FFA map (the runner's default is campgrounds ffa).  They join the game, run a
+# short course with strafes, turns, a jump and a crouch, then fire the
+# machinegun.  Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha cg_autoHop 1
+client bravo name Bravo cg_autoHop 0
+
+# Scripted clients enter the world at frame 0 as Quake Live spectators; client
+# commands are accepted from frame 1.
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+
+# alpha: run, strafe-turn, jump, stop and hold fire, then back off turning
+at 0   alpha weapon=2
+at 20  alpha forward=127
+at 60  alpha right=127 dyaw=1.5
+at 100 alpha right=0 dyaw=0 up=127
+at 104 alpha up=0
+at 140 alpha forward=0 pitch=10
+at 150 alpha buttons=attack
+at 230 alpha buttons=0 dyaw=-2
+at 260 alpha dyaw=0 forward=-127
+at 300 alpha forward=0
+
+# bravo: diagonal strafe-run the other way, crouch, two bursts of fire
+at 0   bravo weapon=2
+at 30  bravo forward=127 right=-127 dyaw=-1
+at 90  bravo forward=0 right=0 dyaw=0 up=-127
+at 110 bravo up=0
+at 120 bravo buttons=attack
+at 160 bravo buttons=0
+at 180 bravo buttons=attack dyaw=3
+at 220 bravo buttons=0 dyaw=0 forward=127
+at 320 bravo forward=0

@@ -1,0 +1,29 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --factory tdm ...):
+# one scripted player on each team of a team deathmatch on campgrounds.
+# They join their teams, take armor (setviewpos, a cheat, hence --cheats),
+# ask for the scoreboard, and blue kills itself.  This exercises team
+# joining, the team scoreboard with its item-control header (each side sees
+# only its own team's numbers), the team stats and a team-game death.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 1 bravo team b
+
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+
+clientcmd 20 alpha setviewpos -1472 448 580 0
+clientcmd 20 bravo setviewpos -260 320 40 0
+at 25  bravo forward=127
+at 80  bravo forward=0
+clientcmd 100 alpha score
+clientcmd 100 bravo score
+clientcmd 120 bravo kill
+clientcmd 140 alpha score
+at 150 alpha forward=127
+at 200 alpha forward=0

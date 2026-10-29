@@ -479,7 +479,8 @@ static void CG_TouchItem( centity_t *cent ) {
 		return;
 	}
 
-	if ( !BG_PlayerTouchesItem( &cg.predictedPlayerState, &cent->currentState, cg.time ) ) {
+	// milestone 7: take the reach from the server's g_itemHeight (serverinfo)
+	if ( !BG_PlayerTouchesItem( &cg.predictedPlayerState, &cent->currentState, cg.time, 35 ) ) {
 		return;
 	}
 
@@ -488,7 +489,8 @@ static void CG_TouchItem( centity_t *cent ) {
 		return;
 	}
 
-	if ( !BG_CanItemBeGrabbed( cgs.gametype, &cent->currentState, &cg.predictedPlayerState ) ) {
+	if ( !BG_CanItemBeGrabbed( cgs.gametype, &cent->currentState, &cg.predictedPlayerState,
+			cg.time, cg.warmup, qfalse, 1 )	// milestone 7 reads armor_tiered and g_weaponRespawn ) {
 		return;	// can't hold it
 	}
 

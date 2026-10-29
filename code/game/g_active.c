@@ -262,7 +262,7 @@ void	G_TouchTriggers( gentity_t *ent ) {
 		// use seperate code for determining if an item is picked up
 		// so you don't have to actually contact its bounding box
 		if ( hit->s.eType == ET_ITEM ) {
-			if ( !BG_PlayerTouchesItem( &ent->client->ps, &hit->s, level.time ) ) {
+			if ( !BG_PlayerTouchesItem( &ent->client->ps, &hit->s, level.time, g_itemHeight.integer ) ) {
 				continue;
 			}
 		} else {
@@ -302,7 +302,7 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 
 	if ( client->sess.spectatorState != SPECTATOR_FOLLOW ) {
 		client->ps.pm_type = PM_SPECTATOR;
-		client->ps.speed = g_speed.value * 1.25f; // faster than normal
+		client->ps.speed = 480;	// retail qagamex86 0x10033ecc
 
 		// set up for pmove
 		memset( &pm, 0, sizeof( pm ) );
@@ -314,6 +314,7 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 			pm.tracemask = MASK_PLAYERSOLID & ~CONTENTS_BODY;	// spectators can fly through bodies
 		pm.trace = trap_Trace;
 		pm.pointcontents = trap_PointContents;
+		pm.settings = &level.pmoveSettings;
 
 		// perform a pmove
 		Pmove( &pm );
@@ -382,9 +383,35 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 
 	client = ent->client;
 	client->timeResidual += msec;
+	client->flagCarryTime += msec;	// retail qagamex86 0x100343f3
 
 	while ( client->timeResidual >= 1000 ) {
 		client->timeResidual -= 1000;
+
+		// team item control: the seconds each powerup and a flag is held
+		// (retail qagamex86 0x10034416)
+		if ( g_gametype.integer >= GT_TEAM && g_gametype.integer != GT_CLAN_ARENA ) {
+			const int team = client->sess.sessionTeam;
+
+			if ( client->ps.powerups[PW_QUAD] ) {
+				level.teamStats[TEAM_STAT_QUAD_TIME][team]++;
+			}
+			if ( client->ps.powerups[PW_BATTLESUIT] ) {
+				level.teamStats[TEAM_STAT_BATTLESUIT_TIME][team]++;
+			}
+			if ( client->ps.powerups[PW_REGEN] ) {
+				level.teamStats[TEAM_STAT_REGEN_TIME][team]++;
+			}
+			if ( client->ps.powerups[PW_HASTE] ) {
+				level.teamStats[TEAM_STAT_HASTE_TIME][team]++;
+			}
+			if ( client->ps.powerups[PW_INVIS] ) {
+				level.teamStats[TEAM_STAT_INVIS_TIME][team]++;
+			}
+			if ( client->ps.powerups[PW_REDFLAG] || client->ps.powerups[PW_BLUEFLAG] || client->ps.powerups[PW_NEUTRALFLAG] ) {
+				level.teamStats[TEAM_STAT_FLAG_TIME][team]++;
+			}
+		}
 
 		// regenerate
 #ifdef MISSIONPACK
@@ -437,6 +464,7 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 		// count down armor when over max
 		if ( client->ps.stats[STAT_ARMOR] > client->ps.stats[STAT_MAX_HEALTH] ) {
 			client->ps.stats[STAT_ARMOR]--;
+			ent->s.armor = client->ps.stats[STAT_ARMOR];
 		}
 	}
 #ifdef MISSIONPACK
@@ -482,23 +510,22 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 /*
 ====================
 ClientIntermissionThink
+
+Retail qagamex86 0x10034d1f: at the intermission a press of attack or use
+toggles the player's ready flag, which the scoreboard shows; the player
+state, its command time included, stays as the intermission left it.
 ====================
 */
 void ClientIntermissionThink( gclient_t *client ) {
 	client->ps.eFlags &= ~EF_TALK;
 	client->ps.eFlags &= ~EF_FIRING;
 
-	// the level will exit when everyone wants to or after timeouts
-
 	// swap and latch button actions
 	client->oldbuttons = client->buttons;
 	client->buttons = client->pers.cmd.buttons;
 	if ( client->buttons & ( BUTTON_ATTACK | BUTTON_USE_HOLDABLE ) & ( client->oldbuttons ^ client->buttons ) ) {
-		// this used to be an ^1 but once a player says ready, it should stick
-		client->readyToExit = 1;
+		client->pers.readyToPlay ^= 1;
 	}
-
-	client->ps.commandTime = client->pers.cmd.serverTime;
 }
 
 
@@ -583,9 +610,9 @@ void ClientEvents( gentity_t *ent, int oldEventSequence ) {
 			if ( g_gametype.integer == GT_HARVESTER ) {
 				if ( ent->client->ps.generic1 > 0 ) {
 					if ( ent->client->sess.sessionTeam == TEAM_RED ) {
-						item = BG_FindItem( "Blue Cube" );
+						item = BG_FindItem( "Blue Skull" );
 					} else {
-						item = BG_FindItem( "Red Cube" );
+						item = BG_FindItem( "Red Skull" );
 					}
 					if ( item ) {
 						for ( j = 0; j < ent->client->ps.generic1; j++ ) {
@@ -760,20 +787,6 @@ void ClientThink_real( gentity_t *ent ) {
 	client->lastCmdTime = ucmd->serverTime;
 	client->lastUpdateFrame = level.framenum;
 
-	if ( pmove_msec.integer < 8 ) {
-		trap_Cvar_Set( "pmove_msec", "8" );
-		trap_Cvar_Update( &pmove_msec );
-	} else if ( pmove_msec.integer > 33 ) {
-		trap_Cvar_Set( "pmove_msec", "33" );
-		trap_Cvar_Update( &pmove_msec );
-	}
-
-	if ( pmove_fixed.integer ) {
-		ucmd->serverTime = ((ucmd->serverTime + pmove_msec.integer-1) / pmove_msec.integer) * pmove_msec.integer;
-		//if (ucmd->serverTime - client->ps.commandTime <= 0)
-		//	return;
-	}
-
 	msec = ucmd->serverTime - client->ps.commandTime;
 	// following others may result in bad times, but we still want
 	// to check for follow toggles
@@ -789,6 +802,34 @@ void ClientThink_real( gentity_t *ent ) {
 	//
 	if ( level.intermissiontime ) {
 		ClientIntermissionThink( client );
+		return;
+	}
+
+	// a deferred spawn tries again once its time has passed (retail
+	// qagamex86 0x10034d79); until then the player flies about as a
+	// spectator, unlinked
+	if ( client->deferredSpawnTime ) {
+		if ( client->deferredSpawnTime < level.time ) {
+			client->deferredSpawnTime = 0;
+			client->ps.pm_type = PM_NORMAL;
+			ClientSpawn( ent );
+		} else {
+			pmove_t pm;
+
+			client->ps.pm_type = PM_SPECTATOR;
+			client->ps.speed = 480;
+			memset( &pm, 0, sizeof( pm ) );
+			pm.ps = &client->ps;
+			pm.cmd = *ucmd;
+			pm.tracemask = MASK_PLAYERSOLID & ~CONTENTS_BODY;
+			pm.trace = trap_Trace;
+			pm.pointcontents = trap_PointContents;
+			pm.settings = &level.pmoveSettings;
+			Pmove( &pm );
+			VectorCopy( client->ps.origin, ent->s.origin );
+			VectorCopy( client->ps.origin, ent->r.currentOrigin );
+			trap_UnlinkEntity( ent );
+		}
 		return;
 	}
 
@@ -899,8 +940,7 @@ void ClientThink_real( gentity_t *ent ) {
 	pm.pointcontents = trap_PointContents;
 	pm.debugLevel = g_debugMove.integer;
 
-	pm.pmove_fixed = pmove_fixed.integer;
-	pm.pmove_msec = pmove_msec.integer;
+	pm.settings = &level.pmoveSettings;
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
@@ -974,17 +1014,26 @@ void ClientThink_real( gentity_t *ent ) {
 
 	// check for respawning
 	if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
-		// wait for the attack button to be pressed
-		if ( level.time > client->respawnTime ) {
-			// forcerespawn is to prevent users from waiting out powerups
-			if ( g_forcerespawn.integer > 0 && 
-				( level.time - client->respawnTime ) > g_forcerespawn.integer * 1000 ) {
-				respawn( ent );
-				return;
+		// retail qagamex86 0x10039f20: once the respawn time has come, attack
+		// or use respawns, and g_respawn_delay_max later the respawn is
+		// forced; during a round mode's countdown the dead come straight
+		// back (clan arena's and attack and defend's waiting for the next
+		// round arrives with milestone 6)
+		if ( level.time >= client->respawnTime ) {
+			qboolean countdown = qfalse;
+
+			switch ( g_gametype.integer ) {
+			case GT_CLAN_ARENA:
+			case GT_FREEZE:
+			case GT_ATTACK_DEFEND:
+			case GT_RED_ROVER:
+				countdown = level.warmupTime > 0;
+				break;
+			default:
+				break;
 			}
-		
-			// pressing attack or use is the normal respawn method
-			if ( ucmd->buttons & ( BUTTON_ATTACK | BUTTON_USE_HOLDABLE ) ) {
+			if ( ( ucmd->buttons & ( BUTTON_ATTACK | BUTTON_USE_HOLDABLE ) )
+				|| level.time - client->respawnTime > g_respawn_delay_max.integer || countdown ) {
 				respawn( ent );
 			}
 		}
@@ -1101,34 +1150,27 @@ void ClientEndFrame( gentity_t *ent ) {
 
 	ent->r.svFlags &= ~svf_self_portal2;
 
-	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR ) {
+	// spectators, and players waiting out a deferred spawn, as in retail
+	// (qagamex86 0x1003560b, which tests the spectator pm_type)
+	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR || ent->client->deferredSpawnTime ) {
 		SpectatorClientEndFrame( ent );
 		return;
 	}
 
 	client = ent->client;
 
-	// turn off any expired powerups
-	for ( i = 0 ; i < MAX_POWERUPS ; i++ ) {
-		if ( client->ps.powerups[ i ] < client->pers.cmd.serverTime ) {
-			client->ps.powerups[ i ] = 0;
+	// turn off any expired powerups by the level clock, unless the player is
+	// held in place (retail qagamex86 0x10035640); runes never expire, they
+	// are held at 0x7fffffff until death
+	if ( !( client->ps.pm_flags & PMF_NO_MOVE ) ) {
+		for ( i = 0 ; i < MAX_POWERUPS ; i++ ) {
+			if ( client->ps.powerups[ i ] < level.time ) {
+				client->ps.powerups[ i ] = 0;
+			}
 		}
 	}
 
 #ifdef MISSIONPACK
-	// set powerup for player animation
-	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
-		ent->client->ps.powerups[PW_GUARD] = level.time;
-	}
-	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
-		ent->client->ps.powerups[PW_SCOUT] = level.time;
-	}
-	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_DOUBLER ) {
-		ent->client->ps.powerups[PW_DOUBLER] = level.time;
-	}
-	if( ent->client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_ARMORREGEN ) {
-		ent->client->ps.powerups[PW_ARMORREGEN] = level.time;
-	}
 	if ( ent->client->invulnerabilityTime > level.time ) {
 		ent->client->ps.powerups[PW_INVULNERABILITY] = level.time;
 	}
@@ -1147,8 +1189,15 @@ void ClientEndFrame( gentity_t *ent ) {
 	// the player any normal movement attributes
 	//
 	if ( level.intermissiontime ) {
-		client->ps.commandTime = client->pers.cmd.serverTime;
 		return;
+	}
+
+	// team modes keep each player's location current (retail qagamex86
+	// 0x100356de)
+	if ( g_gametype.integer >= GT_TEAM ) {
+		gentity_t *loc = Team_GetLocation( ent );
+
+		client->ps.location = ent->s.location = loc ? loc->health : 0;
 	}
 
 	// burn from lava, etc
@@ -1158,6 +1207,7 @@ void ClientEndFrame( gentity_t *ent ) {
 	P_DamageFeedback (ent);
 
 	client->ps.stats[STAT_HEALTH] = ent->health;	// FIXME: get rid of ent->health...
+	ent->s.health = ent->health;	// retail ClientEndFrame (qagamex86 0x10035723)
 
 	G_SetClientSound( ent );
 
@@ -1205,22 +1255,6 @@ void ClientEndFrame( gentity_t *ent ) {
 
 	// unlagged
 	G_StoreHistory( ent );
-
-	// hitsounds
-	if ( client->damage.enemy && client->damage.amount ) {
-		client->ps.persistant[PERS_HITS] += client->damage.enemy;
-		client->damage.enemy = 0;
-		// scale damage by max.health
-		i = client->damage.amount * 100 / client->ps.stats[STAT_MAX_HEALTH];
-		// avoid high-byte setup
-		if ( i > 255 )
-			i = 255;
-		client->ps.persistant[PERS_ATTACKEE_ARMOR] = i;
-		client->damage.amount = 0;
-	} else if ( client->damage.team ) {
-		client->ps.persistant[PERS_HITS] -= client->damage.team;
-		client->damage.team = 0;
-	}
 
 	// set the bit for the reachability area the client is currently in
 //	i = trap_AAS_PointReachabilityAreaIndex( ent->client->ps.origin );

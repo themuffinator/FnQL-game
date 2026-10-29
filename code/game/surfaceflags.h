@@ -59,3 +59,7 @@
 #define	SURF_ALPHASHADOW		0x10000	// do per-pixel light shadow casting in q3map
 #define	SURF_NODLIGHT			0x20000	// don't dlight even if solid (solid lava, skies)
 #define SURF_DUST				0x40000 // leave a dust trail when walking on this surface
+// Quake Live footstep surfaces: retail PM_FootstepForSurface (qagamex86
+// 0x100309a0) plays EV_FOOTSTEP_SNOW and EV_FOOTSTEP_WOOD for these bits
+#define SURF_SNOWSTEPS			0x80000
+#define SURF_WOODSTEPS			0x100000

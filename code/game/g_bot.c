@@ -641,17 +641,18 @@ static void G_AddBot( const char *name, float skill, const char *team, int delay
 	}
 	Info_SetValueForKey( userinfo, "sex", s );
 
+	// retail defaults (qagamex86 0x100376f5)
 	key = "color1";
 	s = Info_ValueForKey( botinfo, key );
 	if ( !*s ) {
-		s = "4";
+		s = "7";
 	}
 	Info_SetValueForKey( userinfo, key, s );
 
 	key = "color2";
 	s = Info_ValueForKey( botinfo, key );
 	if ( !*s ) {
-		s = "5";
+		s = "25";
 	}
 	Info_SetValueForKey( userinfo, key, s );
 
@@ -675,8 +676,15 @@ static void G_AddBot( const char *name, float skill, const char *team, int delay
 		ClientDisconnect( clientNum );
 	}
 
+	// retail (qagamex86 0x100377cd): a bot with no team asks for the
+	// emptier team in team games and for "red", that is the game, otherwise;
+	// its AI sends the team command once it is set up
+	if ( !team || !*team ) {
+		team = ( g_gametype.integer >= GT_TEAM && PickTeam( clientNum ) != TEAM_RED ) ? "blue" : "red";
+	}
+
 	Info_SetValueForKey( userinfo, "characterfile", Info_ValueForKey( botinfo, "aifile" ) );
-	Info_SetValueForKey( userinfo, "skill", va( "%1.2f", skill ) );
+	Info_SetValueForKey( userinfo, "skill", va( "%5.2f", skill ) );
 	Info_SetValueForKey( userinfo, "team", team );
 
 	bot = &g_entities[ clientNum ];

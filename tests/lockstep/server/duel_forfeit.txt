@@ -1,0 +1,20 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory duel --frames 800
+# --scenario ...): the forfeit command in a duel on campgrounds.  Alpha
+# tries it in warmup; after the match starts the leader is refused, and
+# then the trailing player gives up.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 10 alpha forfeit
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 500 bravo kill
+clientcmd 560 alpha forfeit
+clientcmd 600 bravo forfeit
+clientcmd 640 alpha forfeit

@@ -1143,18 +1143,25 @@ Items can be picked up without actually touching their physical bounds to make
 grabbing them easier
 ============
 */
-qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime ) {
+qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime, int itemHeight ) {
 	vec3_t		origin;
+	const gitem_t	*it;
+	int			reach;
 
 	BG_EvaluateTrajectory( &item->pos, atTime, origin );
 
-	// we are ignoring ducked differences here
-	if ( ps->origin[0] - origin[0] > 44
-		|| ps->origin[0] - origin[0] < -50
+	// Quake Live (retail qagamex86 0x1002cd30): 36 units across both ways,
+	// and from 50 below to g_itemHeight (35 for flags) plus 29 above;
+	// Quake III reached 44 and 50 on x and 36 up and down
+	it = ( item->modelindex > 0 && item->modelindex < bg_numItems ) ? &bg_itemlist[item->modelindex] : NULL;
+	reach = ( it && it->giType == IT_TEAM && it->giTag >= PW_REDFLAG && it->giTag <= PW_NEUTRALFLAG ) ? 35 : itemHeight;
+
+	if ( ps->origin[0] - origin[0] > 36
+		|| ps->origin[0] - origin[0] < -36
 		|| ps->origin[1] - origin[1] > 36
 		|| ps->origin[1] - origin[1] < -36
-		|| ps->origin[2] - origin[2] > 36
-		|| ps->origin[2] - origin[2] < -36 ) {
+		|| ps->origin[2] - origin[2] > reach + 29
+		|| ps->origin[2] - origin[2] < -50 ) {
 		return qfalse;
 	}
 
@@ -1163,165 +1170,187 @@ qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTim
 
 
 
+// retail weapon table columns (qagamex86 0x1008ff18 and 0x1008ff14 + w * 0x30)
+const int bg_weaponMaxAmmo[WP_NUM_WEAPONS] = {
+	0, -1, 150, 25, 25, 25, 150, 25, 150, 25, -1, 25, 5, 200, 150
+};
+const int bg_weaponPackAmmo[WP_NUM_WEAPONS] = {
+	0, 0, 50, 5, 5, 5, 50, 5, 50, 2, 0, 5, 5, 100, 50
+};
+
+/*
+================
+BG_CanTieredArmorBeGrabbed
+
+Retail qagamex86 0x1002ce00, under armor_tiered: red armor up to 200, and a
+lighter armor only while it would not weaken the tier being worn.
+================
+*/
+static qboolean BG_CanTieredArmorBeGrabbed( const gitem_t *item, const playerState_t *ps ) {
+	const int armor = ps->stats[STAT_ARMOR];
+
+	switch ( item->quantity ) {
+	case 100:
+		return armor < 200;
+	case 50:
+		if ( ps->stats[STAT_ARMOR_TIER] <= 1 ) {
+			return armor < 150;
+		}
+		return (double)armor * 0.75 <= 99.0;
+	case 25:
+		if ( ps->stats[STAT_ARMOR_TIER] == 0 ) {
+			return armor < 100;
+		}
+		if ( ps->stats[STAT_ARMOR_TIER] == 1 ) {
+			return (double)armor * 0.66 <= 50.0;
+		}
+		return (double)armor * 0.75 <= 50.0;
+	default:
+		return armor < ps->stats[STAT_MAX_HEALTH] * 2;
+	}
+}
+
 /*
 ================
 BG_CanItemBeGrabbed
 
 Returns false if the item should not be picked up.
 This needs to be the same for client side prediction and server use.
+
+Retail qagamex86 0x1002ced0: the dropper of an item cannot take it back for
+a second; weapons stay while g_weaponRespawn is 0; ammo boxes and packs stop
+at the weapon table's maxima (domination's are always taken); armor follows
+armor_tiered; flags follow each mode's rules, attack and defend's only
+outside warmup.
 ================
 */
-qboolean BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const playerState_t *ps ) {
-	gitem_t	*item;
-#ifdef MISSIONPACK
-	int		upperBound;
-#endif
+qboolean BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const playerState_t *ps,
+	int time, int warmupTime, qboolean armorTiered, int weaponRespawn ) {
+	const gitem_t	*item;
+	const int		team = ps->persistant[PERS_TEAM];
 
 	if ( ent->modelindex < 1 || ent->modelindex >= bg_numItems ) {
 		Com_Error( ERR_DROP, "BG_CanItemBeGrabbed: index out of range" );
+	}
+
+	if ( ent->modelindex2 && time < ent->time + 1000 && ps->clientNum == ent->clientNum ) {
+		return qfalse;
 	}
 
 	item = &bg_itemlist[ent->modelindex];
 
 	switch( item->giType ) {
 	case IT_WEAPON:
-		return qtrue;	// weapons are always picked up
+		if ( ps->pm_flags & PMF_INFECTED ) {
+			return qfalse;
+		}
+		// with weapons staying, a weapon held with ammo is left for others
+		return weaponRespawn || !( ps->stats[STAT_WEAPONS] & ( 1 << item->giTag ) )
+			|| !ps->ammo[item->giTag] || ent->modelindex2;
 
 	case IT_AMMO:
-		if ( ps->ammo[ item->giTag ] >= 200 ) {
-			return qfalse;		// can't hold any more
+		if ( gametype == GT_DOMINATION ) {
+			return qtrue;
 		}
-		return qtrue;
+		// an ammo pack while any weapon owned is short of its maximum
+		if ( item->giTag == WP_NUM_WEAPONS ) {
+			int w;
+			for ( w = WP_MACHINEGUN; w < WP_NUM_WEAPONS; w++ ) {
+				if ( ( ps->stats[STAT_WEAPONS] & ( 1 << w ) ) && bg_weaponMaxAmmo[w] > 0
+					&& ps->ammo[w] < bg_weaponMaxAmmo[w] ) {
+					return qtrue;
+				}
+			}
+			return qfalse;
+		}
+		if ( item->giTag <= WP_NONE || item->giTag >= WP_NUM_WEAPONS ) {
+			return qfalse;
+		}
+		return ps->ammo[ item->giTag ] < bg_weaponMaxAmmo[ item->giTag ];
 
 	case IT_ARMOR:
-#ifdef MISSIONPACK
-		if( ps->stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
-			return qfalse;
+		if ( armorTiered ) {
+			return BG_CanTieredArmorBeGrabbed( item, ps );
 		}
-
-		// we also clamp armor to the maxhealth for handicapping
-		if( ps->stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
-			upperBound = ps->stats[STAT_MAX_HEALTH];
-		}
-		else {
-			upperBound = ps->stats[STAT_MAX_HEALTH] * 2;
-		}
-
-		if ( ps->stats[STAT_ARMOR] >= upperBound ) {
-			return qfalse;
-		}
-#else
-		if ( ps->stats[STAT_ARMOR] >= ps->stats[STAT_MAX_HEALTH] * 2 ) {
-			return qfalse;
-		}
-#endif
-		return qtrue;
+		return ps->stats[STAT_ARMOR] < ps->stats[STAT_MAX_HEALTH] * 2;
 
 	case IT_HEALTH:
 		// small and mega healths will go over the max, otherwise
 		// don't pick up if already at max
-#ifdef MISSIONPACK
-		if( ps->stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
-			upperBound = ps->stats[STAT_MAX_HEALTH];
-		}
-		else
-#endif
 		if ( item->quantity == 5 || item->quantity == 100 ) {
-			if ( ps->stats[STAT_HEALTH] >= ps->stats[STAT_MAX_HEALTH] * 2 ) {
-				return qfalse;
-			}
-			return qtrue;
+			return ps->stats[STAT_HEALTH] < ps->stats[STAT_MAX_HEALTH] * 2;
 		}
-
-		if ( ps->stats[STAT_HEALTH] >= ps->stats[STAT_MAX_HEALTH] ) {
-			return qfalse;
-		}
-		return qtrue;
+		return ps->stats[STAT_HEALTH] < ps->stats[STAT_MAX_HEALTH];
 
 	case IT_POWERUP:
-		return qtrue;	// powerups are always picked up
-
-#ifdef MISSIONPACK
-	case IT_PERSISTANT_POWERUP:
-		// can only hold one item at a time
-		if ( ps->stats[STAT_PERSISTANT_POWERUP] ) {
-			return qfalse;
-		}
-
-		// check team only
-		if( ( ent->generic1 & 2 ) && ( ps->persistant[PERS_TEAM] != TEAM_RED ) ) {
-			return qfalse;
-		}
-		if( ( ent->generic1 & 4 ) && ( ps->persistant[PERS_TEAM] != TEAM_BLUE ) ) {
-			return qfalse;
-		}
-
+	case IT_KEY:
 		return qtrue;
-#endif
-
-	case IT_TEAM: // team items, such as flags
-#ifdef MISSIONPACK		
-		if( gametype == GT_1FCTF ) {
-			// neutral flag can always be picked up
-			if( item->giTag == PW_NEUTRALFLAG ) {
-				return qtrue;
-			}
-			if (ps->persistant[PERS_TEAM] == TEAM_RED) {
-				if (item->giTag == PW_BLUEFLAG  && ps->powerups[PW_NEUTRALFLAG] ) {
-					return qtrue;
-				}
-			} else if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
-				if (item->giTag == PW_REDFLAG  && ps->powerups[PW_NEUTRALFLAG] ) {
-					return qtrue;
-				}
-			}
-		}
-#endif
-		if( gametype == GT_CTF ) {
-			// ent->modelindex2 is non-zero on items if they are dropped
-			// we need to know this because we can pick up our dropped flag (and return it)
-			// but we can't pick up our flag at base
-			if (ps->persistant[PERS_TEAM] == TEAM_RED) {
-				if (item->giTag == PW_BLUEFLAG ||
-					(item->giTag == PW_REDFLAG && ent->modelindex2) ||
-					(item->giTag == PW_REDFLAG && ps->powerups[PW_BLUEFLAG]) )
-					return qtrue;
-			} else if (ps->persistant[PERS_TEAM] == TEAM_BLUE) {
-				if (item->giTag == PW_REDFLAG ||
-					(item->giTag == PW_BLUEFLAG && ent->modelindex2) ||
-					(item->giTag == PW_BLUEFLAG && ps->powerups[PW_REDFLAG]) )
-					return qtrue;
-			}
-		}
-
-#ifdef MISSIONPACK
-		if( gametype == GT_HARVESTER ) {
-			return qtrue;
-		}
-#endif
-		return qfalse;
 
 	case IT_HOLDABLE:
 		// can only hold one item at a time
-		if ( ps->stats[STAT_HOLDABLE_ITEM] ) {
+		return !ps->stats[STAT_HOLDABLE_ITEM];
+
+	case IT_PERSISTANT_POWERUP:
+		// can only hold one item at a time, and some are for one team only
+		if ( ps->stats[STAT_PERSISTANT_POWERUP] ) {
+			return qfalse;
+		}
+		if ( ( ent->generic1 & 2 ) && team != TEAM_RED ) {
+			return qfalse;
+		}
+		if ( ( ent->generic1 & 4 ) && team != TEAM_BLUE ) {
 			return qfalse;
 		}
 		return qtrue;
 
-	case IT_KEY:
-		// Quake Live keys (stats[STAT_KEY_MASK]) arrive with the key doors in
-		// milestone 4; until then they stay in place.
-		return qfalse;
+	case IT_TEAM: // team items, such as flags
+		switch ( gametype ) {
+		case GT_CTF:
+			// ent->modelindex2 is non-zero on items if they are dropped
+			// we need to know this because we can pick up our dropped flag (and return it)
+			// but we can't pick up our flag at base
+			if ( team == TEAM_RED ) {
+				return item->giTag == PW_BLUEFLAG
+					|| ( item->giTag == PW_REDFLAG && ( ent->modelindex2 || ps->powerups[PW_BLUEFLAG] ) );
+			}
+			if ( team == TEAM_BLUE ) {
+				return item->giTag == PW_REDFLAG
+					|| ( item->giTag == PW_BLUEFLAG && ( ent->modelindex2 || ps->powerups[PW_REDFLAG] ) );
+			}
+			return qfalse;
+		case GT_1FCTF:
+			// neutral flag can always be picked up
+			if ( item->giTag == PW_NEUTRALFLAG ) {
+				return qtrue;
+			}
+			if ( team == TEAM_RED ) {
+				return item->giTag == PW_BLUEFLAG && ps->powerups[PW_NEUTRALFLAG];
+			}
+			if ( team == TEAM_BLUE ) {
+				return item->giTag == PW_REDFLAG && ps->powerups[PW_NEUTRALFLAG];
+			}
+			return qfalse;
+		case GT_HARVESTER:
+			return qtrue;
+		case GT_ATTACK_DEFEND:
+			if ( warmupTime ) {
+				return qfalse;
+			}
+			if ( team == TEAM_RED ) {
+				return item->giTag == PW_BLUEFLAG || ( item->giTag == PW_REDFLAG && ps->powerups[PW_BLUEFLAG] );
+			}
+			if ( team == TEAM_BLUE ) {
+				return item->giTag == PW_REDFLAG || ( item->giTag == PW_BLUEFLAG && ps->powerups[PW_REDFLAG] );
+			}
+			return qfalse;
+		default:
+			return qfalse;
+		}
 
-        case IT_BAD:
-            Com_Error( ERR_DROP, "BG_CanItemBeGrabbed: IT_BAD" );
-        default:
-#ifndef Q3_VM
-#ifndef NDEBUG
-          Com_Printf("BG_CanItemBeGrabbed: unknown enum %d\n", item->giType );
-#endif
-#endif
-         break;
+	case IT_BAD:
+	default:
+		Com_Error( ERR_DROP, "BG_CanItemBeGrabbed: invalid item type %d", item->giType );
+		break;
 	}
 
 	return qfalse;
@@ -1543,8 +1572,12 @@ void BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 	if ( snap ) {
 		SnapVector( s->pos.trBase );
 	}
-	// set the trDelta for flag direction
+	// set the trDelta for flag direction; Quake Live sends it in whole
+	// units too (retail qagamex86 0x1002d5b0)
 	VectorCopy( ps->velocity, s->pos.trDelta );
+	if ( snap ) {
+		SnapVector( s->pos.trDelta );
+	}
 
 	s->apos.trType = TR_INTERPOLATE;
 	VectorCopy( ps->viewangles, s->apos.trBase );

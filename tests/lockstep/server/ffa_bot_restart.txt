@@ -1,0 +1,27 @@
+# Gate G3 scenario (scripts/server_lockstep.py --scenario ...): one scripted
+# player and one bot on an FFA map.  The player joins, turns and fires the
+# machinegun, kills itself, presses attack to respawn, and then the match
+# restarts (map_restart 0) and it runs again.  This exercises bot hosting, a
+# client command that kills, respawning and the restart path in the rig.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+
+clientcmd 1 alpha team f
+cmd 5 addbot sarge 3
+
+at 0   alpha weapon=2
+at 40  alpha forward=127 dyaw=2
+at 80  alpha buttons=attack
+at 110 alpha buttons=0 forward=0 dyaw=0
+clientcmd 120 alpha kill
+# Observed (retail qagame 1069): attack 2.75 s after a self-kill does not
+# respawn, 4 s after does.  Press it 4.25 s after.
+at 290 alpha buttons=attack
+at 296 alpha buttons=0
+at 300 alpha forward=127
+cmd 340 map_restart 0
+at 350 alpha forward=127 right=64
+at 390 alpha forward=0 right=0

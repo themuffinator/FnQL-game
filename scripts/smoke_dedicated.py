@@ -29,7 +29,7 @@ REQUIRED = [
     "VM_LoadDll(qagame): FnQL-game ",
     "qagame : native " + MODULE_NAME + " (FnQL-game ",
     "------- Game Initialization -------",
-    "\\fnql_game\\",  # identity key reached the serverinfo
+    "fnql_game ",  # identity key reached the serverinfo (listed by the serverinfo command)
     "AAS initialized.",
     "loaded sarge from bots/sarge_t.c",
     "ClientConnect: 0",
@@ -94,13 +94,12 @@ def main() -> int:
             "+set", "sv_pure", "0",
             "+set", "bot_enable", "1",
             "+set", "vm_gameProvider", "fnql",
-            "+map", args.map, args.factory,
-            "+vminfo",
-            "+wait", "40",
-            "+addbot", "sarge", "3",
-            "+wait", "200",
-            "+echo", "FnQL-game smoke: commands done",
-            "+status",
+            # a dedicated server starts its first map through serverstartup, after
+            # the command line (retail's default picks a random map), so the
+            # whole sequence runs from there
+            "+set", "serverstartup", "; ".join([
+                f"map {args.map} {args.factory}", "vminfo", "wait 40", "addbot sarge 3", "wait 200",
+                "serverinfo", "echo FnQL-game smoke: commands done", "status"]),
         ]
         process = subprocess.Popen(command, cwd=engine.parent, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

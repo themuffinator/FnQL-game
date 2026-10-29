@@ -140,8 +140,8 @@ Calculate origin2 so the target apogee will be hit
 void AimAtTarget( gentity_t *self ) {
 	gentity_t	*ent;
 	vec3_t		origin;
-	float		height, gravity, time, forward;
-	float		dist;
+	float		time, dist;
+	double		forward;
 
 	VectorAdd( self->r.absmin, self->r.absmax, origin );
 	VectorScale ( origin, 0.5, origin );
@@ -152,23 +152,22 @@ void AimAtTarget( gentity_t *self ) {
 		return;
 	}
 
-	height = ent->s.origin[2] - origin[2];
-	gravity = g_gravity.value;
-	time = sqrt( height / ( 0.5 * gravity ) );
+	time = (float)sqrt( (double)(float)( ent->s.origin[2] - origin[2] ) / ( (double)g_gravity.value * 0.5 ) );
 	if ( !time ) {
 		G_FreeEntity( self );
 		return;
 	}
 
-	// set s.origin2 to the push velocity
+	// set s.origin2 to the push velocity, in whole units as retail sends it
+	// (qagamex86 0x1006b600)
 	VectorSubtract ( ent->s.origin, origin, self->s.origin2 );
 	self->s.origin2[2] = 0;
-	dist = VectorNormalize( self->s.origin2);
+	dist = PM_VectorNormalize( self->s.origin2 );
 
-	forward = dist / time;
-	VectorScale( self->s.origin2, forward, self->s.origin2 );
-
-	self->s.origin2[2] = time * gravity;
+	forward = (double)dist / time;
+	self->s.origin2[0] = (int)(float)( self->s.origin2[0] * forward );
+	self->s.origin2[1] = (int)(float)( self->s.origin2[1] * forward );
+	self->s.origin2[2] = (int)(float)( (double)time * g_gravity.value );
 }
 
 
@@ -187,8 +186,8 @@ void SP_trigger_push( gentity_t *self ) {
 
 	self->s.eType = ET_PUSH_TRIGGER;
 	self->touch = trigger_push_touch;
-	self->think = AimAtTarget;
-	self->nextthink = level.time + FRAMETIME;
+	// retail aims the pad every frame (qagamex86 0x1006b7e8)
+	self->frameThink = AimAtTarget;
 	trap_LinkEntity (self);
 }
 

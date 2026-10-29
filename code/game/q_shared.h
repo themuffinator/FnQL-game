@@ -508,6 +508,12 @@ int		Q_rand( int *seed );
 float	Q_random( int *seed );
 float	Q_crandom( int *seed );
 
+#if defined( FNQL_TRACE_RAND ) && defined( QAGAME )
+// meson -Dtrace-rand=true: every draw is logged with its source line (g_main.c)
+int G_TracedRand( const char *file, int line );
+#define rand() G_TracedRand( __FILE__, __LINE__ )
+#endif
+
 #define random()	((rand () & 0x7fff) / ((float)0x7fff))
 #define crandom()	(2.0 * (random() - 0.5))
 
@@ -689,6 +695,18 @@ default values.
 #define	CVAR_TEMP			256	// can be set even when cheats are disabled, but is not archived
 #define CVAR_CHEAT			512	// can not be changed if cheats are disabled
 #define CVAR_NORESTART		1024	// do not clear when a cvar_restart is issued
+
+// Quake Live cvar flags (values shared with FnQL code/qcommon/q_shared.h).
+// The engine publishes the cvars of each QL_* group as an infostring
+// configstring; CVAR_GAMERULE marks game-rule cvars.  Bit 0x40000 appears
+// on a subset of retail pmove cvars with no identified meaning yet; it is
+// passed through unchanged.
+#define CVAR_QL_PMOVE_SETTINGS		0x00004000	// CS_PMOVE_SETTINGS
+#define CVAR_QL_WEAPON_RELOAD		0x00008000	// CS_WEAPON_SETTINGS
+#define CVAR_QL_PLAYER_APPEARANCE	0x00010000	// CS_APPEARANCE_SETTINGS
+#define CVAR_QL_ARMOR_TIERED		0x00020000	// CS_ARMOR_SETTINGS
+#define CVAR_QL_FLAG_40000			0x00040000
+#define CVAR_GAMERULE				0x00100000
 
 #define	MAX_CVAR_VALUE_STRING	256
 

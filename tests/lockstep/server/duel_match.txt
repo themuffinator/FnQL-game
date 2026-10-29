@@ -1,0 +1,51 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory duel --frames 1827
+# --scenario ...): three scripted clients in a duel on campgrounds.  Alpha
+# and bravo join and ready up while charlie waits in the queue; the warmup
+# counts down and the match starts.  Both fire, bravo kills itself and
+# respawns, and then alpha leaves for the spectators during the match.
+# The duelists and the spectator then vote on the next map.  This
+# exercises ready-up, the warmup countdown, the match start, duel
+# scoring, a duelist forfeiting, the intermission and its map vote, and
+# ExitLevel; frame 1828 loads the voted map, where the run stops.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+at 0   charlie weapon=2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+at 520 alpha forward=127 dyaw=1
+at 560 alpha forward=0 dyaw=0 buttons=attack
+at 590 alpha buttons=0
+at 530 bravo forward=127 right=64
+at 570 bravo forward=0 right=0
+clientcmd 600 bravo kill
+clientcmd 610 alpha score
+clientcmd 610 charlie score
+at 700 bravo buttons=attack
+at 706 bravo buttons=0
+at 720 bravo forward=127
+at 760 bravo forward=0
+clientcmd 800 bravo score
+clientcmd 900 alpha team s
+clientcmd 920 charlie score
+# the intermission's map vote: votes, a repeat inside two seconds, a repeat
+# of the same choice, a change of mind, and a ready toggle by attack
+clientcmd 950 alpha vote 1
+clientcmd 952 bravo vote 2
+clientcmd 960 alpha vote 2
+clientcmd 1100 alpha vote 1
+clientcmd 1110 alpha vote 3
+clientcmd 1200 charlie vote 2
+at 1000 bravo buttons=attack
+at 1004 bravo buttons=0

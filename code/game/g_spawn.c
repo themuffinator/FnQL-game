@@ -404,11 +404,72 @@ Spawn an entity and fill in all of the level fields from
 level.spawnVars[], then call the class specfic spawn function
 ===================
 */
+// Quake Live "gametype" / "not_gametype" tokens, in gametype_t order (retail
+// qagamex86 0x1002d870).  A token selects bit ( gametype + 1 ) of the mask.
+static const char *const g_spawnGametypeTokens[GT_MAX_GAME_TYPE] = {
+	"FFA", "DUEL", "RACE", "TDM", "CA", "CTF", "1F", "OB", "HAR", "FT", "DOM", "AD", "RR"
+};
+
+/*
+===================
+G_SpawnGametypeMask
+
+Parses a whitespace-separated gametype token list.
+===================
+*/
+static int G_SpawnGametypeMask( const char *list ) {
+	const char *p = list;
+	const char *token;
+	int mask = 0;
+	int i;
+
+	while ( 1 ) {
+		token = COM_ParseExt( &p, qtrue );
+		if ( !token[0] ) {
+			break;
+		}
+		for ( i = 0; i < GT_MAX_GAME_TYPE; i++ ) {
+			if ( !Q_stricmp( token, g_spawnGametypeTokens[i] ) ) {
+				mask |= 1 << ( i + 1 );
+			}
+		}
+	}
+	return mask;
+}
+
+/*
+===================
+G_SpawnFilterExempt
+
+Entities the current gametype needs regardless of the map's filters (retail
+qagamex86 0x10065f30): items whose row marks this gametype, and the obelisks
+in Attack and Defend.
+===================
+*/
+static qboolean G_SpawnFilterExempt( const char *classname ) {
+	const gitem_t *item;
+
+	if ( !classname || !classname[0] ) {
+		return qfalse;
+	}
+	for ( item = bg_itemlist + 1; item->classname; item++ ) {
+		if ( !strcmp( item->classname, classname ) ) {
+			return ( item->retail[1] & ( 1 << g_gametype.integer ) ) ? qtrue : qfalse;
+		}
+	}
+	if ( g_gametype.integer == GT_ATTACK_DEFEND &&
+		( !strcmp( classname, "team_redobelisk" ) || !strcmp( classname, "team_blueobelisk" ) ) ) {
+		return qtrue;
+	}
+	return qfalse;
+}
+
 void G_SpawnGEntityFromSpawnVars( void ) {
 	int			i;
 	gentity_t	*ent;
-	char		*s, *value, *gametypeName;
-	static char *gametypeNames[] = {"ffa", "tournament", "single", "team", "ctf", "oneflag", "obelisk", "harvester", "teamtournament"};
+	char		*value;
+	qboolean	exempt;
+	const int	gametypeBit = 1 << ( g_gametype.integer + 1 );
 
 	// get the next free entity
 	ent = G_Spawn();
@@ -417,52 +478,24 @@ void G_SpawnGEntityFromSpawnVars( void ) {
 		G_ParseField( level.spawnVars[i][0], level.spawnVars[i][1], ent );
 	}
 
-	// check for "notsingle" flag
-	if ( G_IsSinglePlayer() ) {
-		G_SpawnInt( "notsingle", "0", &i );
+	// Quake Live spawn filters (retail qagamex86 0x10066020): "notfree" in
+	// FFA, Duel and Race, "notteam" in team modes, then the "gametype" and
+	// "not_gametype" token lists.  Quake III's notsingle/notq3a/notta keys
+	// are not honoured by retail and are ignored here too.
+	exempt = G_SpawnFilterExempt( ent->classname );
+	if ( !exempt ) {
+		G_SpawnInt( g_gametype.integer >= GT_TEAM ? "notteam" : "notfree", "0", &i );
 		if ( i ) {
 			G_FreeEntity( ent );
 			return;
 		}
-	}
-	// check for "notteam" flag (GT_FFA, GT_TOURNAMENT, GT_RACE)
-	if ( g_gametype.integer >= GT_TEAM ) {
-		G_SpawnInt( "notteam", "0", &i );
-		if ( i ) {
+		if ( G_SpawnString( "gametype", "", &value ) && !( G_SpawnGametypeMask( value ) & gametypeBit ) ) {
 			G_FreeEntity( ent );
 			return;
 		}
-	} else {
-		G_SpawnInt( "notfree", "0", &i );
-		if ( i ) {
+		if ( G_SpawnString( "not_gametype", "", &value ) && ( G_SpawnGametypeMask( value ) & gametypeBit ) ) {
 			G_FreeEntity( ent );
 			return;
-		}
-	}
-
-#ifdef MISSIONPACK
-	G_SpawnInt( "notta", "0", &i );
-	if ( i ) {
-		G_FreeEntity( ent );
-		return;
-	}
-#else
-	G_SpawnInt( "notq3a", "0", &i );
-	if ( i ) {
-		G_FreeEntity( ent );
-		return;
-	}
-#endif
-
-	if( G_SpawnString( "gametype", NULL, &value ) ) {
-		if( g_gametype.integer >= GT_FFA && g_gametype.integer < GT_MAX_GAME_TYPE ) {
-			gametypeName = gametypeNames[g_gametype.integer];
-
-			s = strstr( value, gametypeName );
-			if( !s ) {
-				G_FreeEntity( ent );
-				return;
-			}
 		}
 	}
 
@@ -567,6 +600,7 @@ Every map should have exactly one worldspawn.
 */
 void SP_worldspawn( void ) {
 	char	*s;
+	int		delay, spread;
 
 	G_SpawnString( "classname", "", &s );
 	if ( Q_stricmp( s, "worldspawn" ) ) {
@@ -584,16 +618,31 @@ void SP_worldspawn( void ) {
 	G_SpawnString( "message", "", &s );
 	trap_SetConfigstring( CS_MESSAGE, s );				// map specific message
 
+	G_SpawnString( "author", "", &s );
+	trap_SetConfigstring( CS_MAP_AUTHOR, s );
+
+	G_SpawnString( "author2", "", &s );
+	trap_SetConfigstring( CS_MAP_AUTHOR2, s );
+
 	trap_SetConfigstring( CS_MOTD, g_motd.string );		// message of the day
 
-	G_SpawnString( "gravity", "800", &s );
-	trap_Cvar_Set( "g_gravity", s );
+	// retail keeps the server's g_gravity unless the map sets one
+	if ( G_SpawnString( "gravity", "800", &s ) ) {
+		trap_Cvar_Set( "g_gravity", s );
+	}
 
 	G_SpawnString( "enableDust", "0", &s );
 	trap_Cvar_Set( "g_enableDust", s );
 
 	G_SpawnString( "enableBreath", "0", &s );
+	trap_SetConfigstring( CS_ENABLE_BREATH, s );
 	trap_Cvar_Set( "g_enableBreath", s );
+
+	G_SpawnString( "trainingMap", "0", &s );
+	if ( atoi( s ) == 1 ) {
+		trap_Cvar_Set( "g_training", "1" );
+	}
+	level.trainingMap = Q_stricmp( s, "0" ) != 0;
 
 	g_entities[ENTITYNUM_WORLD].s.number = ENTITYNUM_WORLD;
 	g_entities[ENTITYNUM_WORLD].r.ownerNum = ENTITYNUM_NONE;
@@ -603,21 +652,28 @@ void SP_worldspawn( void ) {
 	g_entities[ENTITYNUM_NONE].r.ownerNum = ENTITYNUM_NONE;
 	g_entities[ENTITYNUM_NONE].classname = "nothing";
 
-	// see if we want a warmup time
-	if ( /*g_restarted.integer ||*/ G_IsSinglePlayer() ) {
-		//trap_Cvar_Set( "g_restarted", "0" );
+	// Quake Live starts every map in PRE_GAME, waiting for players
+	// (retail qagamex86 0x1006670b); a map_restart goes straight into the
+	// match
+	level.warmupTime = -1;
+	trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime ) );
+	trap_Cvar_Set( "g_gameState", "PRE_GAME" );
+	if ( g_restarted.integer ) {
+		trap_Cvar_Set( "g_restarted", "0" );
 		level.warmupTime = 0;
-		trap_SetConfigstring( CS_WARMUP, "" );
-	} else {
-		// assume that g_doWarmup is always 1
-		level.warmupTime = -1;
-		if ( g_warmup.integer > 0 ) {
-			trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime ) );
-		} else {
-			trap_SetConfigstring( CS_WARMUP, "" );
-		}
+		trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime ) );
+		trap_Cvar_Set( "g_gameState", "IN_PROGRESS" );
+	} else if ( g_doWarmup.integer ) {
 		G_LogPrintf( "Warmup:\n" );
 	}
+
+	// the first key and powerup spawns, drawn once per map
+	delay = g_spawnDelay_key.integer > 0 ? g_spawnDelay_key.integer : 0;
+	spread = g_spawnDelayRandom_key.integer > 0 ? g_spawnDelayRandom_key.integer : 0;
+	level.keySpawnDelay = (int)( G_Random() * spread + delay );
+	delay = g_spawnDelay_powerup.integer > 0 ? g_spawnDelay_powerup.integer : 0;
+	spread = g_spawnDelayRandom_powerup.integer > 0 ? g_spawnDelayRandom_powerup.integer : 0;
+	level.powerupSpawnDelay = (int)( G_Random() * spread + delay );
 }
 
 

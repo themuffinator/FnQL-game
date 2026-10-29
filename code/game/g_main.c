@@ -25,9 +25,7 @@ gclient_t		g_clients[MAX_CLIENTS];
 
 static cvarTable_t gameCvarTable[] = {
 
-	// noset vars
-	{ NULL, "gamename", GAMEVERSION , CVAR_SERVERINFO | CVAR_ROM, 0, qfalse  },
-	{ NULL, "gamedate", __DATE__ , CVAR_ROM, 0, qfalse  },
+	// retail prints gamename and gamedate at init but registers neither
 	// FnQL-game identity for capable peers and server browsers.  Retail
 	// clients ignore unknown serverinfo keys; extensions are negotiated
 	// separately (docs/COMPATIBILITY.md).
@@ -44,9 +42,8 @@ static void G_InitGame( int levelTime, int randomSeed, int restart );
 static void G_RunFrame( int levelTime );
 static void G_ShutdownGame( int restart );
 static void CheckExitRules( void );
-#ifndef OLD_CHECK_EXIT_RULES
-static void CheckExitRulesLater( void );
-#endif
+static void G_WarmupEnd( void );
+static qboolean G_ShouldForfeit( void );
 static void SendScoreboardMessageToAllClients( void );
 
 // extension interface
@@ -117,42 +114,6 @@ intptr_t vmMain( int command, int arg0, int arg1, int arg2 ) {
 		ret = -1;
 	}
 
-#ifndef OLD_CHECK_EXIT_RULES
-	// In vanilla we did `CheckExitRules()` after each frag,
-	// which there can be multiple of when dealing with e.g. splash damage.
-	// And the order in which players get killed is not well-defined:
-	// e.g. for `G_RadiusDamage` and telefrag, kills get performed
-	// in the order returned from `trap_EntitiesInBox`;
-	// for the shotgun each pellet deals damage by itself,
-	// and the order is random;
-	// for the railgun the closest enemy gets damaged first.
-	// That resulted in inconsistent rules when there is one frag left
-	// and someone frags both a enemy and themself (or a teammate):
-	// if the enemy is processed first then the attacker wins.
-	// If a teammate is processed first then the game continues.
-	// Let's fix this by only doing `CheckExitRules()`
-	// when we're done processing the command.
-	//
-	// Note that this new behavior can result in e.g. two players
-	// hitting the frag limit at the same time.
-	// This can happen with missiles, which we run in `G_RunFrame()`.
-	// In such a case `ScoreIsTied()` will kick in, and the game will continue
-	// until the score gets untied, so this new behavior doesn't introduce
-	// a "multiple winners" situation.
-	//
-	// One might argue that in case of two missiles exploding on the same frame,
-	// the old behavoir is more fair, because `G_RunMissile()` is run
-	// in the order in which the missiles were created,
-	// so whoever shot first should win.
-	// However, this isn't entirely obviously fair,
-	// because two missiles can explode on the same frame
-	// even if they were shot a long time apart.
-	// For example, grenade launcher vs rocket launcher.
-	// In this case let's just tie the score.
-	if ( level.needToCheckExitRules ) {
-		CheckExitRules();
-	}
-#endif
 
 	return ret;
 }
@@ -183,6 +144,19 @@ void G_BroadcastServerCommand( int ignoreClient, const char *command ) {
 		}
 	}
 }
+
+
+#ifdef FNQL_TRACE_RAND
+#undef rand
+int G_TracedRand( const char *file, int line ) {
+	static unsigned	draws;
+	const int		value = rand();
+
+	G_Printf( "fnql-game: rand #%i = %d at %d from %s:%d\n", (int)draws++, value, level.time, file, line );
+	return value;
+}
+#define rand() G_TracedRand( __FILE__, __LINE__ )
+#endif
 
 
 void QDECL G_Error( const char *fmt, ... ) {
@@ -272,6 +246,37 @@ void G_RemapTeamShaders( void ) {
 
 /*
 =================
+G_UpdatePmoveSettings
+
+Rebuilds level.pmoveSettings from the pmove_* and weapon_reload_* cvars.
+The values go through infostrings keyed like CS_PMOVE_SETTINGS and
+CS_WEAPON_RELOAD, so the server parses exactly what clients parse.
+=================
+*/
+static void G_SettingsInfo( int group, char *info ) {
+	const cvarTable_t *cv;
+	int i;
+
+	info[0] = '\0';
+	for ( i = 0, cv = gameCvarTable ; i < ARRAY_LEN( gameCvarTable ) ; i++, cv++ ) {
+		if ( cv->vmCvar && ( cv->cvarFlags & group ) ) {
+			Info_SetValueForKey( info, cv->cvarName, cv->vmCvar->string );
+		}
+	}
+}
+
+static void G_UpdatePmoveSettings( void ) {
+	char info[MAX_INFO_STRING];
+
+	G_SettingsInfo( CVAR_QL_PMOVE_SETTINGS, info );
+	BG_PmoveSettingsFromInfo( info, &level.pmoveSettings );
+	G_SettingsInfo( CVAR_QL_WEAPON_RELOAD, info );
+	BG_WeaponReloadFromInfo( info, &level.pmoveSettings );
+}
+
+
+/*
+=================
 G_RegisterCvars
 =================
 */
@@ -319,6 +324,7 @@ static void G_UpdateCvars( void ) {
 	int			i;
 	cvarTable_t	*cv;
 	qboolean remapped = qfalse;
+	qboolean pmoveChanged = qfalse;
 
 	for ( i = 0, cv = gameCvarTable ; i < ARRAY_LEN( gameCvarTable ) ; i++, cv++ ) {
 		if ( cv->vmCvar ) {
@@ -326,6 +332,10 @@ static void G_UpdateCvars( void ) {
 
 			if ( cv->modificationCount != cv->vmCvar->modificationCount ) {
 				cv->modificationCount = cv->vmCvar->modificationCount;
+
+				if ( cv->cvarFlags & ( CVAR_QL_PMOVE_SETTINGS | CVAR_QL_WEAPON_RELOAD ) ) {
+					pmoveChanged = qtrue;
+				}
 
 				if ( cv->trackChange ) {
 					G_BroadcastServerCommand( -1, va("print \"Server: %s changed to %s\n\"", 
@@ -341,6 +351,10 @@ static void G_UpdateCvars( void ) {
 
 	if (remapped) {
 		G_RemapTeamShaders();
+	}
+
+	if ( pmoveChanged ) {
+		G_UpdatePmoveSettings();
 	}
 }
 
@@ -474,6 +488,7 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	srand( randomSeed );
 
 	G_RegisterCvars();
+	G_UpdateSettingsConfigstrings();
 
 	G_ProcessIPBans();
 
@@ -488,7 +503,20 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	level.previousTime = levelTime;
 	level.msec = FRAMETIME;
 
+	// after the level reset, which would otherwise zero the settings
+	G_UpdatePmoveSettings();
+
+	// retail records the wall-clock start in serverinfo; the real-time import
+	// keeps it pinned under FnQL's lockstep mode
+	{
+		qtime_t	now;
+		trap_Cvar_Set( "g_levelStartTime", va( "%i", trap_RealTime( &now ) ) );
+	}
+
+	// retail registers these three first, so they own sound indexes 1..3
 	level.snd_fry = G_SoundIndex("sound/player/fry.wav");	// FIXME standing in lava / slime
+	G_SoundIndex( "sound/player/gurp1.wav" );
+	G_SoundIndex( "sound/player/gurp2.wav" );
 
 	if ( !G_IsSinglePlayer() && g_log.string[0] ) {
 		if ( g_logSync.integer ) {
@@ -535,6 +563,14 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 		g_entities[ i ].classname = "clientslot";
 	}
 
+	// a new match GUID for every map, kept across map_restart
+	if ( !g_restarted.integer ) {
+		char	guid[64];
+
+		trap_GenerateMatchGuid( guid, sizeof( guid ) );
+		trap_SetConfigstring( CS_MATCH_GUID, guid );
+	}
+
 	// let the server system know where the entites are
 	trap_LocateGameData( level.gentities, level.num_entities, sizeof( gentity_t ), 
 		&level.clients[0].ps, sizeof( level.clients[0] ) );
@@ -557,7 +593,19 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	SaveRegisteredItems();
 
+	G_UpdateTimeoutConfigstrings();
+
 	G_LocateSpawnSpots();
+
+	// retail finds the intermission view at init, drawing its target pick
+	// before the first frame (qagamex86 0x10054f00); the cached spawn spots
+	// above are where it looks
+	FindIntermissionPoint();
+
+	// CTF's item timers say which half an item is on (retail qagamex86 0x10055475)
+	if ( g_gametype.integer == GT_CTF ) {
+		G_InitItemSides();
+	}
 
 	G_Printf ("-----------------------------------\n");
 
@@ -655,53 +703,48 @@ PLAYER COUNTING / SCORE SORTING
 =============
 AddTournamentPlayer
 
-If there are less than two tournament players, put a
-spectator in the game and restart
+Retail qagamex86 0x10055780: while fewer than two players are in a duel,
+the next queued spectator joins, the match goes back to PRE_GAME and
+everyone's ready flag is cleared.
 =============
 */
 void AddTournamentPlayer( void ) {
-	int			i;
-	gclient_t	*client;
-	gclient_t	*nextInLine;
+	gclient_t	*next;
+	int			i, players = 0;
 
-	if ( level.numPlayingClients >= 2 ) {
+	if ( g_gametype.integer != GT_TOURNAMENT || level.intermissionQueued || level.intermissiontime ) {
+		return;
+	}
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.clients[i].pers.connected != CON_DISCONNECTED
+			&& level.clients[i].sess.sessionTeam != TEAM_SPECTATOR ) {
+			players++;
+		}
+	}
+	if ( players >= 2 ) {
 		return;
 	}
 
-	// never change during intermission
-	if ( level.intermissiontime ) {
-		return;
-	}
-
-	nextInLine = NULL;
-
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
-		client = &level.clients[i];
-		if ( client->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-		if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
-			continue;
-		}
-		// never select the dedicated follow or scoreboard clients
-		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD || 
-			client->sess.spectatorClient < 0  ) {
-			continue;
-		}
-
-		if ( !nextInLine || client->sess.spectatorTime > nextInLine->sess.spectatorTime ) {
-			nextInLine = client;
-		}
-	}
-
-	if ( !nextInLine ) {
+	next = G_NextInLine();
+	if ( !next ) {
 		return;
 	}
 
 	level.warmupTime = -1;
+	trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", -1 ) );
+	trap_Cvar_Set( "g_gameState", "PRE_GAME" );
 
-	// set them to free-for-all team
-	SetTeam( &g_entities[ nextInLine - level.clients ], "f" );
+	SetTeam( &g_entities[ next - level.clients ], "f" );
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( !g_entities[i].inuse ) {
+			continue;
+		}
+		if ( level.clients[i].pers.connected == CON_CONNECTED && level.clients[i].pers.readyToPlay == 1 ) {
+			level.clients[i].pers.readyToPlay = 0;
+		}
+		ClientUserinfoChanged( i );
+	}
 }
 
 
@@ -756,23 +799,27 @@ void RemoveTournamentWinner( void ) {
 /*
 =======================
 AdjustTournamentScores
+
+Retail qagamex86 0x10055950, at the intermission: the leading duelist
+still in the game wins, any other loses, and their player keys go out.
 =======================
 */
 void AdjustTournamentScores( void ) {
-	int			clientNum;
+	gclient_t	*cl;
+	int			i;
 
-	clientNum = level.sortedClients[0];
-	if ( level.clients[ clientNum ].pers.connected == CON_CONNECTED ) {
-		level.clients[ clientNum ].sess.wins++;
-		ClientUserinfoChanged( clientNum );
+	for ( i = 0; i < level.numPlayingClients; i++ ) {
+		cl = &level.clients[level.sortedClients[i]];
+		if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != TEAM_FREE ) {
+			continue;
+		}
+		if ( i == 0 ) {
+			cl->sess.wins++;
+		} else {
+			cl->sess.losses++;
+		}
+		ClientUserinfoChanged( level.sortedClients[i] );
 	}
-
-	clientNum = level.sortedClients[1];
-	if ( level.clients[ clientNum ].pers.connected == CON_CONNECTED ) {
-		level.clients[ clientNum ].sess.losses++;
-		ClientUserinfoChanged( clientNum );
-	}
-
 }
 
 
@@ -787,11 +834,12 @@ static int QDECL SortRanks( const void *a, const void *b ) {
 	ca = &level.clients[*(int *)a];
 	cb = &level.clients[*(int *)b];
 
-	// sort special clients last
-	if ( ca->sess.spectatorState == SPECTATOR_SCOREBOARD || ca->sess.spectatorClient < 0 ) {
+	// sort special clients last (retail qagamex86 0x10055eb0 tests only
+	// the followed client)
+	if ( ca->sess.spectatorClient < 0 ) {
 		return 1;
 	}
-	if ( cb->sess.spectatorState == SPECTATOR_SCOREBOARD || cb->sess.spectatorClient < 0  ) {
+	if ( cb->sess.spectatorClient < 0 ) {
 		return -1;
 	}
 
@@ -830,6 +878,110 @@ static int QDECL SortRanks( const void *a, const void *b ) {
 		return 1;
 	}
 	return 0;
+}
+
+
+/*
+==================
+G_IsTeamGametype / G_IsRoundBasedGametype
+
+Retail qagamex86 0x1002c9e0 and 0x1002c9a0.  Red rover keeps per-player
+scores although it has two teams.
+==================
+*/
+qboolean G_IsTeamGametype( int gametype ) {
+	return !( gametype >= GT_FFA && ( gametype <= GT_RACE || gametype == GT_RED_ROVER ) );
+}
+
+qboolean G_IsRoundBasedGametype( int gametype ) {
+	return gametype == GT_CLAN_ARENA || gametype == GT_FREEZE
+		|| gametype == GT_ATTACK_DEFEND || gametype == GT_RED_ROVER;
+}
+
+
+/*
+==================
+G_RoundInProgress
+
+Retail level +0x2740 (0x105df580) at 3 or more: a round of a round-based
+mode is being played.  The rounds arrive with milestone 6.
+==================
+*/
+qboolean G_RoundInProgress( void ) {
+	return qfalse;
+}
+
+
+/*
+==================
+G_ShouldForfeit
+
+Retail qagamex86 0x10057cd0 (and inline in CalculateRanks, 0x1005612b):
+past the match's first second, outside a timeout and the intermission, a
+match being played (a round of a round-based mode) on other than a
+training map is forfeited once a duel or free-for-all (or red rover) is
+down to one player, or a team game has an empty team.
+==================
+*/
+static qboolean G_ShouldForfeit( void ) {
+	const int	gametype = g_gametype.integer;
+
+	if ( level.timeoutStartTime ) {
+		return qfalse;
+	}
+	if ( ( level.time - level.startTime ) / 1000 <= 1 || level.intermissionQueued || level.intermissiontime ) {
+		return qfalse;
+	}
+	if ( G_IsRoundBasedGametype( gametype ) ? !G_RoundInProgress() : level.warmupTime != 0 ) {
+		return qfalse;
+	}
+	if ( level.trainingMap ) {
+		return qfalse;
+	}
+	if ( gametype < GT_TEAM || gametype == GT_RED_ROVER ) {
+		if ( level.numPlayingClients < 2 ) {
+			return qtrue;
+		}
+	}
+	return G_IsTeamGametype( gametype )
+		&& ( TeamCount( -1, TEAM_RED ) < 1 || TeamCount( -1, TEAM_BLUE ) < 1 );
+}
+
+
+/*
+==================
+G_Forfeit
+
+Retail qagamex86 0x10057f10: a duelist who is gone or spectating, or an
+empty team, scores -999, and the match ends.
+==================
+*/
+void G_Forfeit( void ) {
+	const int	gametype = g_gametype.integer;
+	gclient_t	*cl;
+	int			i;
+
+	if ( gametype == GT_TOURNAMENT ) {
+		for ( i = 0; i < 2; i++ ) {
+			cl = &level.clients[level.sortedClients[i]];
+			if ( cl->pers.connected == CON_DISCONNECTED || cl->sess.sessionTeam != TEAM_FREE ) {
+				cl->ps.persistant[PERS_SCORE] = -999;
+			}
+		}
+	} else if ( G_IsTeamGametype( gametype ) ) {
+		if ( TeamCount( -1, TEAM_RED ) < 1 ) {
+			level.teamScores[TEAM_RED] = -999;
+			trap_SetConfigstring( CS_SCORES1, va( "%i", level.teamScores[TEAM_RED] ) );
+		}
+		if ( TeamCount( -1, TEAM_BLUE ) < 1 ) {
+			level.teamScores[TEAM_BLUE] = -999;
+			trap_SetConfigstring( CS_SCORES2, va( "%i", level.teamScores[TEAM_BLUE] ) );
+		}
+	}
+
+	level.forfeited = qtrue;
+	trap_SendServerCommand( -1, "print \"Game has been forfeited.\n\"" );
+	LogExit( "Players have forfeited." );
 }
 
 
@@ -889,6 +1041,12 @@ void CalculateRanks( void ) {
 		}
 	}
 
+	// retail checks for a forfeit here, before the sort, so a duel forfeit
+	// reads the first two connected clients in client order
+	if ( G_ShouldForfeit() ) {
+		G_Forfeit();
+	}
+
 	qsort( level.sortedClients, level.numConnectedClients, 
 		sizeof(level.sortedClients[0]), SortRanks );
 
@@ -921,35 +1079,74 @@ void CalculateRanks( void ) {
 				level.clients[ level.sortedClients[i] ].ps.persistant[PERS_RANK] = rank | RANK_TIED_FLAG;
 			}
 			score = newScore;
-			if ( G_IsSinglePlayer() && level.numPlayingClients == 1 ) {
-				level.clients[ level.sortedClients[i] ].ps.persistant[PERS_RANK] = rank | RANK_TIED_FLAG;
-			}
 		}
 	}
 
-	// set the CS_SCORES1/2 configstrings, which will be visible to everyone
-	if ( g_gametype.integer >= GT_TEAM ) {
+	// set the CS_SCORES1/2 configstrings, which will be visible to everyone,
+	// and the Quake Live placement names next to them (retail CalculateRanks:
+	// team modes publish "TEAM_RED"/"TEAM_BLUE"; FFA, Duel, Race and Red Rover
+	// publish the leaders' names, or "" while the place is empty)
+	if ( g_gametype.integer >= GT_TEAM && g_gametype.integer != GT_RED_ROVER ) {
 		trap_SetConfigstring( CS_SCORES1, va("%i", level.teamScores[TEAM_RED] ) );
 		trap_SetConfigstring( CS_SCORES2, va("%i", level.teamScores[TEAM_BLUE] ) );
+		trap_SetConfigstring( CS_FIRST_PLACE, "TEAM_RED" );
+		trap_SetConfigstring( CS_SECOND_PLACE, "TEAM_BLUE" );
 	} else {
-		if ( level.numConnectedClients == 0 ) {
+		// retail counts only the clients in the game (spectators sort last)
+		if ( level.numPlayingClients == 0 ) {
 			trap_SetConfigstring( CS_SCORES1, va("%i", SCORE_NOT_PRESENT) );
-			trap_SetConfigstring( CS_SCORES2, va("%i", SCORE_NOT_PRESENT) );
-		} else if ( level.numConnectedClients == 1 ) {
-			trap_SetConfigstring( CS_SCORES1, va("%i", level.clients[ level.sortedClients[0] ].ps.persistant[PERS_SCORE] ) );
-			trap_SetConfigstring( CS_SCORES2, va("%i", SCORE_NOT_PRESENT) );
+			trap_SetConfigstring( CS_FIRST_PLACE, "" );
 		} else {
-			trap_SetConfigstring( CS_SCORES1, va("%i", level.clients[ level.sortedClients[0] ].ps.persistant[PERS_SCORE] ) );
-			trap_SetConfigstring( CS_SCORES2, va("%i", level.clients[ level.sortedClients[1] ].ps.persistant[PERS_SCORE] ) );
+			const gclient_t *first = &level.clients[ level.sortedClients[0] ];
+
+			trap_SetConfigstring( CS_SCORES1, va("%i", first->ps.persistant[PERS_SCORE] ) );
+			trap_SetConfigstring( CS_FIRST_PLACE, first->pers.netname );
+		}
+		if ( level.numPlayingClients <= 1 ) {
+			trap_SetConfigstring( CS_SCORES2, va("%i", SCORE_NOT_PRESENT) );
+			trap_SetConfigstring( CS_SECOND_PLACE, "" );
+		} else {
+			const gclient_t *second = &level.clients[ level.sortedClients[1] ];
+
+			trap_SetConfigstring( CS_SCORES2, va("%i", second->ps.persistant[PERS_SCORE] ) );
+			trap_SetConfigstring( CS_SECOND_PLACE, second->pers.netname );
 		}
 	}
 
-	// see if it is time to end the level
-#ifndef OLD_CHECK_EXIT_RULES
-	CheckExitRulesLater();
-#else
-	CheckExitRules();
-#endif
+	// duel names its two players, lower client number first: score, client
+	// number and name (retail qagamex86 0x10056836)
+	if ( g_gametype.integer == GT_TOURNAMENT && !level.intermissionQueued && !level.intermissiontime ) {
+		int first = -1, second = -1;
+
+		if ( level.numPlayingClients == 1 ) {
+			first = level.sortedClients[0];
+		} else if ( level.numPlayingClients >= 2 ) {
+			first = level.sortedClients[0];
+			second = level.sortedClients[1];
+			if ( first >= second ) {
+				first = level.sortedClients[1];
+				second = level.sortedClients[0];
+			}
+		}
+		if ( second < 0 ) {
+			trap_SetConfigstring( CS_DUEL_SCORE2, va( "%i", SCORE_NOT_PRESENT ) );
+			trap_SetConfigstring( CS_DUEL_CLIENT2, "-1" );
+			trap_SetConfigstring( CS_DUEL_NAME2, "" );
+		} else {
+			trap_SetConfigstring( CS_DUEL_SCORE2, va( "%i", level.clients[second].ps.persistant[PERS_SCORE] ) );
+			trap_SetConfigstring( CS_DUEL_CLIENT2, va( "%i", second ) );
+			trap_SetConfigstring( CS_DUEL_NAME2, level.clients[second].pers.netname );
+		}
+		if ( first < 0 ) {
+			trap_SetConfigstring( CS_DUEL_SCORE1, va( "%i", SCORE_NOT_PRESENT ) );
+			trap_SetConfigstring( CS_DUEL_CLIENT1, "-1" );
+			trap_SetConfigstring( CS_DUEL_NAME1, "" );
+		} else {
+			trap_SetConfigstring( CS_DUEL_SCORE1, va( "%i", level.clients[first].ps.persistant[PERS_SCORE] ) );
+			trap_SetConfigstring( CS_DUEL_CLIENT1, va( "%i", first ) );
+			trap_SetConfigstring( CS_DUEL_NAME1, level.clients[first].pers.netname );
+		}
+	}
 
 	// if we are at the intermission, send the new info to everyone
 	if ( level.intermissiontime ) {
@@ -991,39 +1188,40 @@ MoveClientToIntermission
 
 When the intermission starts, this will be called for all players.
 If a new client connects, this will be called after the spawn function.
+
+Retail qagamex86 0x10056b30: a follower becomes a free spectator and
+leaves the world; everyone looks out from the intermission point, and a
+player's body stays there as a plain entity.
 ========================
 */
 void MoveClientToIntermission( gentity_t *ent ) {
-	
-	gclient_t * client;
-	
-	client = ent->client;
-	
-	// take out of follow mode if needed
+	gclient_t	*client = ent->client;
+
 	if ( client->sess.spectatorState == SPECTATOR_FOLLOW ) {
-		StopFollowing( ent, qtrue );
+		client->ps.persistant[PERS_TEAM] = client->sess.sessionTeam;
+		client->ps.pm_type = PM_SPECTATOR;
+		client->ps.pm_flags &= ~PMF_FOLLOW;
+		client->sess.spectatorState = SPECTATOR_FREE;
+		client->ps.clientNum = ent - g_entities;
+		if ( ent->r.linked ) {
+			trap_UnlinkEntity( ent );
+		}
 	}
 
-	// move to the spot
 	VectorCopy( level.intermission_origin, ent->s.origin );
 	VectorCopy( level.intermission_origin, client->ps.origin );
-	SetClientViewAngle( ent, level.intermission_angle );
+	VectorCopy( level.intermission_angle, client->ps.viewangles );
 	client->ps.pm_type = PM_INTERMISSION;
 
-	// clean up powerup info
 	memset( client->ps.powerups, 0, sizeof( client->ps.powerups ) );
 
-	client->ps.eFlags = ( client->ps.eFlags & ~EF_PERSISTANT ) | ( client->ps.eFlags & EF_PERSISTANT );
-
-	ent->s.eFlags = client->ps.eFlags;
+	client->ps.eFlags = 0;
+	ent->s.eFlags = 0;
 	ent->s.eType = ET_GENERAL;
 	ent->s.modelindex = 0;
 	ent->s.loopSound = 0;
 	ent->s.event = 0;
 	ent->r.contents = 0;
-
-	ent->s.legsAnim = LEGS_IDLE;
-	ent->s.torsoAnim = TORSO_STAND;
 }
 
 
@@ -1065,53 +1263,141 @@ void FindIntermissionPoint( void ) {
 
 /*
 ==================
+G_InfoPrepend
+
+The retail qagame's Info_SetValueForKey puts a new key first; the map vote
+configstrings keep that order.
+==================
+*/
+static void G_InfoPrepend( char *info, int size, const char *key, const char *value ) {
+	char	pair[MAX_INFO_STRING];
+	char	rest[MAX_INFO_STRING];
+
+	Info_SetValueForKey( info, key, "" );	// removes the key
+	if ( !value[0] ) {
+		return;
+	}
+	Q_strncpyz( rest, info, sizeof( rest ) );
+	Com_sprintf( pair, sizeof( pair ), "\\%s\\%s", key, value );
+	if ( strlen( pair ) + strlen( rest ) >= (size_t)size ) {
+		G_Printf( "Info string length exceeded\n" );
+		return;
+	}
+	Com_sprintf( info, size, "%s%s", pair, rest );
+}
+
+
+/*
+==================
+G_CountMapVotes
+
+Retail qagamex86 0x10043d80: each connected client's map vote counted
+into CS_ROTATION_VOTES.
+==================
+*/
+void G_CountMapVotes( void ) {
+	char	votes[MAX_INFO_STRING];
+	int		i, vote;
+
+	memset( level.mapVotes, 0, sizeof( level.mapVotes ) );
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.clients[i].pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		vote = level.clients[i].pers.mapVote;
+		if ( vote >= 1 && vote <= 3 ) {
+			level.mapVotes[vote - 1]++;
+		}
+	}
+
+	votes[0] = '\0';
+	for ( i = 0; i < 3; i++ ) {
+		G_InfoPrepend( votes, sizeof( votes ), va( "%i", i ), va( "%i", level.mapVotes[i] ) );
+	}
+	trap_SetConfigstring( CS_ROTATION_VOTES, votes );
+}
+
+
+/*
+==================
+G_ClearVote
+
+Retail qagamex86 0x10059130.
+==================
+*/
+void G_ClearVote( void ) {
+	int		i;
+
+	level.voteTime = 0;
+	level.voteExecuteTime = 0;
+	trap_SetConfigstring( CS_VOTE_TIME, "" );
+	trap_SetConfigstring( CS_VOTE_STRING, "" );
+	trap_SetConfigstring( CS_INTERMISSION_EXIT, "" );
+	for ( i = 0; i < level.maxclients; i++ ) {
+		level.clients[i].pers.voted = 0;
+	}
+}
+
+
+/*
+==================
 BeginIntermission
+
+Retail qagamex86 0x10056cb0: the duel result is booked, everyone moves to
+the intermission point, and when the server has a map pool the three
+"nextmaps" choices go up for the end-of-match vote.
 ==================
 */
 void BeginIntermission( void ) {
+	char		nextMaps[MAX_INFO_STRING];
+	char		titles[MAX_INFO_STRING];
+	char		votes[MAX_INFO_STRING];
+	gentity_t	*ent;
 	int			i;
-	gentity_t	*client;
 
 	if ( level.intermissiontime ) {
 		return;	// already active
 	}
 
-	// if in tournement mode, change the wins / losses
+	trap_SetConfigstring( CS_INTERMISSION, "1" );
 	if ( g_gametype.integer == GT_TOURNAMENT ) {
 		AdjustTournamentScores();
 	}
 
 	level.intermissiontime = level.time;
-	FindIntermissionPoint();
-
-	// move all clients to the intermission point
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
-		client = g_entities + i;
-		if ( !client->inuse )
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = g_entities + i;
+		if ( !ent->inuse ) {
 			continue;
-
-		// respawn if dead
-		if ( client->health <= 0 ) {
-			respawn( client );
 		}
-
-		MoveClientToIntermission( client );
+		if ( ent->client->pers.connected == CON_CONNECTED ) {
+			ent->client->pers.voted = 1;
+		}
+		MoveClientToIntermission( ent );
 	}
 
-#ifdef MISSIONPACK
-	if (g_singlePlayer.integer) {
-		trap_Cvar_Set("ui_singlePlayerActive", "0");
-		UpdateTournamentInfo();
+	titles[0] = votes[0] = '\0';
+	trap_Cvar_VariableStringBuffer( "nextmaps", nextMaps, sizeof( nextMaps ) );
+	G_ClearVote();
+	if ( nextMaps[0] ) {
+		for ( i = 0; i < 3; i++ ) {
+			Q_strncpyz( level.voteMaps[i], Info_ValueForKey( nextMaps, va( "map_%i", i ) ), sizeof( level.voteMaps[i] ) );
+			G_InfoPrepend( titles, sizeof( titles ), va( "map_%i", i ), level.voteMaps[i] );
+			Q_strncpyz( level.voteTitles[i], Info_ValueForKey( nextMaps, va( "title_%i", i ) ), sizeof( level.voteTitles[i] ) );
+			G_InfoPrepend( titles, sizeof( titles ), va( "title_%i", i ), level.voteTitles[i] );
+			G_InfoPrepend( titles, sizeof( titles ), va( "gt_%i", i ), Info_ValueForKey( nextMaps, va( "gt_%i", i ) ) );
+			Q_strncpyz( level.voteFactories[i], Info_ValueForKey( nextMaps, va( "cfg_%i", i ) ), sizeof( level.voteFactories[i] ) );
+			level.mapVotes[i] = 0;
+			G_InfoPrepend( votes, sizeof( votes ), va( "%i", i ), "0" );
+		}
+		level.voteTime = level.time;
+		trap_SetConfigstring( CS_ROTATION_TITLES, titles );
+		trap_SetConfigstring( CS_ROTATION_VOTES, votes );
+		trap_SetConfigstring( CS_VOTE_TIME, va( "%i", level.voteTime ) );
 	}
-#else
-	// if single player game
-	if ( G_IsSinglePlayer() ) {
-		UpdateTournamentInfo();
-		SpawnModelsOnVictoryPads();
-	}
-#endif
 
-	// send the current scoring to all clients
+	// send the current scoring to all clients; retail then names the match
+	// awards (0x100559e0), which arrive with the match statistics
 	SendScoreboardMessageToAllClients();
 }
 
@@ -1120,40 +1406,117 @@ void BeginIntermission( void ) {
 =============
 ExitLevel
 
-When the intermission has been exited, the server is either killed
-or moved to a new level based on the "nextmap" cvar 
+Retail qagamex86 0x10057000: a training server shuts down and
+sv_quitOnExitLevel quits; otherwise the duel loser steps out, the map
+voted for most (a tie drawn at random) becomes "nextmap", and the server
+restarts the map when that is the same map (or the vote failed) or runs
+nextmap.
 =============
 */
 void ExitLevel( void ) {
-	int		i;
-	gclient_t *cl;
+	char		serverinfo[MAX_INFO_STRING];
+	char		nextMaps[MAX_INFO_STRING];
+	char		current[128];
+	char		chosen[128];
+	qboolean	failed = qfalse;
+	qboolean	same = qfalse;
+	int			i;
 
-	//bot interbreeding
-	BotInterbreedEndMatch();
+	trap_GetServerinfo( serverinfo, sizeof( serverinfo ) );
+	Q_strncpyz( current, Info_ValueForKey( serverinfo, "mapname" ), sizeof( current ) );
 
-	// if we are running a tournement map, kick the loser to spectator status,
-	// which will automatically grab the next spectator and restart
-	if ( g_gametype.integer == GT_TOURNAMENT  ) {
-		if ( !level.restarted ) {
-			RemoveTournamentLoser();
-			trap_SendConsoleCommand( EXEC_APPEND, "map_restart 0\n" );
-			level.restarted = qtrue;
-			level.intermissiontime = 0;
-		}
-		return;	
+	if ( g_training.integer ) {
+		trap_SendConsoleCommand( EXEC_APPEND, "killserver\n" );
+		return;
+	}
+	if ( trap_Cvar_VariableValue( "sv_quitOnExitLevel" ) != 0.0f ) {
+		trap_SendConsoleCommand( EXEC_APPEND, "quit\n" );
+		return;
 	}
 
+	BotInterbreedEndMatch();
+	trap_SetConfigstring( CS_INTERMISSION, "0" );
+	if ( g_gametype.integer == GT_TOURNAMENT ) {
+		RemoveTournamentLoser();
+	}
+
+	if ( !( g_voteFlags.integer & 0x800 ) ) {
+		chosen[0] = '\0';
+		trap_Cvar_VariableStringBuffer( "nextmaps", nextMaps, sizeof( nextMaps ) );
+		if ( nextMaps[0] ) {
+			qboolean	tied[3] = { qfalse, qfalse, qfalse };
+			int			best = 0, ties, pick;
+
+			for ( i = 1; i < 3; i++ ) {
+				if ( !level.voteMaps[i][0] ) {
+					continue;
+				}
+				if ( level.mapVotes[i] == level.mapVotes[best] ) {
+					tied[i] = tied[best] = qtrue;
+				} else if ( level.mapVotes[i] > level.mapVotes[best] ) {
+					best = i;
+					tied[0] = tied[1] = tied[2] = qfalse;
+				}
+			}
+			ties = tied[0] + tied[1] + tied[2];
+			pick = best;
+			if ( ties > 1 ) {
+				pick = (int)( (double)( rand() & 0x7fff ) / 32767.0 * (double)ties );
+				// retail can draw one past the last tied slot; FnQL keeps it in range
+				if ( pick > 2 ) {
+					pick = 2;
+				}
+				if ( !tied[pick] ) {
+					pick += tied[0] ? 1 : 2;
+					if ( pick > 2 ) {
+						pick = 2;
+					}
+				}
+			}
+
+			if ( !Q_stricmp( "default", level.voteMaps[pick] ) ) {
+				failed = qtrue;
+			} else {
+				if ( level.voteFactories[pick][0] ) {
+					trap_Cvar_Set( "nextmap", va( "map %s %s", level.voteMaps[pick], level.voteFactories[pick] ) );
+				} else {
+					trap_Cvar_Set( "nextmap", va( "map %s", level.voteMaps[pick] ) );
+				}
+				Q_strncpyz( chosen, level.voteMaps[pick], sizeof( chosen ) );
+			}
+		}
+		same = !Q_stricmp( current, chosen );
+	}
+
+	if ( !( g_voteFlags.integer & 0x800 ) && ( same || failed ) ) {
+		trap_SendConsoleCommand( EXEC_APPEND, "map_restart 0\n" );
+		level.restarted = qtrue;
+		level.intermissiontime = 0;
+	} else {
+		trap_SendConsoleCommand( EXEC_APPEND, "vstr nextmap\n" );
+	}
+
+	G_ClearVote();
 	level.intermissiontime = 0;
 
-	// reset all the scores so we don't enter the intermission again
+	// reset the scores and the team powerup records so we don't enter the
+	// intermission again
 	level.teamScores[TEAM_RED] = 0;
 	level.teamScores[TEAM_BLUE] = 0;
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
-		cl = level.clients + i;
-		if ( cl->pers.connected != CON_CONNECTED ) {
-			continue;
+	for ( i = TEAM_RED; i <= TEAM_BLUE; i++ ) {
+		level.teamStats[TEAM_STAT_RED_ARMOR][i] = 0;
+		level.teamStats[TEAM_STAT_YELLOW_ARMOR][i] = 0;
+		level.teamStats[TEAM_STAT_GREEN_ARMOR][i] = 0;
+		level.teamStats[TEAM_STAT_MEGA_HEALTH][i] = 0;
+		level.teamStats[TEAM_STAT_QUAD][i] = 0;
+		level.teamStats[TEAM_STAT_BATTLESUIT][i] = 0;
+		level.teamStats[TEAM_STAT_QUAD_TIME][i] = 0;
+		level.teamStats[TEAM_STAT_BATTLESUIT_TIME][i] = 0;
+	}
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.clients[i].pers.connected == CON_CONNECTED ) {
+			level.clients[i].ps.persistant[PERS_SCORE] = 0;
 		}
-		cl->ps.persistant[PERS_SCORE] = 0;
 	}
 
 	// we need to do this here before changing to CON_CONNECTING
@@ -1161,22 +1524,11 @@ void ExitLevel( void ) {
 
 	// change all client states to connecting, so the early players into the
 	// next level will know the others aren't done reconnecting
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
+	for ( i = 0; i < level.maxclients; i++ ) {
 		if ( level.clients[i].pers.connected == CON_CONNECTED ) {
 			level.clients[i].pers.connected = CON_CONNECTING;
 		}
 	}
-
-	if ( !ParseMapRotation() ) {
-		char val[ MAX_CVAR_VALUE_STRING ];
-
-		trap_Cvar_VariableStringBuffer( "nextmap", val, sizeof( val ) );
-
-		if ( !val[0] || !Q_stricmpn( val, "map_restart ", 12 ) )
-			G_LoadMap( NULL );
-		else
-			trap_SendConsoleCommand( EXEC_APPEND, "vstr nextmap\n" );
-	} 
 }
 
 
@@ -1222,69 +1574,58 @@ void QDECL G_LogPrintf( const char *fmt, ... ) {
 ================
 LogExit
 
-Append information about this game to the log file
+Retail qagamex86 0x10057510: the end of the match is logged with every
+player's score, the intermission is queued, and everyone hears the result
+(the winning team, or the game-over call).  The first end since the match
+started also goes to the online stats report, which FnQL-game leaves to
+milestone 11; a flawless duel winner earns the Steam achievement when an
+online provider backs it.
 ================
 */
 void LogExit( const char *string ) {
-	int				i, numSorted;
-	gclient_t		*cl;
-#ifdef MISSIONPACK
-	qboolean won = qtrue;
-#endif
-	G_LogPrintf( "Exit: %s\n", string );
+	gentity_t	*te;
+	gclient_t	*cl;
+	qboolean	report;
+	int			i, ping, clientNum;
 
+	G_LogPrintf( "Exit: %s\n", string );
 	level.intermissionQueued = level.time;
 
-	// this will keep the clients from playing any voice sounds
-	// that will get cut off when the queued intermission starts
-	trap_SetConfigstring( CS_INTERMISSION, "1" );
-
-	// don't send more than 32 scores (FIXME?)
-	numSorted = level.numConnectedClients;
-	if ( numSorted > 32 ) {
-		numSorted = 32;
+	if ( G_IsTeamGametype( g_gametype.integer ) ) {
+		G_LogPrintf( "red:%i  blue:%i\n", level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE] );
 	}
 
-	if ( g_gametype.integer >= GT_TEAM ) {
-		G_LogPrintf( "red:%i  blue:%i\n",
-			level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE] );
-	}
+	report = !level.matchReported && trap_Cvar_VariableValue( "g_restarted" ) == 0.0f;
 
-	for (i=0 ; i < numSorted ; i++) {
-		int		ping;
-
-		cl = &level.clients[level.sortedClients[i]];
-
-		if ( cl->sess.sessionTeam == TEAM_SPECTATOR ) {
+	for ( i = 0; i < level.numConnectedClients; i++ ) {
+		clientNum = level.sortedClients[i];
+		cl = &level.clients[clientNum];
+		if ( cl->pers.connected == CON_CONNECTING || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
 			continue;
 		}
-		if ( cl->pers.connected == CON_CONNECTING ) {
-			continue;
+
+		// "Flawless" (achievement 55): won a duel without dying
+		if ( g_gametype.integer == GT_TOURNAMENT && report && !trap_HasSteamAchievement( clientNum, 55 ) && cl->ps.persistant[PERS_KILLED] == 0
+			&& ( cl->ps.persistant[PERS_RANK] & ~RANK_TIED_FLAG ) == 0 ) {
+			trap_UnlockSteamAchievement( clientNum, 55 );
 		}
 
 		ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
-
-		G_LogPrintf( "score: %i  ping: %i  client: %i %s\n", cl->ps.persistant[PERS_SCORE], ping, level.sortedClients[i],	cl->pers.netname );
-#ifdef MISSIONPACK
-		if (g_singlePlayer.integer && g_gametype.integer == GT_TOURNAMENT) {
-			if (g_entities[cl - level.clients].r.svFlags & SVF_BOT && cl->ps.persistant[PERS_RANK] == 0) {
-				won = qfalse;
-			}
-		}
-#endif
-
+		G_LogPrintf( "score: %i  ping: %i  client: %i %s stats: %d \n",
+			cl->ps.persistant[PERS_SCORE], ping, clientNum, cl->pers.netname, cl->stats.key );
 	}
 
-#ifdef MISSIONPACK
-	if (g_singlePlayer.integer) {
-		if (g_gametype.integer >= GT_CTF) {
-			won = level.teamScores[TEAM_RED] > level.teamScores[TEAM_BLUE];
-		}
-		trap_SendConsoleCommand( EXEC_APPEND, (won) ? "spWin\n" : "spLose\n" );
+	if ( G_IsTeamGametype( g_gametype.integer ) ) {
+		te = G_TempEntity( vec3_origin, EV_GLOBAL_TEAM_SOUND );
+		te->s.eventParm = level.teamScores[TEAM_RED] > level.teamScores[TEAM_BLUE] ? GTS_REDTEAM_WINS : GTS_BLUETEAM_WINS;
+	} else {
+		te = G_TempEntity( vec3_origin, EV_GAMEOVER );
 	}
-#endif
+	te->r.svFlags |= SVF_BROADCAST;
 
-
+	if ( report ) {
+		level.matchReported = qtrue;
+	}
 }
 
 
@@ -1292,97 +1633,59 @@ void LogExit( const char *string ) {
 =================
 CheckIntermissionExit
 
-The level will stay at the intermission for a minimum of 5 seconds
-If all players wish to continue, the level will then exit.
-If one or more players have not acknowledged the continue, the game will
-wait 10 seconds before going on.
+Retail qagamex86 0x10057ad0: the intermission lasts ten seconds, or twenty
+while the end-of-match map vote runs; CS_INTERMISSION_EXIT then closes the
+vote, and three seconds later the level exits.  Who has readied up shows
+on the scoreboard meanwhile.  Retail also takes the auto-action screenshot
+here (g_autoAction; not yet in FnQL-game).
 =================
 */
 void CheckIntermissionExit( void ) {
-	int			ready, notReady;
-	int			i;
+	char		nextMaps[MAX_INFO_STRING];
 	gclient_t	*cl;
-	int			readyMask;
+	int			duration, readyMask, i;
 
-	if ( G_IsSinglePlayer() )
-		return;
+	duration = 10000;
+	trap_Cvar_VariableStringBuffer( "nextmaps", nextMaps, sizeof( nextMaps ) );
+	if ( nextMaps[0] && !( g_voteFlags.integer & 0x800 ) ) {
+		duration = 20000;
+	}
 
-	// see which players are ready
-	ready = 0;
-	notReady = 0;
 	readyMask = 0;
-	for ( i = 0 ; i < level.maxclients ; i++) {
+	for ( i = 0; i < level.maxclients && i < 16; i++ ) {
 		cl = level.clients + i;
-		if ( cl->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-
-		if ( g_entities[i].r.svFlags & SVF_BOT ) {
-			cl->readyToExit = qtrue;
-		} 
-
-		if ( cl->readyToExit ) {
-			ready++;
-			if ( i < 16 ) {
-				readyMask |= 1 << i;
-			}
-		} else {
-			notReady++;
+		if ( cl->pers.connected == CON_CONNECTED && !( g_entities[i].r.svFlags & SVF_BOT ) && cl->pers.readyToPlay ) {
+			readyMask |= 1 << i;
 		}
 	}
-
-	// vote in progress
-	if ( level.voteTime || level.voteExecuteTime ) {
-		ready  = 0;
-		notReady = 1;
-	}
-
-	// copy the readyMask to each player's stats so
-	// it can be displayed on the scoreboard
-	for ( i = 0 ; i < level.maxclients ; i++) {
+	for ( i = 0; i < level.maxclients; i++ ) {
 		cl = level.clients + i;
-		if ( cl->pers.connected != CON_CONNECTED ) {
-			continue;
+		if ( cl->pers.connected == CON_CONNECTED ) {
+			cl->ps.stats[STAT_CLIENTS_READY] = readyMask;
 		}
-		cl->ps.stats[STAT_CLIENTS_READY] = readyMask;
 	}
 
-	// never exit in less than five seconds
-	if ( level.time < level.intermissiontime + 5000 ) {
-		return;
+	if ( ( g_voteFlags.integer & 0x800 )
+		|| ( !level.intermissionExitShown && level.time > level.intermissiontime + duration ) ) {
+		trap_SetConfigstring( CS_INTERMISSION_EXIT, "1" );
+		level.intermissionExitShown = qtrue;
 	}
 
-	// if nobody wants to go, clear timer
-	if ( !ready && notReady ) {
-		level.readyToExit = qfalse;
-		return;
-	}
-
-	// if everyone wants to go, go now
-	if ( !notReady ) {
-		ExitLevel();
-		return;
-	}
-
-	// the first person to ready starts the ten second timeout
-	if ( !level.readyToExit ) {
+	if ( level.time >= level.intermissiontime + duration + 3000 ) {
 		level.readyToExit = qtrue;
-		level.exitTime = level.time + 10000;
+		level.exitTime = level.time;
+		ExitLevel();
+	} else {
+		level.readyToExit = qfalse;
 	}
-
-	// if we have waited ten seconds since at least one player
-	// wanted to exit, go ahead
-	if ( level.time < level.exitTime ) {
-		return;
-	}
-
-	ExitLevel();
 }
 
 
 /*
 =============
 ScoreIsTied
+
+Retail qagamex86 0x10057c60.
 =============
 */
 static qboolean ScoreIsTied( void ) {
@@ -1391,8 +1694,8 @@ static qboolean ScoreIsTied( void ) {
 	if ( level.numPlayingClients < 2 ) {
 		return qfalse;
 	}
-	
-	if ( g_gametype.integer >= GT_TEAM ) {
+
+	if ( G_IsTeamGametype( g_gametype.integer ) ) {
 		return level.teamScores[TEAM_RED] == level.teamScores[TEAM_BLUE];
 	}
 
@@ -1407,239 +1710,154 @@ static qboolean ScoreIsTied( void ) {
 =================
 CheckExitRules
 
-There will be a delay between the time the exit is qualified for
-and the time everyone is moved to the intermission spot, so you
-can see the last frag.
+Retail qagamex86 0x10058030, once a frame.  The intermission starts 200
+msec after the exit qualifies, so the last frag can be seen.  In a match
+being played: forfeits, then (outside clan arena, attack and defend, red
+rover and freeze tag with a round delay, which end by their rounds) the
+timelimit and the score limits, unless the leaders are tied, when
+g_overtime extends the timelimit.
 =================
 */
 static void CheckExitRules( void ) {
- 	int			i;
+	const int	gametype = g_gametype.integer;
+	int			red, blue, timelimit, mercyTime;
 	gclient_t	*cl;
+	gentity_t	*te;
+	int			i;
 
-#ifndef OLD_CHECK_EXIT_RULES
-	level.needToCheckExitRules = qfalse;
-#endif
-
-	// if at the intermission, wait for all non-bots to
-	// signal ready, then go to next level
+	// if at the intermission, wait for the map vote, then go to next level
 	if ( level.intermissiontime ) {
 		CheckIntermissionExit();
 		return;
 	}
 
 	if ( level.intermissionQueued ) {
-#ifdef MISSIONPACK
-		int time = (g_singlePlayer.integer) ? SP_INTERMISSION_DELAY_TIME : INTERMISSION_DELAY_TIME;
-		if ( level.time - level.intermissionQueued >= time ) {
+		if ( level.time - level.intermissionQueued >= 200 ) {
 			level.intermissionQueued = 0;
 			BeginIntermission();
 		}
-#else
-		if ( level.time - level.intermissionQueued >= INTERMISSION_DELAY_TIME ) {
-			level.intermissionQueued = 0;
-			BeginIntermission();
-		}
-#endif
 		return;
 	}
 
-	// check for sudden death
+	if ( level.warmupTime ) {
+		return;
+	}
+
+	if ( G_ShouldForfeit() ) {
+		G_Forfeit();
+	}
+
+	if ( G_IsRoundBasedGametype( gametype ) && !( gametype == GT_FREEZE && !g_freezeRoundDelay.integer ) ) {
+		return;
+	}
+
+	timelimit = g_timelimit.integer * 60000 + level.overtimeAdded;
+	mercyTime = g_mercytime.integer * 60000 + level.overtimeAdded;
+
 	if ( ScoreIsTied() ) {
-		// always wait for sudden death
+		if ( g_timelimit.integer && g_overtime.integer && level.time - level.startTime >= timelimit ) {
+			te = G_TempEntity( vec3_origin, EV_OVERTIME );
+			te->r.svFlags |= SVF_BROADCAST;
+			level.overtimeAdded += g_overtime.integer * 1000;
+		}
 		return;
 	}
 
-	if ( g_timelimit.integer && !level.warmupTime ) {
-		if ( level.time - level.startTime >= g_timelimit.integer*60000 ) {
-			G_BroadcastServerCommand( -1, "print \"Timelimit hit.\n\"");
-			LogExit( "Timelimit hit." );
-			return;
-		}
-	}
-
-	if ( level.numPlayingClients < 2 ) {
+	if ( g_timelimit.integer && level.time - level.startTime >= timelimit ) {
+		trap_SendServerCommand( -1, "print \"Timelimit hit.\n\"" );
+		LogExit( "Timelimit hit." );
 		return;
 	}
 
-	if ( g_gametype.integer < GT_CTF && g_fraglimit.integer ) {
-		if ( level.teamScores[TEAM_RED] >= g_fraglimit.integer ) {
-			G_BroadcastServerCommand( -1, "print \"Red hit the fraglimit.\n\"" );
+	red = level.teamScores[TEAM_RED];
+	blue = level.teamScores[TEAM_BLUE];
+
+	if ( ( gametype == GT_FFA || gametype == GT_TOURNAMENT || gametype == GT_TEAM ) && g_fraglimit.integer ) {
+		if ( red >= g_fraglimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Red hit the fraglimit.\n\"" );
 			LogExit( "Fraglimit hit." );
 			return;
 		}
-
-		if ( level.teamScores[TEAM_BLUE] >= g_fraglimit.integer ) {
-			G_BroadcastServerCommand( -1, "print \"Blue hit the fraglimit.\n\"" );
+		if ( blue >= g_fraglimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Blue hit the fraglimit.\n\"" );
 			LogExit( "Fraglimit hit." );
 			return;
 		}
-
-		for ( i = 0 ; i < level.maxclients ; i++ ) {
+		for ( i = 0; i < level.maxclients; i++ ) {
 			cl = level.clients + i;
-			if ( cl->pers.connected != CON_CONNECTED ) {
+			if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != TEAM_FREE ) {
 				continue;
 			}
-			if ( cl->sess.sessionTeam != TEAM_FREE ) {
-				continue;
-			}
-
 			if ( cl->ps.persistant[PERS_SCORE] >= g_fraglimit.integer ) {
 				LogExit( "Fraglimit hit." );
-				G_BroadcastServerCommand( -1, va("print \"%s" S_COLOR_WHITE " hit the fraglimit.\n\"",
+				trap_SendServerCommand( -1, va( "print \"%s" S_COLOR_WHITE " hit the fraglimit.\n\"",
 					cl->pers.netname ) );
 				return;
 			}
 		}
 	}
 
-	if ( g_gametype.integer >= GT_CTF && g_capturelimit.integer ) {
-
-		if ( level.teamScores[TEAM_RED] >= g_capturelimit.integer ) {
-			G_BroadcastServerCommand( -1, "print \"Red hit the capturelimit.\n\"" );
+	if ( gametype >= GT_CTF && gametype <= GT_HARVESTER && g_capturelimit.integer ) {
+		if ( red >= g_capturelimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Red hit the capturelimit.\n\"" );
 			LogExit( "Capturelimit hit." );
 			return;
 		}
-
-		if ( level.teamScores[TEAM_BLUE] >= g_capturelimit.integer ) {
-			G_BroadcastServerCommand( -1, "print \"Blue hit the capturelimit.\n\"" );
+		if ( blue >= g_capturelimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Blue hit the capturelimit.\n\"" );
 			LogExit( "Capturelimit hit." );
 			return;
 		}
 	}
-}
-#ifndef OLD_CHECK_EXIT_RULES
-static void CheckExitRulesLater( void ) {
-	level.needToCheckExitRules = qtrue;
-}
-#endif
 
+	if ( gametype == GT_DOMINATION && scorelimit.integer ) {
+		if ( red >= scorelimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Red hit the scorelimit.\n\"" );
+			LogExit( "Scorelimit hit." );
+			return;
+		}
+		if ( blue >= scorelimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Blue hit the scorelimit.\n\"" );
+			LogExit( "Scorelimit hit." );
+			return;
+		}
+	}
 
-static void ClearBodyQue( void ) {
-	int	i;
-	gentity_t	*ent;
-
-	for ( i = 0 ; i < BODY_QUEUE_SIZE ; i++ ) {
-		ent = level.bodyQue[ i ];
-		if ( ent->r.linked || ent->physicsObject ) {
-			trap_UnlinkEntity( ent );
-			ent->physicsObject = qfalse;
+	if ( gametype >= GT_TEAM && mercylimit.integer && level.time - level.startTime >= mercyTime ) {
+		if ( red - blue >= mercylimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Red hit the mercylimit.\n\"" );
+			LogExit( "Mercylimit hit." );
+			return;
+		}
+		if ( blue - red >= mercylimit.integer ) {
+			trap_SendServerCommand( -1, "print \"Blue hit the mercylimit.\n\"" );
+			LogExit( "Mercylimit hit." );
+			return;
 		}
 	}
 }
 
 
-static void G_WarmupEnd( void ) 
-{
-	gclient_t *client;
-	gentity_t *ent;
-	int i, t;
+/*
+==================
+G_WarmupEnd
 
-	// remove corpses
-	ClearBodyQue();
-
-	// return flags
-	Team_ResetFlags();
-
-	memset( level.teamScores, 0, sizeof( level.teamScores ) );
-
-	level.warmupTime = 0;
-	level.startTime = level.time;
-
-	trap_SetConfigstring( CS_SCORES1, "0" );
-	trap_SetConfigstring( CS_SCORES2, "0" );
-	trap_SetConfigstring( CS_WARMUP, "" );
-	trap_SetConfigstring( CS_LEVEL_START_TIME, va( "%i", level.startTime ) );
-	
-	client = level.clients;
-	for ( i = 0; i < level.maxclients; i++, client++ ) {
-		
-		if ( client->pers.connected != CON_CONNECTED )
-			continue;
-
-		// reset player awards
-		client->ps.persistant[PERS_IMPRESSIVE_COUNT] = 0;
-		client->ps.persistant[PERS_EXCELLENT_COUNT] = 0;
-		client->ps.persistant[PERS_DEFEND_COUNT] = 0;
-		client->ps.persistant[PERS_ASSIST_COUNT] = 0;
-		client->ps.persistant[PERS_GAUNTLET_FRAG_COUNT] = 0;
-
-		client->ps.persistant[PERS_SCORE] = 0;
-		client->ps.persistant[PERS_CAPTURES] = 0;
-
-		client->ps.persistant[PERS_ATTACKER] = ENTITYNUM_NONE;
-		client->ps.persistant[PERS_ATTACKEE_ARMOR] = 0;
-		client->damage.enemy = client->damage.team = 0;
-
-		client->ps.stats[STAT_CLIENTS_READY] = 0;
-		client->ps.stats[STAT_HOLDABLE_ITEM] = 0;
-
-		memset( &client->ps.powerups, 0, sizeof( client->ps.powerups ) );
-
-		ClientUserinfoChanged( i ); // set max.health etc.
-
-		if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
-			ClientSpawn( level.gentities + i );
-		}
-
-		trap_SendServerCommand( i, "map_restart" );
+Retail qagamex86 0x10058860: the countdown is over, so the level restarts
+straight into the match (G_InitGame reads g_restarted).  The warmup clock
+moves on ten seconds so that nothing counts down again before the restart
+runs.  Retail first reports the match start to the online stats service,
+which FnQL-game leaves to milestone 11.
+==================
+*/
+static void G_WarmupEnd( void ) {
+	level.warmupTime += 10000;
+	trap_Cvar_Set( "g_restarted", "1" );
+	trap_SendConsoleCommand( EXEC_APPEND, "map_restart 0\n" );
+	if ( g_forceSendConfigstring.integer ) {
+		trap_ResendConfigstring( CS_WARMUP );
+		trap_ResendConfigstring( CS_LEVEL_START_TIME );
 	}
-
-	// respawn items, remove projectiles, etc.
-	ent = level.gentities + MAX_CLIENTS;
-	for ( i = MAX_CLIENTS; i < level.num_entities ; i++, ent++ ) {
-
-		if ( !ent->inuse || ent->freeAfterEvent )
-			continue;
-
-		if ( ent->tag == TAG_DONTSPAWN ) {
-			ent->nextthink = 0;
-			continue;
-		}
-
-		if ( ent->s.eType == ET_MISSILE ) {
-			// remove all launched missiles
-			G_FreeEntity( ent );
-			continue;
-		}
-
-		if ( ent->s.eType == ET_ITEM && ent->item ) {
-
-			// already processed in Team_ResetFlags()
-			if ( ent->item->giTag == PW_NEUTRALFLAG || ent->item->giTag == PW_REDFLAG || ent->item->giTag == PW_BLUEFLAG ) {
-				continue;
-			}
-
-			// remove dropped items
-			if ( ent->flags & FL_DROPPED_ITEM ) {
-				ent->nextthink = level.time;
-				continue;
-			}
-
-			// respawn picked up items
-			t = SpawnTime( ent, qtrue );
-			if ( t != 0 ) {
-				// hide items with defined spawn time
-				ent->s.eFlags |= EF_NODRAW;
-				ent->r.svFlags |= SVF_NOCLIENT;
-				ent->r.contents = 0;
-				ent->activator = NULL;
-				ent->think = RespawnItem;
-			} else {
-				t = FRAMETIME;
-				if ( ent->activator ) {
-					ent->activator = NULL;
-					ent->think = RespawnItem;
-				}
-			}
-			if ( ent->random ) {
-				t += (crandom() * ent->random) * 1000;
-				if ( t < FRAMETIME ) {
-					t = FRAMETIME;
-				}
-			}
-			ent->nextthink = level.time + t;
-		}
-	}
+	level.restarted = qtrue;
 }
 
 
@@ -1659,7 +1877,166 @@ CheckTournament
 Once a frame, check for changes in tournement player state
 =============
 */
+/*
+==================
+G_SetWarmupTime
+
+Retail qagamex86 0x10059c10: the warmup clock, its configstring and the
+published game state (PRE_GAME while waiting, COUNT_DOWN, IN_PROGRESS).
+==================
+*/
+static void G_SetWarmupTime( int time ) {
+	level.warmupTime = time;
+	trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", time ) );
+	trap_Cvar_Set( "g_gameState", time < 0 ? "PRE_GAME" : ( time > 0 ? "COUNT_DOWN" : "IN_PROGRESS" ) );
+}
+
+
+/*
+==================
+G_ReadyToStart
+
+Retail qagamex86 0x100577a0.  A match may count down once the warmup delay
+of a dedicated server has passed, enough players are present (and the
+teams within one of each other), and the ready players reach
+sv_warmupReadyPercentage of those playing, with at least one human ready;
+bots count as ready under bot_autoReady.  While waiting, everyone sees the
+ready players in STAT_CLIENTS_READY.  g_doWarmup 0 starts at once.
+==================
+*/
+static qboolean G_ReadyToStart( void ) {
+	gclient_t	*cl;
+	int			i, ready = 0, readyHumans = 0, readyMask = 0;
+	int			red, blue;
+
+	if ( !g_doWarmup.integer ) {
+		return qtrue;
+	}
+	if ( g_dedicated.integer && g_gametype.integer != GT_TOURNAMENT
+		&& level.time - level.startTime < g_warmupDelay.integer * 1000 ) {
+		return qfalse;
+	}
+
+	if ( level.warmupTime < 0 ) {
+		for ( i = 0; i < level.maxclients; i++ ) {
+			cl = &level.clients[i];
+			if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
+				continue;
+			}
+			if ( cl->pers.readyToPlay ) {
+				readyHumans++;
+			} else if ( !( ( g_entities[i].r.svFlags & SVF_BOT ) && bot_autoReady.integer ) ) {
+				continue;
+			}
+			ready++;
+			if ( i < 16 ) {
+				readyMask |= 1 << i;
+			}
+		}
+		for ( i = 0; i < level.maxclients; i++ ) {
+			if ( level.clients[i].pers.connected == CON_CONNECTED ) {
+				level.clients[i].ps.stats[STAT_CLIENTS_READY] = readyMask;
+			}
+		}
+	}
+
+	red = TeamConnectedCount( -1, TEAM_RED );
+	blue = TeamConnectedCount( -1, TEAM_BLUE );
+	if ( g_teamForcePresent.integer ) {
+		if ( g_gametype.integer < GT_TEAM ) {
+			if ( level.numPlayingClients < 2 ) {
+				return qfalse;
+			}
+		} else if ( red < g_teamSizeMin.integer || blue < g_teamSizeMin.integer ) {
+			return qfalse;
+		}
+	}
+	if ( g_teamForceBalance.integer && g_gametype.integer >= GT_TEAM && ( red > blue + 1 || blue > red + 1 ) ) {
+		return qfalse;
+	}
+
+	if ( level.warmupTime >= 0 ) {
+		// nobody fires during the countdown (retail qagamex86 0x10057a9b);
+		// the restart into the match clears the flag
+		if ( level.warmupTime > 0 ) {
+			for ( i = 0; i < level.maxclients; i++ ) {
+				if ( level.clients[i].pers.connected == CON_CONNECTED ) {
+					level.clients[i].ps.pm_flags |= PMF_ATTACK_LOCKOUT;
+				}
+			}
+		}
+		return qtrue;
+	}
+	if ( g_gametype.integer == GT_TOURNAMENT ) {
+		return level.numPlayingClients == 2 && ready == level.numPlayingClients;
+	}
+	if ( sv_warmupReadyPercentage.value == 0.0f ) {
+		return qtrue;
+	}
+	return readyHumans && (float)ready / (float)level.numPlayingClients >= sv_warmupReadyPercentage.value;
+}
+
+
+/*
+==================
+G_CheckWarmup
+
+Retail qagamex86 0x100586e0 outside duel: PRE_GAME until G_ReadyToStart,
+then g_warmup seconds of countdown, then the match; back to PRE_GAME when
+the conditions lapse during the countdown.
+==================
+*/
+static void G_CheckWarmup( void ) {
+	int	i;
+
+	if ( level.warmupTime == 0 ) {
+		if ( G_ShouldForfeit() ) {
+			G_Forfeit();
+		}
+		return;
+	}
+
+	if ( G_ReadyToStart() ) {
+		// if the warmup is changed at the console, restart it
+		if ( g_warmup.modificationCount != level.warmupModificationCount ) {
+			level.warmupModificationCount = g_warmup.modificationCount;
+			G_SetWarmupTime( -1 );
+		}
+		if ( level.warmupTime < 0 ) {
+			G_SetWarmupTime( level.time + g_warmup.integer * 1000 );
+			return;
+		}
+		if ( level.time >= level.warmupTime ) {
+			G_WarmupEnd();
+		}
+		return;
+	}
+
+	if ( level.warmupTime != -1 ) {
+		G_SetWarmupTime( -1 );
+		G_LogPrintf( "Warmup:\n" );
+		// a cancelled countdown releases the attack lockout too (retail
+		// qagamex86 0x10058796)
+		for ( i = 0; i < level.maxclients; i++ ) {
+			if ( level.clients[i].pers.connected != CON_CONNECTED ) {
+				continue;
+			}
+			level.clients[i].ps.pm_flags &= ~PMF_ATTACK_LOCKOUT;
+			if ( level.clients[i].pers.readyToPlay ) {
+				level.clients[i].pers.readyToPlay = qfalse;
+				ClientUserinfoChanged( i );
+			}
+		}
+	}
+}
+
+
 static void CheckTournament( void ) {
+	// retail G_RunFrame (qagamex86 0x100598c1): a duel pulls in the next
+	// queued spectator and resends the queue's player keys, then every mode
+	// runs the same warmup check
+	AddTournamentPlayer();
+	G_RefreshDuelQueue();
 
 	// check because we run 3 game frames before calling Connect and/or ClientBegin
 	// for clients on a map_restart
@@ -1667,103 +2044,8 @@ static void CheckTournament( void ) {
 		return;
 	}
 
-	if ( g_gametype.integer == GT_TOURNAMENT ) {
-
-		// pull in a spectator if needed
-		if ( level.numPlayingClients < 2 ) {
-			AddTournamentPlayer();
-		}
-
-		// if we don't have two players, go back to "waiting for players"
-		if ( level.numPlayingClients != 2 ) {
-			if ( level.warmupTime != -1 ) {
-				level.warmupTime = -1;
-				trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
-				G_LogPrintf( "Warmup:\n" );
-			}
-			return;
-		}
-
-		if ( level.warmupTime == 0 ) {
-			return;
-		}
-
-		// if the warmup is changed at the console, restart it
-		if ( g_warmup.modificationCount != level.warmupModificationCount ) {
-			level.warmupModificationCount = g_warmup.modificationCount;
-			level.warmupTime = -1;
-		}
-
-		// if all players have arrived, start the countdown
-		if ( level.warmupTime < 0 ) {
-			if ( level.numPlayingClients == 2 ) {
-				if ( g_warmup.integer > 0 ) {
-					level.warmupTime = level.time + g_warmup.integer * 1000;
-				} else {
-					level.warmupTime = 0;
-				}
-
-				trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
-			}
-			return;
-		}
-
-		// if the warmup time has counted down, restart
-		if ( level.time > level.warmupTime ) {
-			G_WarmupEnd();
-			return;
-		}
-	} else if ( !G_IsSinglePlayer() && level.warmupTime != 0 ) {
-		int		counts[TEAM_NUM_TEAMS];
-		qboolean	notEnough = qfalse;
-
-		if ( g_gametype.integer >= GT_TEAM ) {
-			counts[TEAM_BLUE] = TeamConnectedCount( -1, TEAM_BLUE );
-			counts[TEAM_RED] = TeamConnectedCount( -1, TEAM_RED );
-
-			if (counts[TEAM_RED] < 1 || counts[TEAM_BLUE] < 1) {
-				notEnough = qtrue;
-			}
-		} else if ( level.numPlayingClients < 2 ) {
-			notEnough = qtrue;
-		}
-
-		if ( notEnough ) {
-			if ( level.warmupTime != -1 ) {
-				level.warmupTime = -1;
-				trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
-				G_LogPrintf( "Warmup:\n" );
-			}
-			return; // still waiting for team members
-		}
-
-		if ( level.warmupTime == 0 ) {
-			return;
-		}
-
-		// if the warmup is changed at the console, restart it
-		if ( g_warmup.modificationCount != level.warmupModificationCount ) {
-			level.warmupModificationCount = g_warmup.modificationCount;
-			level.warmupTime = -1;
-		}
-
-		// if all players have arrived, start the countdown
-		if ( level.warmupTime < 0 ) {
-			if ( g_warmup.integer > 0 ) {
-				level.warmupTime = level.time + g_warmup.integer * 1000;
-			} else {
-				level.warmupTime = 0;
-			}
-
-			trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime) );
-			return;
-		}
-
-		// if the warmup time has counted down, restart
-		if ( level.time > level.warmupTime ) {
-			G_WarmupEnd();
-			return;
-		}
+	if ( !G_IsSinglePlayer() ) {
+		G_CheckWarmup();
 	}
 }
 
@@ -1774,7 +2056,12 @@ CheckVote
 ==================
 */
 static void CheckVote( void ) {
-	
+
+	// the intermission's map vote ends with the intermission
+	if ( level.intermissiontime ) {
+		return;
+	}
+
 	if ( level.voteExecuteTime ) {
 		 if ( level.voteExecuteTime < level.time ) {
 			level.voteExecuteTime = 0;
@@ -1853,7 +2140,7 @@ void SetLeader( team_t team, int client ) {
 	}
 	level.clients[client].sess.teamLeader = qtrue;
 	ClientUserinfoChanged( client );
-	PrintTeam( team, va("print \"%s is the new team leader\n\"", level.clients[client].pers.netname) );
+	// retail announces no new team leader (qagamex86 has no such string)
 }
 
 
@@ -1915,6 +2202,9 @@ void CheckTeamLeader( team_t team ) {
 /*
 ==================
 CheckCvars
+
+Every frame (retail qagamex86 0x100592c0): g_needpass follows g_password,
+and practiceflags and g_teamSpecFreeCam are republished to clients.
 ==================
 */
 void CheckCvars( void ) {
@@ -1928,6 +2218,48 @@ void CheckCvars( void ) {
 			trap_Cvar_Set( "g_needpass", "0" );
 		}
 	}
+
+	trap_SetConfigstring( CS_PRACTICE_FLAGS, va( "%d", practiceflags.integer ) );
+	trap_SetConfigstring( CS_TEAM_SPEC_FREECAM, va( "%d", g_teamSpecFreeCam.integer ) );
+}
+
+
+/*
+==================
+G_UpdateSettingsConfigstrings
+
+The settings retail publishes as configstrings when the game starts
+(qagamex86 0x100549e0).  Two of the configstring names in bg_public.h
+predate this evidence: CS_FACTORY_FLAGS carries g_debugFlags and
+CS_DOM_CAPTURE_TIME carries g_dmgThroughSurfaceDistance.
+==================
+*/
+void G_UpdateSettingsConfigstrings( void ) {
+	trap_SetConfigstring( CS_PLAYER_CYLINDERS, va( "%d", g_playerCylinders.integer ) );
+	trap_SetConfigstring( CS_FACTORY_FLAGS, va( "%d", g_debugFlags.integer ) );
+	trap_SetConfigstring( CS_RR_PING_RATE, va( "%f", g_rrInfectedSurvivorMinSpeed.value ) );
+	trap_SetConfigstring( CS_DOM_CAPTURE_TIME, va( "%f", g_dmgThroughSurfaceDistance.value ) );
+	trap_SetConfigstring( CS_SETTINGS_MASK, va( "%d", g_customSettings.integer ) );
+	trap_SetConfigstring( CS_STARTING_WEAPONS, va( "%d", g_startingWeapons.integer ) );
+	if ( g_loadout.integer ) {
+		trap_SetConfigstring( CS_DISABLED_LOADOUTS, va( "%d", g_disableLoadout.integer ) );
+	}
+}
+
+
+/*
+==================
+G_UpdateTimeoutConfigstrings
+
+Retail qagamex86 0x10063450: the timeouts each team has left, and the
+current timeout's start and end.
+==================
+*/
+void G_UpdateTimeoutConfigstrings( void ) {
+	trap_SetConfigstring( CS_RED_TIMEOUTS_LEFT, va( "%d", g_timeoutCount.integer - level.timeoutsUsed[0] ) );
+	trap_SetConfigstring( CS_BLUE_TIMEOUTS_LEFT, va( "%d", g_timeoutCount.integer - level.timeoutsUsed[1] ) );
+	trap_SetConfigstring( CS_TIMEOUT_END_TIME, va( "%i", level.timeoutEndTime ) );
+	trap_SetConfigstring( CS_TIMEOUT_START_TIME, va( "%i", level.timeoutStartTime ) );
 }
 
 
@@ -1940,6 +2272,11 @@ Runs thinking code for this frame if necessary
 */
 void G_RunThink( gentity_t *ent ) {
 	int	thinktime;
+
+	// retail (qagamex86 0x10059370) runs the per-frame hook first
+	if ( ent->frameThink ) {
+		ent->frameThink( ent );
+	}
 
 	thinktime = ent->nextthink;
 	if (thinktime <= 0) {
@@ -1981,6 +2318,18 @@ static void G_RunFrame( int levelTime ) {
 	level.previousTime = level.time;
 	level.time = levelTime;
 	level.msec = level.time - level.previousTime;
+
+	// at the intermission a map voter's vote menu comes back 2.25 seconds
+	// after the vote (retail qagamex86 0x10059603)
+	if ( level.intermissiontime ) {
+		for ( i = 0; i < level.maxclients; i++ ) {
+			const int since = level.time - level.clients[i].pers.mapVoteTime;
+
+			if ( level.clients[i].pers.connected == CON_CONNECTED && since > 2250 && since - level.msec <= 2250 ) {
+				trap_SendServerCommand( i, "enable_vote_ui" );
+			}
+		}
+	}
 
 	// get any cvar changes
 	G_UpdateCvars();

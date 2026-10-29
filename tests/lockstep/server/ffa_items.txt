@@ -1,0 +1,50 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --scenario ...): two
+# scripted players on campgrounds pick up items.  setviewpos (a cheat, hence
+# --cheats and devmap) puts each one in front of a row of items, and they
+# walk over or drop onto them: armor shards, the shotgun and its ammo, red
+# and yellow armor, the lightning gun.  Over 1400 frames (--frames 1400)
+# this exercises the grab rules, the pickups and their events, the 25 second
+# respawns and the item-timer state that g_itemTimers shows.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+
+# alpha: the five armor shards on the courtyard floor, then the lightning gun
+clientcmd 20 alpha setviewpos -260 320 40 0
+at 25  alpha forward=127
+at 80  alpha forward=0
+clientcmd 90 alpha setviewpos -700 320 40 180
+at 95  alpha forward=127
+at 115 alpha forward=0
+
+# bravo: the shotgun, then the ammo and health row by the pool
+clientcmd 20 bravo setviewpos 120 -320 40 0
+at 25  bravo forward=127
+at 50  bravo forward=0
+clientcmd 60 bravo setviewpos 150 -848 40 0
+at 65  bravo forward=127
+at 100 bravo forward=0
+
+# alpha drops onto the red armor, bravo onto the yellow, and bravo takes
+# the shotgun again after its respawn
+clientcmd 130 alpha setviewpos 256 -1344 260 90
+clientcmd 140 bravo setviewpos -1472 448 580 0
+clientcmd 300 bravo setviewpos 120 -320 40 0
+at 305 bravo forward=127
+at 330 bravo forward=0
+
+# 25 seconds on, the shards and the armor are back (run with --frames 1400):
+# alpha walks the shards again and bravo, worn down, retakes the red armor
+clientcmd 1150 alpha setviewpos -260 320 40 0
+at 1155 alpha forward=127
+at 1210 alpha forward=0
+clientcmd 1250 bravo setviewpos 256 -1344 260 90

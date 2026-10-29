@@ -12,3 +12,13 @@ option('retail-ql',
   type: 'string',
   value: '',
   description: 'Retail Quake Live install for runtime gates (default: $FNQL_RETAIL_QL_PATH, then the Steam default)')
+
+option('fnql-client',
+  type: 'string',
+  value: '',
+  description: 'x86 fnql.exe for the retail-cgame interoperability probe (windowed); empty disables it')
+
+option('trace-rand',
+  type: 'boolean',
+  value: false,
+  description: 'qagame logs every rand() with its source line, to line up its random stream with the retail module in a G3 run (FnQL sv_lockstepTraceRand); debugging only')

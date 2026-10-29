@@ -79,6 +79,8 @@
 #define	CS_ROUND_START_TIME		0x296
 #define	CS_RED_PLAYERS_LEFT		0x297
 #define	CS_BLUE_PLAYERS_LEFT	0x298
+#define CS_PRACTICE_FLAGS		0x29B	// practiceflags (retail qagamex86 0x10059338)
+#define CS_TEAM_SPEC_FREECAM	0x29C	// g_teamSpecFreeCam (retail qagamex86 0x10059359)
 #define	CS_TIMEOUT_START_TIME	0x29D
 #define	CS_TIMEOUT_END_TIME		0x29E
 #define	CS_RED_TIMEOUTS_LEFT	0x29F
@@ -97,19 +99,27 @@
 #define	CS_ARMOR_SETTINGS		0x2AA
 #define	CS_WEAPON_SETTINGS		0x2AB
 #define	CS_APPEARANCE_SETTINGS	0x2AC
-// 0x2AD..0x2B2 are written in pairs (integers and names); their payloads are
-// identified with the team modes that use them (milestone 5).
-#define	CS_QL_2AD				0x2AD
-#define	CS_QL_2AE				0x2AE
-#define	CS_QL_2AF				0x2AF
-#define	CS_QL_2B0				0x2B0
-#define	CS_QL_2B1				0x2B1
-#define	CS_QL_2B2				0x2B2
+// duel's two players, lower client number first (retail CalculateRanks,
+// qagamex86 0x10056836); the wire-contract names stay as aliases
+#define	CS_DUEL_SCORE1			0x2AD
+#define	CS_DUEL_SCORE2			0x2AE
+#define	CS_DUEL_CLIENT1			0x2AF
+#define	CS_DUEL_CLIENT2			0x2B0
+#define	CS_DUEL_NAME1			0x2B1
+#define	CS_DUEL_NAME2			0x2B2
+#define	CS_QL_2AD				CS_DUEL_SCORE1
+#define	CS_QL_2AE				CS_DUEL_SCORE2
+#define	CS_QL_2AF				CS_DUEL_CLIENT1
+#define	CS_QL_2B0				CS_DUEL_CLIENT2
+#define	CS_QL_2B1				CS_DUEL_NAME1
+#define	CS_QL_2B2				CS_DUEL_NAME2
 #define	CS_QL_2B3				0x2B3
 #define	CS_AWARD_ITEM_CONTROL	0x2B4
 #define	CS_AWARD_ACCURACY		0x2B5
-#define	CS_QL_2B6				0x2B6
-#define	CS_QL_2B7				0x2B7	// position infostring: x, y, z
+#define	CS_RED_FLAG_ORIGIN		0x2B6	// where each team flag stands: an x, y, z infostring
+#define	CS_BLUE_FLAG_ORIGIN		0x2B7
+#define	CS_QL_2B6				CS_RED_FLAG_ORIGIN
+#define	CS_QL_2B7				CS_BLUE_FLAG_ORIGIN
 #define	CS_AWARD_VALUABLE		0x2B8
 #define	CS_AWARD_VALUABLE_OFFENSE	0x2B9
 #define	CS_AWARD_VALUABLE_DEFENSE	0x2BA
@@ -206,10 +216,62 @@ typedef enum {
 #define PMF_AIR_CONTROL		65536	// per-player movement profile bits (milestone 3)
 #define PMF_DOUBLE_JUMP		131072
 #define PMF_REQUIRE_JUMP_RELEASE	262144
-#define PMF_IRONSIGHTS		524288
+#define PMF_INFECTED		524288	// red rover infection: no weapon pickups (retail 0x100645fc)
 #define PMF_CROUCH_SLIDE	1048576
 
 #define	PMF_ALL_TIMES	(PMF_TIME_WATERJUMP|PMF_TIME_LAND|PMF_TIME_KNOCKBACK)
+
+// Quake Live movement settings.  The server fills them from the pmove_*
+// cvars (g_ql_cvars.h); the engine publishes the same cvars as the
+// CS_PMOVE_SETTINGS infostring, from which the cgame fills its copy, so
+// both sides parse identical strings.  Defaults are the retail cvar defaults.
+typedef struct {
+	float	airAccel;
+	float	airStepFriction;
+	int		airSteps;
+	float	airStopAccel;
+	int		autoHop;
+	int		bunnyHop;
+	int		chainJump;				// 0 none, 1 scale, 2 additive, 3 scale then additive
+	float	chainJumpVelocity;
+	float	circleStrafeFriction;
+	float	crouchSlideFriction;
+	int		crouchSlideTime;
+	int		crouchStepJump;
+	float	jumpTimeDeltaMin;
+	float	jumpVelocity;
+	float	jumpVelocityMax;
+	float	jumpVelocityScaleAdd;
+	float	jumpVelocityTimeThreshold;
+	float	jumpVelocityTimeThresholdOffset;
+	int		noPlayerClip;
+	int		rampJump;
+	float	rampJumpScale;
+	float	stepHeight;
+	int		stepJump;
+	float	stepJumpVelocity;
+	float	strafeAccel;
+	float	velocityGH;				// grappling hook pull speed
+	float	walkAccel;
+	float	walkFriction;
+	float	waterSwimScale;
+	float	waterWadeScale;
+	int		weaponDropTime;
+	int		weaponRaiseTime;
+	float	wishSpeed;
+	int		weaponReload[MAX_WEAPONS];	// msec between shots, from the weapon_reload_* cvars
+} pmoveSettings_t;
+
+// retail forms of the shared math routines (bg_pmove.c "Retail arithmetic")
+double	PM_Dot3( const vec3_t a, const vec3_t b );
+float	PM_VectorNormalize( vec3_t v );
+float	PM_VectorNormalize2( const vec3_t v, vec3_t out );
+void	PM_CrossProduct( const vec3_t a, const vec3_t b, vec3_t cross );
+void	PM_AngleVectors( const vec3_t angles, vec3_t forward, vec3_t right, vec3_t up );
+
+void	BG_DefaultPmoveSettings( pmoveSettings_t *settings );
+void	BG_PmoveSettingsFromInfo( const char *info, pmoveSettings_t *settings );
+void	BG_WeaponReloadFromInfo( const char *info, pmoveSettings_t *settings );
 
 #define	MAXTOUCH	32
 typedef struct {
@@ -220,6 +282,7 @@ typedef struct {
 	usercmd_t	cmd;
 	int			tracemask;			// collide against these types of surfaces
 	int			debugLevel;			// if set, diagnostic output will be printed
+	qboolean	noFootsteps;		// if the game is setup for no footsteps by the server
 	qboolean	gauntletHit;		// true if a gauntlet attack would actually hit something
 
 	int			framecount;
@@ -233,18 +296,20 @@ typedef struct {
 	int			watertype;
 	int			waterlevel;
 
+	float		xyspeed;			// horizontal speed, set by PM_Footsteps
 	float		stepUp;				// height of the last step up, for cgame step smoothing
+	int			stepTime;			// cmd.serverTime of that step
 
-	//float		xyspeed;
-
-	// for fixed msec Pmove
-	int			pmove_fixed;
-	int			pmove_msec;
+	const pmoveSettings_t	*settings;	// Quake Live movement settings; NULL = retail defaults
 
 	// callbacks to test the world
 	// these will be different functions during game and cgame
 	void		(*trace)( trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask );
 	int			(*pointcontents)( const vec3_t point, int passEntityNum );
+
+	// retail pmove_t +0xe8, set by the game: quarters the hook pull and keeps
+	// the ground plane (what the game sets it for is not yet identified)
+	qboolean	grappleSlow;
 } pmove_t;
 
 // if a full pmove isn't done on the client, you can just update the angles
@@ -267,7 +332,8 @@ typedef enum {
 	STAT_PERSISTANT_POWERUP,		// a persistantPowerup_t tag
 	STAT_WEAPONS,					// 16 bit fields
 	STAT_ARMOR,
-	STAT_DEAD_YAW,					// look this direction when dead
+	STAT_BATTLESUIT_FRAG_COUNT,		// kills while wearing the battle suit (retail player_die
+									// 0x10047710); Quake III's dead yaw slot
 	STAT_CLIENTS_READY,				// bit mask of clients wishing to exit the intermission
 	STAT_MAX_HEALTH,				// health / armor limit, changable by handicap
 	STAT_CHAINGUN_SPINUP,			// chaingun spin accumulator
@@ -293,7 +359,8 @@ typedef enum {
 	PERS_SPAWN_COUNT,				// incremented every respawn
 	PERS_PLAYEREVENTS,				// 16 bits that can be flipped for events
 	PERS_ATTACKER,					// clientnum of last damage inflicter
-	PERS_ATTACKEE_ARMOR,			// health/armor of last person we attacked
+	// Quake Live has no PERS_ATTACKEE_ARMOR: the award counters below sit one
+	// slot lower than in Team Arena (docs/contract/retail_enums.json)
 	PERS_KILLED,					// count of the number of times you died
 	// player awards tracking
 	PERS_IMPRESSIVE_COUNT,			// two railgun hits in a row
@@ -327,11 +394,13 @@ typedef enum {
 #define	EF_TALK				0x00001000		// draw a talk balloon
 #define	EF_CONNECTION		0x00002000		// draw a connection trouble sprite
 #define	EF_VOTED			0x00004000		// already cast a vote
+#define	EF_SPECTATOR		0x00004000		// Quake Live: on the spectator team (retail ClientSpawn 0x1003bda2)
 #define	EF_AWARD_IMPRESSIVE	0x00008000		// draw an impressive sprite
 #define	EF_AWARD_DEFEND		0x00010000		// draw a defend sprite
 #define	EF_AWARD_ASSIST		0x00020000		// draw a assist sprite
 #define EF_AWARD_DENIED		0x00040000		// denied
 #define EF_TEAMVOTED		0x00080000		// already cast a team vote
+#define EF_NAIL_BOUNCE		0x00100000		// Quake Live: a nail that bounces off walls (g_nailbounce)
 
 #define EF_PERSISTANT ( EF_CONNECTION | EF_VOTED | EF_TEAMVOTED )
 #define EF_AWARDS ( EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP )
@@ -447,6 +516,24 @@ typedef enum {
 #define	PLAYEREVENT_DENIEDREWARD		0x0001
 #define	PLAYEREVENT_GAUNTLETREWARD		0x0002
 #define PLAYEREVENT_HOLYSHIT			0x0004
+#define PLAYEREVENT_FIRSTFRAG			0x0008
+
+// Quake Live medals: EV_AWARD carries the medal in generic1, the awarded
+// client in clientNum and that client's count of it in modelindex2
+// (retail qagamex86 0x10046550)
+typedef enum {
+	MEDAL_COMBOKILL,
+	MEDAL_RAMPAGE,
+	MEDAL_MIDAIR,
+	MEDAL_REVENGE,
+	MEDAL_PERFORATED,
+	MEDAL_HEADSHOT,
+	MEDAL_ACCURACY,
+	MEDAL_QUADGOD,
+	MEDAL_FIRSTFRAG,
+	MEDAL_PERFECT,
+	MEDAL_NUM_MEDALS
+} medal_t;
 
 // entityState_t->event values
 // entity events are for effects that take place relative
@@ -484,7 +571,13 @@ typedef enum {
 	GTS_REDTEAM_TOOK_LEAD,
 	GTS_BLUETEAM_TOOK_LEAD,
 	GTS_TEAMS_ARE_TIED,
-	GTS_KAMIKAZE
+	GTS_KAMIKAZE,
+	GTS_REDTEAM_WINS,			// Quake Live: the match result (retail LogExit, 0x10057751)
+	GTS_BLUETEAM_WINS,
+	GTS_REDTEAM_WINS_ROUND,
+	GTS_BLUETEAM_WINS_ROUND,
+	GTS_ROUND_DRAW,
+	GTS_LAST_STANDING
 } global_team_sound_t;
 
 // animations
@@ -644,6 +737,10 @@ typedef struct gitem_s {
 
 // included in both the game dll and the client
 extern	gitem_t	bg_itemlist[];
+// the retail weapon table (qagamex86 0x1008ff10 + w * 0x30): the most ammo a
+// weapon holds (also its warmup ammo) and what an ammo pack adds to it
+extern	const int	bg_weaponMaxAmmo[WP_NUM_WEAPONS];
+extern	const int	bg_weaponPackAmmo[WP_NUM_WEAPONS];
 extern	int		bg_numItems;
 
 gitem_t	*BG_FindItem( const char *pickupName );
@@ -653,12 +750,16 @@ gitem_t	*BG_FindItemForPersistantPowerup( persistantPowerup_t pp );
 gitem_t	*BG_FindItemForHoldable( holdable_t pw );
 #define	ITEM_INDEX(x) ((x)-bg_itemlist)
 
-qboolean	BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const playerState_t *ps );
+qboolean	BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const playerState_t *ps,
+								 int time, int warmupTime, qboolean armorTiered, int weaponRespawn );
 
 
 // g_dmflags->integer flags
-#define	DF_NO_FALLING			8
-#define DF_FIXED_FOV			16
+// Quake Live dmflags (retail ClientEvents 0x10034860, ClientThink 0x1003517e,
+// G_Damage 0x10049604)
+#define DF_NO_SELF_HEALTH_DAMAGE	4
+#define DF_NO_SELF_ARMOR_DAMAGE	8
+#define	DF_NO_FALLING			16
 #define	DF_NO_FOOTSTEPS			32
 
 // content masks
@@ -710,7 +811,7 @@ void	BG_TouchJumpPad( playerState_t *ps, entityState_t *jumppad );
 void	BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean snap );
 void	BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s, int time, qboolean snap );
 
-qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime );
+qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime, int itemHeight );
 
 
 #define ARENAS_PER_TIER		4
