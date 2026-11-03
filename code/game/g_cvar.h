@@ -53,8 +53,8 @@ G_CVAR( g_gravity, "g_gravity", "800", CVAR_GAMERULE | CVAR_SERVERINFO, 0, qtrue
 G_CVAR( g_knockback, "g_knockback", "1000", CVAR_GAMERULE, 0, qtrue, qfalse )
 G_CVAR( g_quadDamageFactor, "g_quadDamageFactor", "3", CVAR_GAMERULE | CVAR_SERVERINFO, 0, qtrue, qfalse )
 G_CVAR( g_weaponRespawn, "g_weaponRespawn", "5", CVAR_GAMERULE | CVAR_SERVERINFO, 0, qtrue, qfalse )
-G_CVAR( g_weaponTeamRespawn, "g_weaponTeamRespawn", "30", 0, 0, qtrue, qfalse )
-G_CVAR( g_forcerespawn, "g_forcerespawn", "20", 0, 0, qtrue, qfalse )
+G_CVAR( g_weaponTeamRespawn, "g_weaponTeamRespawn", "30", 0, 0, qfalse, qfalse )
+G_CVAR( g_forcerespawn, "g_forcerespawn", "20", 0, 0, qfalse, qfalse )
 G_CVAR( g_inactivity, "g_inactivity", "0", 0, 0, qtrue, qfalse )
 G_CVAR( g_debugMove, "g_debugMove", "0", 0, 0, qfalse, qfalse )
 G_CVAR( g_debugDamage, "g_debugDamage", "0", 0, 0, qfalse, qfalse )
@@ -78,12 +78,12 @@ G_CVAR( g_obeliskRegenAmount, "g_obeliskRegenAmount", "15", CVAR_GAMERULE, 0, qf
 G_CVAR( g_obeliskRespawnDelay, "g_obeliskRespawnDelay", "10", CVAR_GAMERULE, 0, qfalse, qfalse )
 
 G_CVAR( g_cubeTimeout, "g_cubeTimeout", "30", CVAR_GAMERULE, 0, qfalse, qfalse )
-G_CVAR( g_redteam, "g_redteam", "Stroggs", CVAR_ARCHIVE | CVAR_USERINFO, 0, qtrue, qtrue )
-G_CVAR( g_blueteam, "g_blueteam", "Pagans", CVAR_ARCHIVE | CVAR_USERINFO, 0, qtrue, qtrue )
+G_CVAR( g_redteam, "g_redteam", "Stroggs", CVAR_ARCHIVE | CVAR_USERINFO, 0, qfalse, qtrue )
+G_CVAR( g_blueteam, "g_blueteam", "Pagans", CVAR_ARCHIVE | CVAR_USERINFO, 0, qfalse, qtrue )
 G_CVAR( g_singlePlayer, "ui_singlePlayerActive", "", 0, 0, qfalse, qfalse )
 
 G_CVAR( g_enableDust, "g_enableDust", "0", 0, 0, qtrue, qfalse )
-G_CVAR( g_enableBreath, "g_enableBreath", "0", 0, 0, qtrue, qfalse )
+G_CVAR( g_enableBreath, "g_enableBreath", "0", 0, 0, qfalse, qfalse )
 G_CVAR( g_proxMineTimeout, "g_proxMineTimeout", "20", CVAR_GAMERULE | CVAR_QL_FLAG_40000, 0, qfalse, qfalse )
 #endif
 G_CVAR( g_smoothClients, "g_smoothClients", "1", 0, 0, qfalse, qfalse )

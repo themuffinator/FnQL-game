@@ -206,15 +206,24 @@ def main() -> int:
     flag_values = {name: int(value, 0) for name, value in re.findall(
         r"#define\s+(CVAR_\w+)\s+(0x[0-9a-fA-F]+|\d+)", (GAME / "q_shared.h").read_text(encoding="latin-1"))}
     registered = {}
+    announced = {}
     for header in ("g_cvar.h", "g_ql_cvars.h"):
         source = (GAME / header).read_text(encoding="latin-1")
-        for name, default, flags in re.findall(
-                r'^G_CVAR\(\s*\w+,\s*"(\w+)",\s*"((?:[^"\\]|\\.)*)",\s*([^,]+),', source, re.M):
+        for name, default, flags, announce in re.findall(
+                r'^G_CVAR\(\s*\w+,\s*"(\w+)",\s*"((?:[^"\\]|\\.)*)",\s*([^,]+),\s*[^,]+,\s*(qtrue|qfalse)\s*,',
+                source, re.M):
             value = 0
             for token in flags.split("|"):
                 token = token.strip()
                 value |= int(token, 0) if token[:1].isdigit() else flag_values[token]
             registered[name] = (default, value)
+            announced[name] = announce == "qtrue"
+    # a changed game rule is announced (with cheats on) exactly when retail's
+    # change callback announces it (qagamex86 0x10051ae0 and its kin)
+    retail_announce = {c["name"].lower(): c["announce"] for c in tables["cvars"]}
+    for name, announce in announced.items():
+        if announce != retail_announce.get(name.lower(), False):
+            failures.append(f"cvar {name}: announces changes {announce}, retail {retail_announce.get(name.lower(), False)}")
     published_mask = sum(flag_values[n] for n in ("CVAR_QL_PMOVE_SETTINGS", "CVAR_QL_WEAPON_RELOAD",
                                                   "CVAR_QL_PLAYER_APPEARANCE", "CVAR_QL_ARMOR_TIERED"))
     retail_published = {c["name"]: (c["default"], c["flags"]) for c in tables["cvars"] if c["flags"] & published_mask}

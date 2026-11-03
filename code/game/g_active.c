@@ -828,6 +828,14 @@ void ClientThink_real( gentity_t *ent ) {
 		return;
 	}
 
+	// a timeout freezes everyone: the command time moves on and nothing
+	// else happens (retail qagamex86 0x10034d66)
+	if ( level.timeoutStartTime ) {
+		client->ps.pm_flags |= PMF_NO_MOVE;
+		client->ps.commandTime = ucmd->serverTime;
+		return;
+	}
+
 	// a deferred spawn tries again once its time has passed (retail
 	// qagamex86 0x10034d79); until then the player flies about as a
 	// spectator, unlinked

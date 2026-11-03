@@ -40,9 +40,9 @@ rewritten from the retail qagame. The full-server lockstep differential runs
 the retail qagame and FnQL-game side by side and finds no difference in FFA,
 duel, TDM and CTF scenarios: kills and respawns, items and item timers, the
 scoreboards, duel queueing and forfeits, ready-up, the end-of-match vote and
-awards, CTF captures and defense bonuses, spectator following, and the stats
-and auto-action commands. Bot AI, timeouts, callvote's retail rules and the
-round-based modes are still open.
+awards, CTF captures and defense bonuses, spectator following, timeouts, and
+the stats and auto-action commands. Bot AI, callvote's retail rules, the
+privileged admin commands and the round-based modes are still open.
 
 The module does not yet claim retail wire parity, so FnQL keeps loading the
 retail modules unless told otherwise. cgame and ui arrive in later

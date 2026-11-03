@@ -284,6 +284,7 @@ typedef struct {
 	int			mapVote;			// the end-of-match map voted for, 1-3 (retail pers +0xf0)
 	int			mapVoteTime;		// level.time of that vote (retail pers +0xec)
 	int			autoAction;			// g_autoAction | cg_autoAction: 1 records the match, 2 screenshots its end (gclient +0x2ec)
+	int			timeoutsUsed;		// timeouts called outside the team modes (+0x2f0)
 
 	// Quake Live CS_PLAYERS state (keys rp, p, so, pq, st, c).  Ready-up,
 	// privileges, spectate-only and the join queue are driven by the match
@@ -470,6 +471,8 @@ typedef struct {
 	int			timeoutStartTime;	// CS_TIMEOUT_START_TIME (retail level +0x1bc8)
 	int			timeoutEndTime;		// CS_TIMEOUT_END_TIME
 	int			timeoutsUsed[2];	// red, blue: CS_RED/BLUE_TIMEOUTS_LEFT count down from g_timeoutCount
+	int			timeoutCaller;		// the client that called the current timeout (retail 0x1049abd4)
+	qboolean	timeoutByServer;	// the server called it (0x1049abd8)
 	int			keySpawnDelay;		// g_spawnDelay_key plus up to g_spawnDelayRandom_key, drawn at worldspawn
 	int			powerupSpawnDelay;	// the same for powerups
 	qboolean	trainingMap;		// worldspawn trainingMap
@@ -776,6 +779,8 @@ qboolean G_IsTeamGametype( int gametype );
 void LogExit( const char *string );
 void G_Forfeit( void );
 qboolean G_RoundInProgress( void );
+qboolean G_RoundCountingDown( void );
+void G_CheckTimein( void );
 qboolean G_IsRoundBasedGametype( int gametype );
 void G_ClearVote( void );
 void G_CountMapVotes( void );
@@ -967,6 +972,7 @@ void	trap_Cvar_VariableStringBuffer( const char *var_name, char *buffer, int buf
 void	trap_LocateGameData( gentity_t *gEnts, int numGEntities, int sizeofGEntity_t, playerState_t *gameClients, int sizeofGameClient );
 void	trap_DropClient( int clientNum, const char *reason );
 void	trap_MarkClientGotCP( int clientNum );	// retail import 192, called by ragequit
+const char *G_SteamIdString( unsigned long long steamId );
 void	trap_SendServerCommand( int clientNum, const char *text );
 void	trap_SetConfigstring( int num, const char *string );
 void	trap_GetConfigstring( int num, char *buffer, int bufferSize );

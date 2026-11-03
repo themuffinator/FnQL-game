@@ -804,7 +804,7 @@ Decimal form of a 64-bit SteamID.  The game's formatter has no 64-bit
 conversions, so the digits are produced here.
 ===========
 */
-static const char *G_SteamIdString( unsigned long long steamId ) {
+const char *G_SteamIdString( unsigned long long steamId ) {
 	static char text[24];
 	char *p = text + sizeof( text ) - 1;
 

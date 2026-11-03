@@ -184,13 +184,25 @@ def extract_cvars(image: PeImage) -> list[dict]:
     g_levelStartTime), a printable name, and a small flags word (the table
     that follows has pointers where the flags would be).
     """
+    # The change callback most game rules share announces the new value
+    # (qagamex86 0x10051ae0, with cheats on); it is the one whose code pushes
+    # the "Server: %s changed to %s" format.
+    announce_format = image.string_va('print "Server: %s changed to %s\n"')
+    packed, announce_refs, start = struct.pack("<I", announce_format), [], 0
+    while (index := image.data.find(packed, start)) >= 0:
+        if (ref := image.va(index)) is not None:
+            announce_refs.append(ref)
+        start = index + 1
+
     def row(va: int) -> dict | None:
-        vm, name_va, default_va, flags = (image.dword(va + 4 * i) for i in range(4))
+        vm, name_va, default_va, flags, _, callback = (image.dword(va + 4 * i) for i in range(6))
         name = image.string(name_va)
         if name is None or not (vm == 0 or image.base <= vm < image.base + 0x01000000) or flags >= 0x01000000:
             return None
         default = image.string(default_va) if default_va else ""
-        return {"name": name, "default": default if default is not None else "", "flags": flags}
+        announce = bool(callback) and any(callback <= ref < callback + 0x40 for ref in announce_refs)
+        return {"name": name, "default": default if default is not None else "", "flags": flags,
+                "announce": announce}
 
     anchor = next(ref - 4 for ref in image.references(image.string_va("g_quadDamageFactor"))
                   if row(ref - 4) is not None)

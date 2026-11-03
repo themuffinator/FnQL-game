@@ -1,0 +1,53 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --factory tdm
+# --frames 1600 --scenario ...): timeouts in a team deathmatch on
+# campgrounds.  give and setviewpos are cheats, hence --cheats and devmap.
+#
+# - In the warmup a timeout is refused while timeouts are off; with
+#   g_timeoutCount 2, red's call is counted but refused for the warmup.
+# - The match starts at frame 984.  Alpha takes a rocket launcher and a
+#   quad, bravo takes an armor and then kills itself, and alpha fires a
+#   rocket; alpha's timeout then freezes the rocket in flight, the quad,
+#   the armor's respawn timer, bravo's respawn and the match clock.
+# - During the timeout bravo's time in is refused and its timeout ignored,
+#   alpha asks for "?" and "players" and is refused "pause".
+# - Alpha calls time in; five seconds later everything runs on, shifted by
+#   the length of the pause.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+
+clientcmd 10 alpha timeout
+cmd 12 g_timeoutCount 2
+clientcmd 14 alpha timeout
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+
+clientcmd 990 alpha give Rocket Launcher
+clientcmd 992 alpha give Quad Damage
+at 994 alpha weapon=5
+clientcmd 996 bravo setviewpos -1472 448 580 0
+clientcmd 1000 bravo kill
+at 1010 alpha buttons=attack
+at 1014 alpha buttons=0
+clientcmd 1016 alpha timeout
+at 1020 alpha forward=127
+clientcmd 1030 bravo timein
+clientcmd 1032 bravo timeout
+clientcmd 1040 alpha ?
+clientcmd 1042 alpha players
+clientcmd 1044 alpha pause
+clientcmd 1100 alpha timein
+clientcmd 1110 alpha timein
+at 1330 alpha forward=0
+at 1340 bravo buttons=attack
+at 1344 bravo buttons=0
+clientcmd 1400 alpha score
+clientcmd 1500 bravo score

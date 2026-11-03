@@ -2549,6 +2549,271 @@ static void Cmd_Stats_f( gentity_t *ent ) {
 
 /*
 =================
+G_MatchCommandAllowed
+
+Retail qagamex86 0x10061090: whether a match command may run now.  At the
+intermission it needs MATCHCMD_INTERMISSION and during the warmup
+MATCHCMD_WARMUP; during a match it needs MATCHCMD_MATCH, and a round-based
+mode refuses it while counting down to a round.
+=================
+*/
+#define	MATCHCMD_WARMUP			1
+#define	MATCHCMD_MATCH			2
+#define	MATCHCMD_INTERMISSION	4
+
+static qboolean G_MatchCommandAllowed( gentity_t *ent, int flags ) {
+	const char	*refusal = NULL;
+
+	if ( level.intermissiontime ) {
+		if ( !( flags & MATCHCMD_INTERMISSION ) ) {
+			refusal = "print \"This command can not be used during intermission\n\"";
+		}
+	} else if ( level.warmupTime ) {
+		if ( !( flags & MATCHCMD_WARMUP ) ) {
+			refusal = "print \"This command can not be used during warmup\n\"";
+		}
+	} else if ( !( flags & MATCHCMD_MATCH ) ) {
+		refusal = "print \"This command can not be used while a match is in progress\n\"";
+	} else if ( G_IsRoundBasedGametype( g_gametype.integer ) && G_RoundCountingDown() ) {
+		refusal = "print \"This command can not be used during a round countdown\n\"";
+	}
+
+	if ( refusal ) {
+		trap_SendServerCommand( ent - g_entities, refusal );
+		return qfalse;
+	}
+	return qtrue;
+}
+
+
+/*
+=================
+G_StartTimeout
+
+Retail qagamex86 0x10061db0: the match stops for the given seconds, or
+until a time in when there are none (a pause), and everyone is told who
+called it.
+=================
+*/
+static void G_StartTimeout( gentity_t *ent, int seconds ) {
+	if ( !G_MatchCommandAllowed( ent, MATCHCMD_MATCH ) ) {
+		return;
+	}
+
+	level.timeoutStartTime = level.time;
+	level.timeoutEndTime = seconds ? level.time + seconds * 1000 : 0;
+	level.timeoutCaller = ent - g_entities;
+	level.timeoutByServer = qfalse;
+	trap_SetConfigstring( CS_TIMEOUT_START_TIME, va( "%i", level.timeoutStartTime ) );
+	trap_SetConfigstring( CS_TIMEOUT_END_TIME, va( "%i", level.timeoutEndTime ) );
+	if ( seconds ) {
+		trap_SendServerCommand( -1, va( "pcp \"%s has called timeout (%ds)\n\"", ent->client->pers.netname, seconds ) );
+	} else {
+		trap_SendServerCommand( -1, va( "pcp \"%s has paused the match\n\"", ent->client->pers.netname ) );
+	}
+}
+
+
+/*
+=================
+Cmd_Timeout_f
+
+Retail qagamex86 0x100621c0: a player in the game stops the match for
+g_timeoutLen seconds.  g_timeoutCount limits the calls, per team in the
+team modes (the counts left go out in configstrings) and per player
+otherwise.  The call is counted before the match state is checked, as in
+retail.
+=================
+*/
+static void Cmd_Timeout_f( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
+	const int	team = client->sess.sessionTeam;
+
+	if ( team == TEAM_SPECTATOR || level.timeoutStartTime ) {
+		return;
+	}
+	if ( !g_timeoutCount.integer ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Timeouts are not enabled on this server.\n\"" );
+		return;
+	}
+
+	if ( g_gametype.integer >= GT_TEAM ) {
+		if ( team != TEAM_RED && team != TEAM_BLUE ) {
+			return;
+		}
+		if ( level.timeoutsUsed[team - TEAM_RED] >= g_timeoutCount.integer ) {
+			trap_SendServerCommand( ent - g_entities, "print \"Your team has no timeouts left to call\n\"" );
+			return;
+		}
+		level.timeoutsUsed[team - TEAM_RED]++;
+		trap_SetConfigstring( CS_RED_TIMEOUTS_LEFT, va( "%d", g_timeoutCount.integer - level.timeoutsUsed[0] ) );
+		trap_SetConfigstring( CS_BLUE_TIMEOUTS_LEFT, va( "%d", g_timeoutCount.integer - level.timeoutsUsed[1] ) );
+	} else {
+		if ( client->pers.timeoutsUsed >= g_timeoutCount.integer ) {
+			trap_SendServerCommand( ent - g_entities, "print \"You have no timeouts left to call\n\"" );
+			return;
+		}
+		client->pers.timeoutsUsed++;
+	}
+
+	G_StartTimeout( ent, g_timeoutLen.integer );
+}
+
+
+/*
+=================
+Cmd_Timein_f
+
+Retail qagamex86 0x10062330: the player who called the timeout, or a
+moderator, ends it five seconds from now; with less than that left, or
+for a timeout the server called, nothing happens.  G_CheckTimein restarts
+the match when the time comes.
+=================
+*/
+static void Cmd_Timein_f( gentity_t *ent ) {
+	if ( !level.timeoutStartTime ) {
+		return;
+	}
+	if ( level.timeoutEndTime && level.timeoutEndTime < level.time + 5000 ) {
+		return;
+	}
+	if ( level.timeoutByServer
+		|| ( ent->client != &level.clients[level.timeoutCaller] && ent->client->pers.privileges < 1 ) ) {
+		trap_SendServerCommand( ent - g_entities, "print \"You did not call the current timeout\n\"" );
+		return;
+	}
+
+	level.timeoutEndTime = level.time + 5000;
+	trap_SetConfigstring( CS_TIMEOUT_END_TIME, va( "%i", level.timeoutEndTime ) );
+	trap_SendServerCommand( -1, va( "pcp \"%s has called timein\n\"", ent->client->pers.netname ) );
+}
+
+
+/*
+=================
+Cmd_Players_f
+
+Retail qagamex86 0x10060ee0: every connected player's slot, Steam id,
+privilege (moderator M, administrator A) and name.
+=================
+*/
+static void Cmd_Players_f( gentity_t *ent ) {
+	static const char	privilegeMarks[] = " MA*";
+	gclient_t			*cl;
+	int					i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &level.clients[i];
+		if ( !g_entities[i].inuse || cl->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		// retail prints the id with %llu, which the game's formatter lacks
+		trap_SendServerCommand( ent - g_entities, va( "print \"%2d %s %c %s\n\"", i, G_SteamIdString( trap_GetSteamId64( i ) ),
+			privilegeMarks[cl->pers.privileges & 3], cl->pers.netname ) );
+	}
+}
+
+
+/*
+=================
+G_AdminCommand
+
+Retail qagamex86 0x10062e20 looks every client command up in this table
+(0x10080750) before the others.  A player below a command's privilege (1
+moderator, 2 administrator) is told so; retail's rcon entry has no
+handler and falls through.  FnQL-game grants no privileges yet (access
+lists, milestone 5), so of the privileged commands only the refusal is
+implemented.  (Retail also runs the table from the server console,
+ConsoleCommand 0x10066ef2.)
+=================
+*/
+typedef struct {
+	int			privilege;
+	const char	*name;
+	void		(*handler)( gentity_t *ent );
+	qboolean	retailHandler;		// rcon has none and falls through
+	const char	*help;
+} adminCommand_t;
+
+static void Cmd_AdminHelp_f( gentity_t *ent );
+
+static const adminCommand_t adminCommands[] = {
+	{ 0, "?", Cmd_AdminHelp_f, qtrue, "" },
+	{ 0, "players", Cmd_Players_f, qtrue, "^3 show currently connected players and their status" },
+	{ 0, "timeout", Cmd_Timeout_f, qtrue, "^3 call a time out, temporarily pausing the game" },
+	{ 0, "timein", Cmd_Timein_f, qtrue, "^3 call a time in, unpausing the game" },
+	{ 1, "allready", NULL, qtrue, "^3 force all players to 'ready' and start the match" },
+	{ 1, "pause", NULL, qtrue, "^3 pause the current match indefinitely" },
+	{ 1, "unpause", NULL, qtrue, "^3 unpause the current match" },
+	{ 1, "lock", NULL, qtrue, " [team]^3 stops players from joining the team" },
+	{ 1, "unlock", NULL, qtrue, " [team]^3 allows players to join the team" },
+	{ 1, "put", NULL, qtrue, " <playerid> <team>^3 move a player to a team, use (R/B/S) or (F/S)" },
+	{ 1, "mute", NULL, qtrue, " <playerid>^3 temporarily mutes a player on the server" },
+	{ 1, "unmute", NULL, qtrue, " <playerid>^3 restores a muted player's ability to chat" },
+	{ 1, "tempban", NULL, qtrue, " <playerid>^3 temporarily kicks a player from the server for the match" },
+	{ 1, "ban", NULL, qtrue, " <playerid>^3 permenantly bans a player from the server" },
+	{ 1, "listaccess", NULL, qtrue, " <page>^3 lists the accounts with access " },
+	{ 1, "unban", NULL, qtrue, " <account>^3 removes a player from the banlist" },
+	{ 1, "opsay", NULL, qtrue, " <message> ^3send a message to everyone on the server" },
+	{ 2, "addadmin", NULL, qtrue, " <playerid>^3 give a player admin privileges" },
+	{ 2, "addmod", NULL, qtrue, " <playerid>^3 give a player moderator privileges" },
+	{ 2, "demote", NULL, qtrue, " <playerid>^3 remove a player's privileges" },
+	{ 1, "abort", NULL, qtrue, "^3 abandon the current game and go back to warmup" },
+	{ 1, "addscore", NULL, qtrue, " <playerid> <score>^3 add points to a player's score" },
+	{ 1, "addteamscore", NULL, qtrue, " <team> <score>^3 add points to a team's score, use (R/B)" },
+	{ 1, "setmatchtime", NULL, qtrue, " <time> ^3set match time in seconds" },
+	{ 2, "rcon", NULL, qfalse, " <command> ^3run command on server" },
+};
+
+
+/*
+=================
+Cmd_AdminHelp_f
+
+Retail qagamex86 0x10062d60 ("?"): the commands the player may use, with
+their help.
+=================
+*/
+static void Cmd_AdminHelp_f( gentity_t *ent ) {
+	int		i;
+
+	for ( i = 0; i < ARRAY_LEN( adminCommands ); i++ ) {
+		if ( ent->client->pers.privileges >= adminCommands[i].privilege ) {
+			trap_SendServerCommand( ent - g_entities, va( "print \"%s%s\n\"", adminCommands[i].name, adminCommands[i].help ) );
+		}
+	}
+}
+
+
+static qboolean G_AdminCommand( gentity_t *ent, const char *cmd ) {
+	const adminCommand_t	*command;
+	int						i;
+
+	for ( i = 0; i < ARRAY_LEN( adminCommands ); i++ ) {
+		command = &adminCommands[i];
+		if ( Q_stricmp( cmd, command->name ) ) {
+			continue;
+		}
+		if ( !command->retailHandler ) {
+			return qfalse;
+		}
+		if ( ent->client->pers.privileges < command->privilege ) {
+			trap_SendServerCommand( ent - g_entities,
+				"print \"You do not have the privileges required to use this command\n\"" );
+			return qtrue;
+		}
+		if ( !command->handler ) {
+			return qfalse;	// a privileged command FnQL-game does not have yet
+		}
+		command->handler( ent );
+		return qtrue;
+	}
+	return qfalse;
+}
+
+
+/*
+=================
 ClientCommand
 =================
 */
@@ -2569,6 +2834,11 @@ void ClientCommand( int clientNum ) {
 			}
 		}
 		return;	// not fully in game yet
+	}
+
+	// the match and admin commands come first (retail qagamex86 0x10045e28)
+	if ( G_AdminCommand( ent, cmd ) ) {
+		return;
 	}
 
 	if (Q_stricmp (cmd, "say") == 0) {

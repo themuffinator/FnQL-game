@@ -295,6 +295,16 @@ if get_option('fnql-dedicated') != ''
   test('server-lockstep-differential-tdm_match', python,
     args: tdm_match_args + ['--module', qagame.full_path()],
     depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
+  # Timeouts: refused and counted calls, a pause that holds a rocket, a quad,
+  # an item timer, a respawn and the match clock, the admin command table
+  # ("?", players, an unprivileged pause), and the caller's time in.
+  tdm_timeout_args = server_lockstep_args + ['--cheats', '--factory', 'tdm', '--frames', '1600',
+    '--scenario', files('tests/lockstep/server/tdm_timeout.txt')]
+  test('server-lockstep-selfcheck-tdm_timeout', python, args: tdm_timeout_args + ['--self-check'],
+    suite: 'differential', timeout: 300, is_parallel: false)
+  test('server-lockstep-differential-tdm_timeout', python,
+    args: tdm_timeout_args + ['--module', qagame.full_path()],
+    depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
   # Capture the flag: a capture, a return, the CTF scoreboard's partly hidden
   # team header, a team forfeit, and the end-of-match awards.
   ctf_match_args = server_lockstep_args + ['--cheats', '--map', 'spidercrossings', '--factory', 'ctf',

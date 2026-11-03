@@ -12,7 +12,7 @@ typedef struct {
 	const char	*defaultString;
 	int			cvarFlags;
 	int			modificationCount;	// for tracking changes
-	qboolean	trackChange;		// track this variable, and announce if changed
+	qboolean	trackChange;		// announce changes with cheats on: retail's announcing callbacks (contract "announce")
 	qboolean	teamShader;			// track and if changed, update shader state
 } cvarTable_t;
 
@@ -337,8 +337,10 @@ static void G_UpdateCvars( void ) {
 					pmoveChanged = qtrue;
 				}
 
-				if ( cv->trackChange ) {
-					G_BroadcastServerCommand( -1, va("print \"Server: %s changed to %s\n\"", 
+				// retail's change callbacks announce game-rule changes only
+				// with cheats on (qagamex86 0x10051ae0 and its kin)
+				if ( cv->trackChange && g_cheats.integer ) {
+					trap_SendServerCommand( -1, va( "print \"Server: %s changed to %s\n\"",
 						cv->cvarName, cv->vmCvar->string ) );
 				}
 
@@ -909,6 +911,19 @@ mode is being played.  The rounds arrive with milestone 6.
 ==================
 */
 qboolean G_RoundInProgress( void ) {
+	return qfalse;
+}
+
+
+/*
+==================
+G_RoundCountingDown
+
+Retail level +0x2740 at 1: a round-based mode counts down to its next
+round.  The rounds arrive with milestone 6.
+==================
+*/
+qboolean G_RoundCountingDown( void ) {
 	return qfalse;
 }
 
@@ -2569,6 +2584,62 @@ void G_UpdateTimeoutConfigstrings( void ) {
 
 
 /*
+==================
+G_CheckTimein
+
+Retail qagamex86 0x10061ee0, every frame of a timeout: once its end has
+come, the clock runs again.  Each player's movement freeze lifts and its
+respawn time, powerups and external event move on by the length of the
+pause, and so do the counting-down item timers.  (Retail also adds the
+pause to its inactivity counter and its once-a-second timer; FnQL-game's
+inactivity deadline already counted it, and its timeResidual did not
+advance while ClientThink was frozen.  Retail moves decaying dropped
+powerups too, which FnQL-game does not have yet.)
+==================
+*/
+void G_CheckTimein( void ) {
+	gentity_t	*ent;
+	gclient_t	*cl;
+	int			paused, i, j;
+
+	if ( !level.timeoutEndTime || level.timeoutEndTime > level.time ) {
+		return;
+	}
+
+	paused = level.time - level.timeoutStartTime;
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		if ( !ent->inuse || ent->client->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		cl = ent->client;
+		cl->ps.pm_flags &= ~PMF_NO_MOVE;
+		cl->respawnTime += paused;
+		for ( j = 0; j < MAX_POWERUPS; j++ ) {
+			if ( cl->ps.powerups[j] && cl->ps.powerups[j] != INT_MAX ) {
+				cl->ps.powerups[j] += paused;
+			}
+		}
+		if ( cl->ps.externalEventTime ) {
+			cl->ps.externalEventTime += paused;
+		}
+	}
+
+	if ( g_itemTimers.integer ) {
+		for ( i = 0; i < MAX_GENTITIES; i++ ) {
+			if ( g_entities[i].flags & FL_ITEM_TIMER ) {
+				g_entities[i].s.time += paused;
+			}
+		}
+	}
+
+	level.timeoutStartTime = 0;
+	trap_SetConfigstring( CS_TIMEOUT_START_TIME, "" );
+	trap_SetConfigstring( CS_LEVEL_START_TIME, va( "%i", level.startTime ) );
+}
+
+
+/*
 =============
 G_RunThink
 
@@ -2647,6 +2718,19 @@ static void G_RunFrame( int levelTime ) {
 	ent = &g_entities[0];
 	for (i=0 ; i<level.num_entities ; i++, ent++) {
 		if ( !ent->inuse ) {
+			continue;
+		}
+
+		// a timeout holds every entity: thinks, events and the flight of
+		// missiles and movers wait (retail qagamex86 0x100596a5)
+		if ( level.timeoutStartTime ) {
+			if ( ent->s.eType == ET_MISSILE || ent->s.eType == ET_MOVER ) {
+				ent->s.pos.trTime += level.msec;
+			}
+			if ( ent->nextthink ) {
+				ent->nextthink += level.msec;
+			}
+			ent->eventTime += level.msec;
 			continue;
 		}
 
@@ -2729,6 +2813,13 @@ static void G_RunFrame( int levelTime ) {
 
 	// see if it is time to do a tournement restart
 	CheckTournament();
+
+	// a timeout stops the match clock until its end (retail qagamex86
+	// 0x100598f6)
+	if ( level.timeoutStartTime ) {
+		level.startTime += level.msec;
+		G_CheckTimein();
+	}
 
 	// see if it is time to end the level
 	CheckExitRules();

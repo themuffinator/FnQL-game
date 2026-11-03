@@ -500,6 +500,27 @@ Progress (G3, both with no divergence):
   gets the scoreboard when it starts following, moves on or floats free
   when its player goes (0x1003c87b), and resumes after a respawn such as
   the restart into the match (0x1003c675, 0x10033e5a).
+- `tdm_timeout`: retail looks every client command up in a command table
+  first (0x10062e20, table 0x10080750: privilege, name, handler, help);
+  `?` lists what the caller may use (0x10062d60), `players` prints slot,
+  Steam id, privilege mark and name (0x10060ee0), and an unprivileged
+  player is refused the moderator and administrator commands with
+  retail's message (FnQL-game grants no privileges yet, so their handlers
+  wait for the access lists). `timeout` (0x100621c0) is refused to
+  spectators, off without `g_timeoutCount`, counted per team in team modes
+  (the counts left go out in `CS_RED/BLUE_TIMEOUTS_LEFT`) or per player,
+  and counted before the match state is checked (0x10061090 refuses it in
+  the warmup and at the intermission); it stops the match for
+  `g_timeoutLen` (0x10061db0). During it ClientThink only moves the command
+  time on and sets `PMF_NO_MOVE` (0x10034d66), and G_RunFrame holds every
+  entity's think, event and missile or mover flight and the match clock
+  (0x100596a5, 0x100598f6). `timein` (0x10062330), from the caller or a
+  moderator, ends it five seconds later; then respawn times, powerups,
+  external events and item timers move on by the pause (0x10061ee0).
+- Cvar changes are announced as retail does: only with cheats on, and
+  only for the cvars whose retail change callback announces
+  (0x10051ae0 and 48 specific callbacks; `retail_tables.json` now records
+  `announce` per cvar and G2 holds the registrations to it).
 - One flag CTF and `g_droppedFlagBonus` remain baseq3a.
 - Exit rules follow 0x10058030: the timelimit with `g_overtime` (an
   `EV_OVERTIME` broadcast per extension while tied), the frag limit in FFA,
@@ -511,11 +532,14 @@ Progress (G3, both with no divergence):
   (0x10067c03); FnQL-game had no limit and overwrote the match-state
   configstrings from 661 on maps with more.
 
-Open in M5: callvote's retail rules, timeouts and the admin pause
-(0x10061db0 starts one, 0x10061ee0 shifts every timer at timein, and the
-frame loop and ClientThink honour the pause), the retail session string
-(twelve fields, 0x10065880), team-kill complaints, one flag CTF, and G5
-runs with retail clients.  Spectators also honour a
+Open in M5: callvote's retail rules, the admin commands behind
+privileges (access lists; `pause`/`unpause`, `allready`, `lock`, `put`,
+`mute`, bans and the rest of the table, and the server console's route
+into it, ConsoleCommand 0x10066ef2), decaying dropped powerups
+(`g_droppedPowerupsDecay`, which the time in also shifts), the drop
+commands (`dropweapon`, `dropflag`, `droppowerup`, `droprune`), the retail
+session string (twelve fields, 0x10065880), team-kill complaints, one
+flag CTF, and G5 runs with retail clients.  Spectators also honour a
 0x800 button retail checks in SpectatorThink (0x10033f93: it frees a
 follower); which client key sends it is not yet identified.
 
