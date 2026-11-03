@@ -268,226 +268,210 @@ static void Team_ForceGesture( team_t team ) {
 
 /*
 ================
-Team_FragBonuses
+Team_DefenseAward
 
-Calculate the bonuses for flag defense, flag carrier defense, etc.
-Note that bonuses are not cumulative.  You get one, they are in importance
-order.
+A defense bonus (retail qagamex86 0x10069018): the match's defends go up,
+the score, then the defend award and its sprite.
 ================
 */
-void Team_FragBonuses(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker)
-{
-	int i;
-	gentity_t *ent;
-	int flag_pw, enemy_flag_pw;
-	int otherteam;
-	int tokens;
-	gentity_t *flag, *carrier = NULL;
-	char *c;
-	vec3_t v1, v2;
-	int team;
+static void Team_DefenseAward( gentity_t *attacker, gentity_t *targ, int bonus ) {
+	attacker->client->stats.defends++;
+	AddScore( attacker, targ->r.currentOrigin, bonus );
+	attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
+	attacker->client->ps.eFlags &= ~EF_AWARDS;
+	attacker->client->ps.eFlags |= EF_AWARD_DEFEND;
+	attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
+}
+
+
+/*
+================
+Team_FragBonuses
+
+Retail qagamex86 0x10068970, for capture the flag, one flag CTF, Overload,
+Harvester, domination and attack and defend: the attacker of an enemy
+scores one bonus, the first that applies of
+
+  - fragging the flag carrier (20) or a skull carrier (20 per skull,
+    squared), announced with the carrier's powerup;
+  - fragging someone who hurt the attacker's own carrier in the last
+    eight seconds (5);
+  - fragging someone within 1000 units of the attacker's flag or obelisk
+    and in its PVS (10);
+  - fragging someone while within 1000 units of the attacker's flag
+    carrier, either of them in the carrier's PVS (2).
+
+Domination's control-point defense (0x1004b980) arrives with the mode
+(milestone 6).  In attack and defend only the defending team scores base
+defense (0x10068ecf, 0x10036440); outside a live round, which is all
+FnQL-game has until milestone 6, that is nobody.
+================
+*/
+void Team_FragBonuses( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker ) {
+	gentity_t	*ent, *flag, *carrier;
+	const char	*classname, *powerup;
+	vec3_t		v;
+	int			i, team, otherteam, flag_pw, enemy_flag_pw, tokens;
+
+	switch ( g_gametype.integer ) {
+	case GT_CTF:
+	case GT_1FCTF:
+	case GT_OBELISK:
+	case GT_HARVESTER:
+	case GT_DOMINATION:
+	case GT_ATTACK_DEFEND:
+		break;
+	default:
+		return;
+	}
 
 	// no bonus for fragging yourself or team mates
-	if (!targ->client || !attacker->client || targ == attacker || OnSameTeam(targ, attacker))
+	if ( !targ->client || !attacker->client || targ == attacker || OnSameTeam( targ, attacker ) ) {
 		return;
+	}
 
 	team = targ->client->sess.sessionTeam;
-	otherteam = OtherTeam(targ->client->sess.sessionTeam);
-	if (otherteam < 0)
+	otherteam = OtherTeam( team );
+	if ( otherteam < 0 ) {
 		return; // whoever died isn't on a team
+	}
 
-	// same team, if the flag at base, check to he has the enemy flag
-	if (team == TEAM_RED) {
+	if ( g_gametype.integer == GT_DOMINATION ) {
+		return;
+	}
+
+	// the target's own flag, which the attacker's carrier holds, and the
+	// flag the target could be carrying
+	if ( team == TEAM_RED ) {
 		flag_pw = PW_REDFLAG;
 		enemy_flag_pw = PW_BLUEFLAG;
 	} else {
 		flag_pw = PW_BLUEFLAG;
 		enemy_flag_pw = PW_REDFLAG;
 	}
-
-#ifdef MISSIONPACK
-	if (g_gametype.integer == GT_1FCTF) {
+	if ( g_gametype.integer == GT_1FCTF ) {
 		enemy_flag_pw = PW_NEUTRALFLAG;
-	} 
-#endif
+	}
 
-	// did the attacker frag the flag carrier?
 	tokens = 0;
-#ifdef MISSIONPACK
-	if( g_gametype.integer == GT_HARVESTER ) {
-		tokens = targ->client->ps.generic1;
+	if ( g_gametype.integer == GT_HARVESTER ) {
+		tokens = targ->client->ps.generic1 & 0x3f;
 	}
-#endif
-	if (targ->client->ps.powerups[enemy_flag_pw]) {
+
+	if ( targ->client->ps.powerups[PW_QUAD] ) {
+		powerup = "Quad";
+	} else if ( targ->client->ps.powerups[PW_BATTLESUIT] ) {
+		powerup = "BS";
+	} else if ( targ->client->ps.powerups[PW_REGEN] ) {
+		powerup = "Regen";
+	} else if ( targ->client->ps.powerups[PW_HASTE] ) {
+		powerup = "Haste";
+	} else if ( targ->client->ps.powerups[PW_INVIS] ) {
+		powerup = "Invis";
+	} else {
+		powerup = NULL;
+	}
+
+	// did the attacker frag the flag or skull carrier?
+	if ( targ->client->ps.powerups[enemy_flag_pw] || tokens ) {
 		attacker->client->pers.teamState.lastfraggedcarrier = level.time;
-		AddScore(attacker, targ->r.currentOrigin, CTF_FRAG_CARRIER_BONUS);
 		attacker->client->pers.teamState.fragcarrier++;
-		PrintMsg(NULL, "%s" S_COLOR_WHITE " fragged %s's flag carrier!\n",
-			attacker->client->pers.netname, TeamName(team));
+		AddScore( attacker, targ->r.currentOrigin,
+			targ->client->ps.powerups[enemy_flag_pw] ? CTF_FRAG_CARRIER_BONUS : CTF_FRAG_CARRIER_BONUS * tokens * tokens );
+		PrintMsg( NULL, targ->client->ps.powerups[enemy_flag_pw]
+			? "%s" S_COLOR_YELLOW " fragged %s's %sflag carrier!\n"
+			: "%s" S_COLOR_YELLOW " fragged %s's %sskull carrier!\n",
+			attacker->client->pers.netname, TeamName( team ), powerup ? va( "%s ", powerup ) : "" );
 
 		// the target had the flag, clear the hurt carrier
 		// field on the other team
-		for (i = 0; i < level.maxclients; i++) {
+		for ( i = 0; i < level.maxclients; i++ ) {
 			ent = g_entities + i;
-			if (ent->inuse && ent->client->sess.sessionTeam == otherteam)
+			if ( ent->inuse && ent->client->sess.sessionTeam == otherteam ) {
 				ent->client->pers.teamState.lasthurtcarrier = 0;
+			}
 		}
 		return;
 	}
 
-	// did the attacker frag a head carrier? other->client->ps.generic1
-	if (tokens) {
-		attacker->client->pers.teamState.lastfraggedcarrier = level.time;
-		AddScore(attacker, targ->r.currentOrigin, CTF_FRAG_CARRIER_BONUS * tokens * tokens);
-		attacker->client->pers.teamState.fragcarrier++;
-		PrintMsg(NULL, "%s" S_COLOR_WHITE " fragged %s's skull carrier!\n",
-			attacker->client->pers.netname, TeamName(team));
-
-		// the target had the flag, clear the hurt carrier
-		// field on the other team
-		for (i = 0; i < level.maxclients; i++) {
-			ent = g_entities + i;
-			if (ent->inuse && ent->client->sess.sessionTeam == otherteam)
-				ent->client->pers.teamState.lasthurtcarrier = 0;
-		}
-		return;
-	}
-
-	if (targ->client->pers.teamState.lasthurtcarrier &&
-		level.time - targ->client->pers.teamState.lasthurtcarrier < CTF_CARRIER_DANGER_PROTECT_TIMEOUT &&
-		!attacker->client->ps.powerups[flag_pw]) {
-		// attacker is on the same team as the flag carrier and
-		// fragged a guy who hurt our flag carrier
-		AddScore(attacker, targ->r.currentOrigin, CTF_CARRIER_DANGER_PROTECT_BONUS);
-
+	// the target recently hurt the attacker's carrier
+	if ( targ->client->pers.teamState.lasthurtcarrier
+		&& level.time - targ->client->pers.teamState.lasthurtcarrier < CTF_CARRIER_DANGER_PROTECT_TIMEOUT ) {
 		attacker->client->pers.teamState.carrierdefense++;
 		targ->client->pers.teamState.lasthurtcarrier = 0;
-
-		attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
-		team = attacker->client->sess.sessionTeam;
-		// add the sprite over the player's head
-		attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP );
-		attacker->client->ps.eFlags |= EF_AWARD_DEFEND;
-		attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
-
+		Team_DefenseAward( attacker, targ, CTF_CARRIER_DANGER_PROTECT_BONUS );
 		return;
 	}
 
-	if (targ->client->pers.teamState.lasthurtcarrier &&
-		level.time - targ->client->pers.teamState.lasthurtcarrier < CTF_CARRIER_DANGER_PROTECT_TIMEOUT) {
-		// attacker is on the same team as the skull carrier and
-		AddScore(attacker, targ->r.currentOrigin, CTF_CARRIER_DANGER_PROTECT_BONUS);
-
-		attacker->client->pers.teamState.carrierdefense++;
-		targ->client->pers.teamState.lasthurtcarrier = 0;
-
-		attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
-		team = attacker->client->sess.sessionTeam;
-		// add the sprite over the player's head
-		attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP );
-		attacker->client->ps.eFlags |= EF_AWARD_DEFEND;
-		attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
-
-		return;
-	}
-
-	// flag and flag carrier area defense bonuses
-
-	// we have to find the flag and carrier entities
-
-#ifdef MISSIONPACK	
-	if( g_gametype.integer == GT_OBELISK ) {
-		// find the team obelisk
-		switch (attacker->client->sess.sessionTeam) {
+	// the attacker's flag or obelisk, and the attacker's flag carrier
+	carrier = NULL;
+	if ( g_gametype.integer == GT_OBELISK ) {
+		switch ( attacker->client->sess.sessionTeam ) {
 		case TEAM_RED:
-			c = "team_redobelisk";
+			classname = "team_redobelisk";
 			break;
 		case TEAM_BLUE:
-			c = "team_blueobelisk";
-			break;		
+			classname = "team_blueobelisk";
+			break;
 		default:
 			return;
 		}
-		
-	} else if (g_gametype.integer == GT_HARVESTER ) {
-		// find the center obelisk
-		c = "team_neutralobelisk";
+	} else if ( g_gametype.integer == GT_HARVESTER ) {
+		classname = "team_neutralobelisk";
 	} else {
-#endif
-	// find the flag
-	switch (attacker->client->sess.sessionTeam) {
-	case TEAM_RED:
-		c = "team_CTF_redflag";
-		break;
-	case TEAM_BLUE:
-		c = "team_CTF_blueflag";
-		break;		
-	default:
-		return;
-	}
-	// find attacker's team's flag carrier
-	for (i = 0; i < level.maxclients; i++) {
-		carrier = g_entities + i;
-		if (carrier->inuse && carrier->client->ps.powerups[flag_pw])
+		switch ( attacker->client->sess.sessionTeam ) {
+		case TEAM_RED:
+			classname = "team_CTF_redflag";
 			break;
-		carrier = NULL;
-	}
-#ifdef MISSIONPACK
-	}
-#endif
-	flag = NULL;
-	while ((flag = G_Find (flag, FOFS(classname), c)) != NULL) {
-		if (!(flag->flags & FL_DROPPED_ITEM))
+		case TEAM_BLUE:
+			classname = "team_CTF_blueflag";
 			break;
-	}
-
-	if (!flag)
-		return; // can't find attacker's flag
-
-	// ok we have the attackers flag and a pointer to the carrier
-
-	// check to see if we are defending the base's flag
-	VectorSubtract(targ->r.currentOrigin, flag->r.currentOrigin, v1);
-	VectorSubtract(attacker->r.currentOrigin, flag->r.currentOrigin, v2);
-
-	if ( ( ( VectorLength(v1) < CTF_TARGET_PROTECT_RADIUS &&
-		trap_InPVS(flag->r.currentOrigin, targ->r.currentOrigin ) ) ||
-		( VectorLength(v2) < CTF_TARGET_PROTECT_RADIUS &&
-		trap_InPVS(flag->r.currentOrigin, attacker->r.currentOrigin ) ) ) &&
-		attacker->client->sess.sessionTeam != targ->client->sess.sessionTeam) {
-
-		// we defended the base flag
-		AddScore(attacker, targ->r.currentOrigin, CTF_FLAG_DEFENSE_BONUS);
-		attacker->client->pers.teamState.basedefense++;
-
-		attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
-		// add the sprite over the player's head
-		attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP );
-		attacker->client->ps.eFlags |= EF_AWARD_DEFEND;
-		attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
-
-		return;
-	}
-
-	if (carrier && carrier != attacker) {
-		VectorSubtract(targ->r.currentOrigin, carrier->r.currentOrigin, v1);
-		VectorSubtract(attacker->r.currentOrigin, carrier->r.currentOrigin, v1);
-
-		if ( ( ( VectorLength(v1) < CTF_ATTACKER_PROTECT_RADIUS &&
-			trap_InPVS(carrier->r.currentOrigin, targ->r.currentOrigin ) ) ||
-			( VectorLength(v2) < CTF_ATTACKER_PROTECT_RADIUS &&
-				trap_InPVS(carrier->r.currentOrigin, attacker->r.currentOrigin ) ) ) &&
-			attacker->client->sess.sessionTeam != targ->client->sess.sessionTeam) {
-			AddScore(attacker, targ->r.currentOrigin, CTF_CARRIER_PROTECT_BONUS);
-			attacker->client->pers.teamState.carrierdefense++;
-
-			attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
-			// add the sprite over the player's head
-			attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP );
-			attacker->client->ps.eFlags |= EF_AWARD_DEFEND;
-			attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
-
+		default:
 			return;
+		}
+		for ( i = 0; i < level.maxclients; i++ ) {
+			ent = g_entities + i;
+			if ( ent->inuse && ent->client->ps.powerups[flag_pw] ) {
+				carrier = ent;
+				break;
+			}
+		}
+	}
+
+	flag = NULL;
+	while ( ( flag = G_Find( flag, FOFS( classname ), classname ) ) != NULL ) {
+		if ( !( flag->flags & FL_DROPPED_ITEM ) ) {
+			break;
+		}
+	}
+	if ( !flag ) {
+		return; // can't find attacker's flag
+	}
+
+	// the target came near the base: only its distance counts, where
+	// Quake III also took the attacker's
+	VectorSubtract( targ->r.currentOrigin, flag->r.currentOrigin, v );
+	if ( VectorLength( v ) < CTF_TARGET_PROTECT_RADIUS
+		&& trap_InPVS( flag->r.currentOrigin, targ->r.currentOrigin )
+		&& attacker->client->sess.sessionTeam != targ->client->sess.sessionTeam ) {
+		if ( g_gametype.integer == GT_ATTACK_DEFEND ) {
+			return;
+		}
+		attacker->client->pers.teamState.basedefense++;
+		Team_DefenseAward( attacker, targ, CTF_FLAG_DEFENSE_BONUS );
+		return;
+	}
+
+	// the attacker was guarding its carrier (Quake III measured the wrong
+	// vector here; retail measures the attacker's distance)
+	if ( carrier && carrier != attacker ) {
+		VectorSubtract( attacker->r.currentOrigin, carrier->r.currentOrigin, v );
+		if ( VectorLength( v ) < CTF_ATTACKER_PROTECT_RADIUS
+			&& ( trap_InPVS( carrier->r.currentOrigin, targ->r.currentOrigin )
+				|| trap_InPVS( carrier->r.currentOrigin, attacker->r.currentOrigin ) )
+			&& attacker->client->sess.sessionTeam != targ->client->sess.sessionTeam ) {
+			attacker->client->pers.teamState.carrierdefense++;
+			Team_DefenseAward( attacker, targ, CTF_CARRIER_PROTECT_BONUS );
 		}
 	}
 }
@@ -497,31 +481,34 @@ void Team_FragBonuses(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker
 ================
 Team_CheckHurtCarrier
 
-Check to see if attacker hurt the flag carrier.  Needed when handing out bonuses for assistance to flag
-carrier defense.
+Retail qagamex86 0x10069080: an enemy that hurts a flag or skull carrier is
+marked, so whoever frags it soon after defends the carrier.
 ================
 */
-void Team_CheckHurtCarrier(gentity_t *targ, gentity_t *attacker)
-{
-	int flag_pw;
+void Team_CheckHurtCarrier( gentity_t *targ, gentity_t *attacker ) {
+	int		flag_pw;
 
-	if (!targ->client || !attacker->client)
+	if ( !targ->client || !attacker->client ) {
 		return;
+	}
 
-	if (targ->client->sess.sessionTeam == TEAM_RED)
+	if ( targ->client->sess.sessionTeam == TEAM_RED ) {
 		flag_pw = PW_BLUEFLAG;
-	else
+	} else {
 		flag_pw = PW_REDFLAG;
+	}
 
 	// flags
-	if (targ->client->ps.powerups[flag_pw] &&
-		targ->client->sess.sessionTeam != attacker->client->sess.sessionTeam)
+	if ( targ->client->ps.powerups[flag_pw]
+		&& targ->client->sess.sessionTeam != attacker->client->sess.sessionTeam ) {
 		attacker->client->pers.teamState.lasthurtcarrier = level.time;
+	}
 
 	// skulls
-	if (targ->client->ps.generic1 &&
-		targ->client->sess.sessionTeam != attacker->client->sess.sessionTeam)
+	if ( ( targ->client->ps.generic1 & 0x3f )
+		&& targ->client->sess.sessionTeam != attacker->client->sess.sessionTeam ) {
 		attacker->client->pers.teamState.lasthurtcarrier = level.time;
+	}
 }
 
 
@@ -625,8 +612,9 @@ static void Team_TakeFlagSound( gentity_t *taker, gentity_t *ent, team_t team ) 
 		break;
 	}
 
+	// the taker goes out as the other entity (retail 0x10069532)
 	te = G_TempEntity( ent->s.pos.trBase, EV_GLOBAL_TEAM_SOUND );
-	te->s.clientNum = taker - g_entities;
+	te->s.otherEntityNum = taker - g_entities;
 	te->r.svFlags |= SVF_BROADCAST;
 	te->s.eventParm = team == TEAM_BLUE ? GTS_RED_TAKEN : GTS_BLUE_TAKEN;
 }
@@ -655,14 +643,73 @@ static void Team_CaptureFlagSound( gentity_t *ent, team_t team, gentity_t *captu
 }
 
 
+/*
+==============
+Team_ReturnFlag
+
+Retail qagamex86 0x100695b0: the flag goes home with its sound and a
+yellow announcement.
+==============
+*/
 void Team_ReturnFlag( team_t team ) {
 	Team_ReturnFlagSound(Team_ResetFlag(team), team);
 	if( team == TEAM_FREE ) {
-		PrintMsg(NULL, "The flag has returned!\n" );
+		PrintMsg( NULL, S_COLOR_YELLOW "The flag has returned!\n" );
 	}
 	else {
-		PrintMsg(NULL, "The %s flag has returned!\n", TeamName(team));
+		PrintMsg( NULL, S_COLOR_YELLOW "The %s flag" S_COLOR_YELLOW " has returned!\n", TeamName( team ) );
 	}
+}
+
+
+/*
+==============
+Team_CheckLostFlag
+
+Retail qagamex86 0x100692b0, every frame in capture the flag: a team flag
+that is neither at its base nor dropped, while no connected player of the
+other team carries a flag, has been lost (its carrier's powerups were
+cleared, for one at the intermission) and goes home.
+==============
+*/
+void Team_CheckLostFlag( team_t team ) {
+	const char	*classname;
+	gentity_t	*ent;
+	gclient_t	*cl;
+	team_t		carriers;
+	int			i;
+
+	switch ( team ) {
+	case TEAM_RED:
+		classname = "team_CTF_redflag";
+		carriers = TEAM_BLUE;
+		break;
+	case TEAM_BLUE:
+		classname = "team_CTF_blueflag";
+		carriers = TEAM_RED;
+		break;
+	default:
+		return;
+	}
+
+	ent = NULL;
+	while ( ( ent = G_Find( ent, FOFS( classname ), classname ) ) != NULL ) {
+		if ( ( ent->flags & FL_DROPPED_ITEM ) || !( ent->s.eFlags & EF_NODRAW ) ) {
+			return;
+		}
+	}
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &level.clients[i];
+		if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != carriers ) {
+			continue;
+		}
+		if ( cl->ps.powerups[PW_REDFLAG] || cl->ps.powerups[PW_BLUEFLAG] || cl->ps.powerups[PW_NEUTRALFLAG] ) {
+			return;
+		}
+	}
+
+	Team_ReturnFlag( team );
 }
 
 
@@ -771,6 +818,7 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team ) {
 
 	cl->ps.powerups[enemyFlag] = 0;
 	cl->pers.teamState.captures++;
+	cl->stats.captures++;
 
 	teamgame.last_flag_capture = level.time;
 	teamgame.last_capture_team = team;
@@ -802,6 +850,7 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team ) {
 			|| player->client->pers.teamState.lastfraggedcarrier + CTF_FRAG_CARRIER_ASSIST_TIMEOUT > level.time ) {
 			// retail credits the assist to the capturer's count, as Quake III did
 			cl->pers.teamState.assists++;
+			player->client->stats.assists++;
 			AddScore( player, ent->r.currentOrigin, CTF_RETURN_FLAG_ASSIST_BONUS );
 			G_AwardCapture( player, PERS_ASSIST_COUNT, EF_AWARD_ASSIST );
 		}
@@ -1250,6 +1299,7 @@ static void ObeliskDie( gentity_t *self, gentity_t *inflictor, gentity_t *attack
 	attacker->client->ps.eFlags |= EF_AWARD_CAP;
 	attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
 	attacker->client->ps.persistant[PERS_CAPTURES]++;
+	attacker->client->stats.captures++;	// retail qagamex86 0x1006a7cb
 
 	teamgame.redObeliskAttackedTime = 0;
 	teamgame.blueObeliskAttackedTime = 0;
@@ -1285,7 +1335,8 @@ static void ObeliskTouch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 	other->client->ps.eFlags |= EF_AWARD_CAP;
 	other->client->rewardTime = level.time + REWARD_SPRITE_TIME;
 	other->client->ps.persistant[PERS_CAPTURES] += tokens;
-	
+	other->client->stats.captures += tokens;	// retail qagamex86 0x1006a933
+
 	other->client->ps.generic1 = 0;
 	CalculateRanks();
 

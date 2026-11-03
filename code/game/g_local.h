@@ -230,10 +230,12 @@ typedef struct {
 	int			fragcarrier;
 	int			assists;
 
-	float		lasthurtcarrier;
-	float		lastreturnedflag;
-	float		flagsince;
-	float		lastfraggedcarrier;
+	// level.time stamps, integers as in retail (gclient +0x31c, +0x320 and
+	// +0x324; flagsince has no identified retail counterpart)
+	int			lasthurtcarrier;
+	int			lastreturnedflag;
+	int			flagsince;
+	int			lastfraggedcarrier;
 } playerTeamState_t;
 
 // the auto following clients don't follow a specific client
@@ -318,7 +320,10 @@ typedef struct {
 	int			weaponHits[WP_MAX_WEAPONS];
 	int			weaponDamageGiven[WP_MAX_WEAPONS];
 	int			weaponDamageTaken[WP_MAX_WEAPONS];
-	int			damageGiven;		// to enemies
+	int			captures;			// objectives scored (retail +0x7f8)
+	int			assists;			// capture assists (+0x7fc)
+	int			defends;			// defense awards (+0x800)
+	int			damageGiven;		// to enemies (+0x808)
 	int			damageTaken;		// from enemies, capped at what was left to take
 	int			quadKills;			// kills while holding the quad
 	int			killStreak;			// kills since the last death

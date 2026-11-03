@@ -311,9 +311,16 @@ static void G_ScoreboardPlayer( int sortedIndex, scoreboardPlayer_t *out ) {
 G_TeamStatsHeader
 
 The team item-control numbers the team scoreboards open with, red's then
-blue's.  Outside the intermission a player sees only its own team's.
+blue's.  Outside the intermission a player does not see the other team's,
+except for its invisibility pickups and, in the flag modes, its medkit
+pickups and flag time: retail zeroes the rest only (qagamex86 0x1003e029,
+0x1003ea93, 0x1003f0bb).
 ==================
 */
+static qboolean G_TeamStatHidden( teamStat_t stat ) {
+	return stat != TEAM_STAT_INVIS && stat != TEAM_STAT_MEDKIT && stat != TEAM_STAT_FLAG_TIME;
+}
+
 static const teamStat_t tdmTeamStats[] = {
 	TEAM_STAT_RED_ARMOR, TEAM_STAT_YELLOW_ARMOR, TEAM_STAT_GREEN_ARMOR, TEAM_STAT_MEGA_HEALTH,
 	TEAM_STAT_QUAD, TEAM_STAT_BATTLESUIT, TEAM_STAT_REGEN, TEAM_STAT_HASTE, TEAM_STAT_INVIS,
@@ -339,7 +346,7 @@ static const char *G_TeamStatsHeader( gentity_t *viewer, const teamStat_t *stats
 			&& ( ( viewerTeam == TEAM_RED && team == TEAM_BLUE ) || ( viewerTeam == TEAM_BLUE && team == TEAM_RED ) );
 
 		for ( i = 0; i < count; i++ ) {
-			value = hidden ? 0 : level.teamStats[stats[i]][team];
+			value = ( hidden && G_TeamStatHidden( stats[i] ) ) ? 0 : level.teamStats[stats[i]][team];
 			length += Com_sprintf( header + length, sizeof( header ) - length, " %i", value );
 		}
 	}
@@ -832,7 +839,9 @@ int ClientNumberFromString( gentity_t *to, char *s ) {
 ==================
 Cmd_Give_f
 
-Give items to a client
+Give items to a client.  Retail qagamex86 0x1003fb50: the weapons are every
+bit but WP_NONE's, infinite ammo stays infinite, and armor also reaches the
+entity's replicated armor.
 ==================
 */
 void Cmd_Give_f( gentity_t *ent )
@@ -864,8 +873,7 @@ void Cmd_Give_f( gentity_t *ent )
 
 	if (give_all || Q_stricmp(name, "weapons") == 0)
 	{
-		ent->client->ps.stats[STAT_WEAPONS] = (1 << WP_NUM_WEAPONS) - 1 - 
-			( 1 << WP_GRAPPLING_HOOK ) - ( 1 << WP_NONE );
+		ent->client->ps.stats[STAT_WEAPONS] = 0xfffe;
 		if (!give_all)
 			return;
 	}
@@ -873,7 +881,9 @@ void Cmd_Give_f( gentity_t *ent )
 	if (give_all || Q_stricmp(name, "ammo") == 0)
 	{
 		for ( i = 0 ; i < MAX_WEAPONS ; i++ ) {
-			ent->client->ps.ammo[i] = 999;
+			if ( ent->client->ps.ammo[i] != -1 ) {
+				ent->client->ps.ammo[i] = 999;
+			}
 		}
 		if (!give_all)
 			return;
@@ -881,6 +891,7 @@ void Cmd_Give_f( gentity_t *ent )
 
 	if (give_all || Q_stricmp(name, "armor") == 0)
 	{
+		ent->s.armor = 200;
 		ent->client->ps.stats[STAT_ARMOR] = 200;
 
 		if (!give_all)

@@ -1,0 +1,61 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --map spidercrossings
+# --factory ctf --frames 1800 --scenario ...): capture the flag defense
+# bonuses and the end-of-match awards.  Alpha and charlie join red and
+# bravo blue; all ready up and the match starts at frame 984.  give and
+# setviewpos are cheats, hence --cheats and devmap.
+#
+# - Alpha takes a railgun and a quad; bravo takes haste and the red flag,
+#   and alpha frags the carrier from the red spawn row (the carrier bonus,
+#   announced with the carrier's powerup).
+# - Bravo respawns beside the red flag and alpha frags it there (base
+#   defense).
+# - Charlie takes the blue flag; bravo respawns between alpha and charlie
+#   at the blue base and alpha frags it (carrier defense).
+# - Bravo leaves for the spectators, blue forfeits, and the intermission
+#   hands out the awards.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 28 charlie readyup
+
+# the carrier frag
+clientcmd 1000 alpha give Railgun
+clientcmd 1001 alpha give Quad Damage
+at 1000 alpha weapon=7
+clientcmd 1002 bravo give Haste
+clientcmd 1010 bravo setviewpos 0 -2752 170 90
+clientcmd 1020 alpha setviewpos 0 -3000 170 90
+at 1040 alpha buttons=attack
+at 1100 alpha buttons=0
+
+# base defense: bravo comes back beside the red flag
+at 1180 bravo buttons=attack
+at 1184 bravo buttons=0
+clientcmd 1200 bravo setviewpos 0 -2700 170 270
+clientcmd 1210 alpha setviewpos 0 -3000 170 90
+at 1260 alpha buttons=attack
+at 1320 alpha buttons=0
+
+# carrier defense at the blue base
+clientcmd 1340 charlie setviewpos 0 2752 170 0
+clientcmd 1360 charlie setviewpos 240 2900 170 0
+at 1400 bravo buttons=attack
+at 1404 bravo buttons=0
+clientcmd 1420 bravo setviewpos 0 2800 170 90
+clientcmd 1430 alpha setviewpos 0 2500 170 90
+at 1470 alpha buttons=attack
+at 1530 alpha buttons=0
+
+clientcmd 1560 alpha score
+clientcmd 1600 bravo team s
+clientcmd 1640 charlie score

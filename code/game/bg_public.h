@@ -114,16 +114,18 @@
 #define	CS_QL_2B1				CS_DUEL_NAME1
 #define	CS_QL_2B2				CS_DUEL_NAME2
 #define	CS_QL_2B3				0x2B3
-#define	CS_AWARD_ITEM_CONTROL	0x2B4
-#define	CS_AWARD_ACCURACY		0x2B5
+// The end-of-match awards each hold a client number, or "" for nobody
+// (retail qagamex86 0x100559e0); the names say what the game measures.
+#define	CS_AWARD_DAMAGE			0x2B4	// most damage given; the fewest shots break a tie
+#define	CS_AWARD_ACCURACY		0x2B5	// best accuracy; the most shots break a tie
 #define	CS_RED_FLAG_ORIGIN		0x2B6	// where each team flag stands: an x, y, z infostring
 #define	CS_BLUE_FLAG_ORIGIN		0x2B7
 #define	CS_QL_2B6				CS_RED_FLAG_ORIGIN
 #define	CS_QL_2B7				CS_BLUE_FLAG_ORIGIN
-#define	CS_AWARD_VALUABLE		0x2B8
-#define	CS_AWARD_VALUABLE_OFFENSE	0x2B9
-#define	CS_AWARD_VALUABLE_DEFENSE	0x2BA
-#define	CS_AWARD_DAMAGE			0x2BB
+#define	CS_AWARD_ITEM_CONTROL	0x2B8	// armor, mega health, quad and battle suit pickups
+#define	CS_AWARD_OFFENSE		0x2B9	// objective modes: captures and assists
+#define	CS_AWARD_DEFENSE		0x2BA	// objective modes: defends and assists
+#define	CS_AWARD_VALUABLE		0x2BB	// objective modes: the most valuable player
 #define	CS_RACE_SCORES			0x2BC
 #define	CS_RACE_INFO			0x2BD
 #define	CS_MATCH_AWARDS			0x2BF

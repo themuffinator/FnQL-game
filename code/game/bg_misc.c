@@ -1360,8 +1360,25 @@ qboolean BG_CanItemBeGrabbed( int gametype, const entityState_t *ent, const play
 
 /*
 ================
+BG_TrajectoryPoint
+
+trBase + scale * trDelta.  Retail evaluates each component on the x87
+stack and rounds it to float once (qagamex86 0x1002d255); in float, the
+product and the sum would round separately, so this works in double.
+================
+*/
+static void BG_TrajectoryPoint( const trajectory_t *tr, float scale, vec3_t result ) {
+	result[0] = (float)( (double)tr->trBase[0] + (double)tr->trDelta[0] * scale );
+	result[1] = (float)( (double)tr->trBase[1] + (double)tr->trDelta[1] * scale );
+	result[2] = (float)( (double)tr->trBase[2] + (double)tr->trDelta[2] * scale );
+}
+
+/*
+================
 BG_EvaluateTrajectory
 
+Retail qagamex86 0x1002d210.  The sine phase counts from trTime without
+Quake III's modulo of the duration (0x1002d281).
 ================
 */
 void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) {
@@ -1375,12 +1392,12 @@ void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) 
 		break;
 	case TR_LINEAR:
 		deltaTime = ( atTime - tr->trTime ) * 0.001;	// milliseconds to seconds
-		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
+		BG_TrajectoryPoint( tr, deltaTime, result );
 		break;
 	case TR_SINE:
-		deltaTime = ( ( atTime - tr->trTime ) % tr->trDuration ) / (float) tr->trDuration;
+		deltaTime = (double)( atTime - tr->trTime ) / (double)tr->trDuration;
 		phase = sin( deltaTime * M_PI * 2 );
-		VectorMA( tr->trBase, phase, tr->trDelta, result );
+		BG_TrajectoryPoint( tr, phase, result );
 		break;
 	case TR_LINEAR_STOP:
 		if ( atTime > tr->trTime + tr->trDuration ) {
@@ -1390,18 +1407,18 @@ void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) 
 		if ( deltaTime < 0 ) {
 			deltaTime = 0;
 		}
-		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
+		BG_TrajectoryPoint( tr, deltaTime, result );
 		break;
 	case TR_GRAVITY:
 		deltaTime = ( atTime - tr->trTime ) * 0.001;	// milliseconds to seconds
-		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
+		BG_TrajectoryPoint( tr, deltaTime, result );
 		result[2] -= 0.5 * DEFAULT_GRAVITY * deltaTime * deltaTime;		// FIXME: local gravity...
 		break;
 	case TR_QL_ACCEL:
 		// Quake Live: TR_GRAVITY with the trajectory's own acceleration
 		// (retail qagamex86 BG_EvaluateTrajectory case 6, 0x1002d364)
 		deltaTime = ( atTime - tr->trTime ) * 0.001;	// milliseconds to seconds
-		VectorMA( tr->trBase, deltaTime, tr->trDelta, result );
+		BG_TrajectoryPoint( tr, deltaTime, result );
 		result[2] -= 0.5 * tr->gravity * deltaTime * deltaTime;
 		break;
 	default:
@@ -1430,7 +1447,7 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 		VectorCopy( tr->trDelta, result );
 		break;
 	case TR_SINE:
-		deltaTime = ( atTime - tr->trTime ) / (float) tr->trDuration;
+		deltaTime = (double)( atTime - tr->trTime ) / (double)tr->trDuration;	// retail 0x1002d419
 		phase = cos( deltaTime * M_PI * 2 );	// derivative of sin = cos
 		phase *= 0.5;
 		VectorScale( tr->trDelta, phase, result );
@@ -1445,13 +1462,14 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 	case TR_GRAVITY:
 		deltaTime = ( atTime - tr->trTime ) * 0.001;	// milliseconds to seconds
 		VectorCopy( tr->trDelta, result );
-		result[2] -= DEFAULT_GRAVITY * deltaTime;		// FIXME: local gravity...
+		// one rounding, as retail's x87 code (qagamex86 0x1002d494)
+		result[2] = (float)( (double)tr->trDelta[2] - (double)deltaTime * DEFAULT_GRAVITY );
 		break;
 	case TR_QL_ACCEL:
 		// retail BG_EvaluateTrajectoryDelta case 6 (0x1002d4a4)
 		deltaTime = ( atTime - tr->trTime ) * 0.001;	// milliseconds to seconds
 		VectorCopy( tr->trDelta, result );
-		result[2] -= tr->gravity * deltaTime;
+		result[2] = (float)( (double)tr->trDelta[2] - (double)deltaTime * tr->gravity );
 		break;
 	default:
 		Com_Error( ERR_DROP, "BG_EvaluateTrajectoryDelta: unknown trType: %i", tr->trType );
@@ -1591,7 +1609,8 @@ void BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 	s->clientNum = ps->clientNum;		// ET_PLAYER looks here instead of at number
 										// so corpses can also reference the proper config
 	s->eFlags = ps->eFlags;
-	if ( ps->stats[STAT_HEALTH] <= 0 ) {
+	// a frozen player is not dead (retail qagamex86 0x1002d70c)
+	if ( ps->stats[STAT_HEALTH] <= 0 && !ps->powerups[PW_FROZEN] ) {
 		s->eFlags |= EF_DEAD;
 	} else {
 		s->eFlags &= ~EF_DEAD;
@@ -1623,7 +1642,9 @@ void BG_PlayerStateToEntityState( playerState_t *ps, entityState_t *s, qboolean 
 	}
 
 	s->loopSound = ps->loopSound;
-	s->generic1 = ps->generic1;
+	// only the low six bits (the skulls carried) reach the entity (retail
+	// qagamex86 0x1002d803)
+	s->generic1 = ps->generic1 & 0x3f;
 }
 
 /*
@@ -1671,7 +1692,8 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 	s->clientNum = ps->clientNum;		// ET_PLAYER looks here instead of at number
 										// so corpses can also reference the proper config
 	s->eFlags = ps->eFlags;
-	if ( ps->stats[STAT_HEALTH] <= 0 ) {
+	// a frozen player is not dead (retail qagamex86 0x1002d70c)
+	if ( ps->stats[STAT_HEALTH] <= 0 && !ps->powerups[PW_FROZEN] ) {
 		s->eFlags |= EF_DEAD;
 	} else {
 		s->eFlags &= ~EF_DEAD;
@@ -1703,5 +1725,7 @@ void BG_PlayerStateToEntityStateExtraPolate( playerState_t *ps, entityState_t *s
 	}
 
 	s->loopSound = ps->loopSound;
-	s->generic1 = ps->generic1;
+	// only the low six bits (the skulls carried) reach the entity (retail
+	// qagamex86 0x1002d803)
+	s->generic1 = ps->generic1 & 0x3f;
 }

@@ -285,6 +285,26 @@ if get_option('fnql-dedicated') != ''
   test('server-lockstep-differential-tdm_match', python,
     args: tdm_match_args + ['--module', qagame.full_path()],
     depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
+  # Capture the flag: a capture, a return, the CTF scoreboard's partly hidden
+  # team header, a team forfeit, and the end-of-match awards.
+  ctf_match_args = server_lockstep_args + ['--cheats', '--map', 'spidercrossings', '--factory', 'ctf',
+    '--frames', '1700', '--scenario', files('tests/lockstep/server/ctf_match.txt')]
+  test('server-lockstep-selfcheck-ctf_match', python, args: ctf_match_args + ['--self-check'],
+    suite: 'differential', timeout: 300, is_parallel: false)
+  test('server-lockstep-differential-ctf_match', python,
+    args: ctf_match_args + ['--module', qagame.full_path()],
+    depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
+  # Capture the flag bonuses: a carrier frag announced with the carrier's
+  # powerup, base and carrier defense, a dropped flag's bounce, the give
+  # cheat, powerup announcements, the lost-flag return at the intermission,
+  # and every end-of-match award.
+  ctf_defense_args = server_lockstep_args + ['--cheats', '--map', 'spidercrossings', '--factory', 'ctf',
+    '--frames', '1800', '--scenario', files('tests/lockstep/server/ctf_defense.txt')]
+  test('server-lockstep-selfcheck-ctf_defense', python, args: ctf_defense_args + ['--self-check'],
+    suite: 'differential', timeout: 300, is_parallel: false)
+  test('server-lockstep-differential-ctf_defense', python,
+    args: ctf_defense_args + ['--module', qagame.full_path()],
+    depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
 
   # Every retail factory must host FnQL-game without a fatal error, even on a
   # map without the mode's spawns or items (meson test --suite factories).

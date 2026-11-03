@@ -1165,10 +1165,149 @@ MAP CHANGING
 
 /*
 ========================
+G_UpdateMatchAwards
+
+Retail qagamex86 0x100559e0: the end-of-match awards go to the players in
+the game (spectators aside), each as a client number or "" for nobody.
+Nothing changes while nobody is in the game.
+
+  - accuracy: the best hits * 100 / shots, the most shots breaking a tie;
+  - damage: the most damage given, the fewest shots breaking a tie;
+  - item control (not in race, clan arena, domination, attack and defend
+    or red rover): 100 a red armor or mega health, 50 a yellow armor, 25
+    a green armor and 480 a quad or battle suit;
+  - in the objective modes (the flag modes, Overload, Harvester,
+    domination, attack and defend): offense, 100 a capture and 10 an
+    assist; defense, 10 a defend or an assist; and the most valuable
+    player, 25 a capture plus the kills, the longest kill streak and the
+    defense figure, less the deaths.  Their ties go to the higher score.
+========================
+*/
+static qboolean G_ItemControlAward( void ) {
+	switch ( g_gametype.integer ) {
+	case GT_RACE:
+	case GT_CLAN_ARENA:
+	case GT_DOMINATION:
+	case GT_ATTACK_DEFEND:
+	case GT_RED_ROVER:
+		return qfalse;
+	default:
+		return qtrue;
+	}
+}
+
+static qboolean G_ObjectiveAwards( void ) {
+	switch ( g_gametype.integer ) {
+	case GT_CTF:
+	case GT_1FCTF:
+	case GT_OBELISK:
+	case GT_HARVESTER:
+	case GT_DOMINATION:
+	case GT_ATTACK_DEFEND:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+static void G_SetAwardConfigstring( int index, int clientNum ) {
+	trap_SetConfigstring( index, clientNum >= 0 ? va( "%i", clientNum ) : "" );
+}
+
+static void G_UpdateMatchAwards( void ) {
+	const qboolean	items = G_ItemControlAward();
+	const qboolean	objectives = G_ObjectiveAwards();
+	int		players, i, value, defense;
+	int		bestAccuracy = 0, accuracyShots = 0, accuracyClient = -1;
+	int		mostDamage = 0, damageShots = 0, damageClient = -1;
+	int		bestItems = 0, itemsClient = -1;
+	int		bestOffense = 0, offenseScore = -999, offenseClient = -1;
+	int		bestDefense = 0, defenseScore = -999, defenseClient = -1;
+	int		bestValue = 0, valueScore = -999, valueClient = -1;
+	const gclient_t	*cl;
+
+	players = 0;
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &level.clients[i];
+		if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		players++;
+
+		value = ( cl->accuracy_hits > 0 && cl->accuracy_shots > 0 ) ? cl->accuracy_hits * 100 / cl->accuracy_shots : 0;
+		if ( value > bestAccuracy || ( value == bestAccuracy && cl->accuracy_shots > accuracyShots ) ) {
+			bestAccuracy = value;
+			accuracyShots = cl->accuracy_shots;
+			accuracyClient = i;
+		}
+
+		value = cl->stats.damageGiven;
+		if ( value > mostDamage || ( value == mostDamage && cl->accuracy_shots < damageShots ) ) {
+			mostDamage = value;
+			damageShots = cl->accuracy_shots;
+			damageClient = i;
+		}
+
+		if ( items ) {
+			value = ( cl->stats.greenArmor.pickups + 2 * cl->stats.yellowArmor.pickups
+				+ 4 * ( cl->stats.redArmor.pickups + cl->stats.mega.pickups ) ) * 25
+				+ ( cl->stats.quadPickups + cl->stats.battleSuitPickups ) * 480;
+			if ( value > bestItems ) {
+				bestItems = value;
+				itemsClient = i;
+			}
+		}
+
+		if ( objectives ) {
+			const int score = cl->ps.persistant[PERS_SCORE];
+
+			value = ( cl->stats.assists + cl->stats.captures * 10 ) * 10;
+			if ( value > bestOffense || ( value == bestOffense && score > offenseScore ) ) {
+				bestOffense = value;
+				offenseScore = score;
+				offenseClient = i;
+			}
+
+			defense = ( cl->stats.defends + cl->stats.assists ) * 10;
+			if ( defense > bestDefense || ( defense == bestDefense && score > defenseScore ) ) {
+				bestDefense = defense;
+				defenseScore = score;
+				defenseClient = i;
+			}
+
+			value = cl->stats.captures * 25 + cl->stats.maxKillStreak - cl->stats.deaths + cl->stats.kills + defense;
+			if ( value > bestValue || ( value == bestValue && score > valueScore ) ) {
+				bestValue = value;
+				valueScore = score;
+				valueClient = i;
+			}
+		}
+	}
+
+	if ( !players ) {
+		return;
+	}
+
+	G_SetAwardConfigstring( CS_AWARD_ACCURACY, accuracyClient );
+	G_SetAwardConfigstring( CS_AWARD_DAMAGE, damageClient );
+	if ( items ) {
+		G_SetAwardConfigstring( CS_AWARD_ITEM_CONTROL, itemsClient );
+	}
+	if ( objectives ) {
+		G_SetAwardConfigstring( CS_AWARD_OFFENSE, offenseClient );
+		G_SetAwardConfigstring( CS_AWARD_DEFENSE, defenseClient );
+		G_SetAwardConfigstring( CS_AWARD_VALUABLE, valueClient );
+	}
+}
+
+
+/*
+========================
 SendScoreboardMessageToAllClients
 
 Do this at BeginIntermission time and whenever ranks are recalculated
-due to enters/exits/forced team changes
+due to enters/exits/forced team changes.  The end-of-match awards follow
+(retail qagamex86 0x10055e50).
 ========================
 */
 static void SendScoreboardMessageToAllClients( void ) {
@@ -1179,6 +1318,7 @@ static void SendScoreboardMessageToAllClients( void ) {
 			DeathmatchScoreboardMessage( g_entities + i );
 		}
 	}
+	G_UpdateMatchAwards();
 }
 
 
@@ -2430,6 +2570,13 @@ static void G_RunFrame( int levelTime ) {
 
 	// update to team status?
 	CheckTeamStatus();
+
+	// a capture the flag flag nobody holds goes home (retail qagamex86
+	// 0x10059a1e)
+	if ( g_gametype.integer == GT_CTF ) {
+		Team_CheckLostFlag( TEAM_RED );
+		Team_CheckLostFlag( TEAM_BLUE );
+	}
 
 	// cancel vote if timed out
 	CheckVote();

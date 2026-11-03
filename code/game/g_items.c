@@ -85,8 +85,9 @@ static void G_AnnouncePickup( gentity_t *other, gentity_t *ent, qboolean everyon
 	}
 
 	if ( everyone ) {
+		// the colour follows the name (retail qagamex86 0x1004dd97)
 		trap_SendServerCommand( -1, va( "print \"%s%s got the %s!" S_COLOR_WHITE "\n\"",
-			color, other->client->pers.netname, ent->item->pickup_name ) );
+			other->client->pers.netname, color, ent->item->pickup_name ) );
 		return;
 	}
 
@@ -1381,18 +1382,27 @@ void G_SpawnItem( gentity_t *ent, gitem_t *item ) {
 ================
 G_BounceItem
 
+Retail qagamex86 0x10050c00: the velocity is taken at level.time less the
+trace's fraction of a frame (Quake III counted the fraction from
+previousTime instead), and the reflection runs at x87 precision, here in
+double.  An item that lands on a floor slowly enough stops one unit up,
+its origin truncated to whole units.
 ================
 */
 void G_BounceItem( gentity_t *ent, trace_t *trace ) {
 	vec3_t	velocity;
-	float	dot;
-	int		hitTime;
+	double	reflect;
+	int		hitTime, i;
 
 	// reflect the velocity on the trace plane
-	hitTime = level.previousTime + ( level.time - level.previousTime ) * trace->fraction;
+	hitTime = (int)( (double)level.time - (double)trace->fraction * (double)level.msec );
 	BG_EvaluateTrajectoryDelta( &ent->s.pos, hitTime, velocity );
-	dot = DotProduct( velocity, trace->plane.normal );
-	VectorMA( velocity, -2*dot, trace->plane.normal, ent->s.pos.trDelta );
+	reflect = (double)(float)( (double)trace->plane.normal[0] * velocity[0]
+		+ (double)trace->plane.normal[1] * velocity[1]
+		+ (double)trace->plane.normal[2] * velocity[2] ) * -2.0;
+	for ( i = 0; i < 3; i++ ) {
+		ent->s.pos.trDelta[i] = (float)( (double)velocity[i] + (double)trace->plane.normal[i] * reflect );
+	}
 
 	// cut the velocity to keep from bouncing forever
 	VectorScale( ent->s.pos.trDelta, ent->physicsBounce, ent->s.pos.trDelta );
@@ -1416,6 +1426,10 @@ void G_BounceItem( gentity_t *ent, trace_t *trace ) {
 ================
 G_RunItem
 
+Retail qagamex86 0x10050de0: the item thinks first, then falls or slides
+and bounces.  An item that comes to rest in a nodrop volume is removed; a
+team flag goes home.  (Retail moves a persistant powerup to another spot
+there, qagamex86 0x1004da10; FnQL-game has none in play yet.)
 ================
 */
 void G_RunItem( gentity_t *ent ) {
@@ -1432,9 +1446,10 @@ void G_RunItem( gentity_t *ent ) {
 		}
 	}
 
-	if ( ent->s.pos.trType == TR_STATIONARY ) {
-		// check think function
-		G_RunThink( ent );
+	// check think function
+	G_RunThink( ent );
+
+	if ( !ent->inuse || ent->s.pos.trType == TR_STATIONARY ) {
 		return;
 	}
 
@@ -1457,9 +1472,6 @@ void G_RunItem( gentity_t *ent ) {
 	}
 
 	trap_LinkEntity( ent );	// FIXME: avoid this for stationary?
-
-	// check think function
-	G_RunThink( ent );
 
 	if ( tr.fraction == 1 ) {
 		return;
