@@ -999,6 +999,11 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 		client->pers.predictItemPickup = qtrue;
 	}
 
+	// a human's demo and screenshot requests (retail qagamex86 0x1003a98b)
+	if ( !( ent->r.svFlags & SVF_BOT ) ) {
+		client->pers.autoAction = g_autoAction.integer | atoi( Info_ValueForKey( userinfo, "cg_autoAction" ) );
+	}
+
 	// set name
 	Q_strncpyz( oldname, client->pers.netname, sizeof( oldname ) );
 	s = Info_ValueForKey( userinfo, "name" );
@@ -1835,6 +1840,14 @@ void ClientSpawn(gentity_t *ent) {
 	BG_PlayerStateToEntityState( &client->ps, &ent->s, qtrue );
 	VectorCopy( client->ps.origin, ent->r.currentOrigin );
 
+	// a spectator that was following picks its player up again on its next
+	// think (retail qagamex86 0x1003c675)
+	if ( client->ps.pm_type == PM_SPECTATOR && client->sess.spectatorState == SPECTATOR_FOLLOW
+		&& client->sess.spectatorClient >= 0 ) {
+		client->followPendingClient = client->sess.spectatorClient;
+		client->followPending = qtrue;
+	}
+
 	// run the presend to set anything else
 	ClientEndFrame( ent );
 
@@ -1842,6 +1855,11 @@ void ClientSpawn(gentity_t *ent) {
 	// qagamex86 0x1003c71f)
 	if ( g_gametype.integer >= GT_TEAM ) {
 		level.teamInfoTime = level.time + 1000;
+	}
+
+	// meanwhile a spectator floats free (retail qagamex86 0x1003c730)
+	if ( client->ps.pm_type == PM_SPECTATOR ) {
+		StopFollowing( ent );
 	}
 
 	// clear entity state values
@@ -1878,12 +1896,12 @@ void ClientDisconnect( int clientNum ) {
 	// the team overlay is resent a second later (retail qagamex86 0x1003c870)
 	level.teamInfoTime = level.time + 1000;
 
-	// stop any following clients
+	// its followers move on or float free (retail qagamex86 0x1003c87b)
 	for ( i = 0 ; i < level.maxclients ; i++ ) {
-		if ( level.clients[i].sess.sessionTeam == TEAM_SPECTATOR
+		if ( level.clients[i].ps.pm_type == PM_SPECTATOR
 			&& level.clients[i].sess.spectatorState == SPECTATOR_FOLLOW
 			&& level.clients[i].sess.spectatorClient == clientNum ) {
-			StopFollowing( &g_entities[i], qtrue );
+			G_FollowNextOrStop( &g_entities[i] );
 		}
 	}
 

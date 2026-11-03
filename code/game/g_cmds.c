@@ -713,6 +713,48 @@ void Cmd_Score_f( gentity_t *ent ) {
 
 /*
 ==================
+Cmd_WeaponAccuracy_f
+
+The acc and pstats commands (retail qagamex86 0x1003f4d0, 0x1003f660):
+the accuracy of every weapon slot from WP_NONE on, hits * 100 / shots or
+0, for the player or for the one it follows.  Retail takes the followed
+player only while the requester's own player state is a spectator's.
+==================
+*/
+static void Cmd_WeaponAccuracy_f( gentity_t *ent, const char *command ) {
+	char		string[MAX_STRING_CHARS];
+	char		entry[MAX_STRING_CHARS];
+	gclient_t	*cl;
+	int			i, length, entryLength;
+
+	cl = ent->client;
+	if ( !cl ) {
+		return;
+	}
+	if ( cl->ps.pm_type == PM_SPECTATOR && cl->sess.spectatorState == SPECTATOR_FOLLOW ) {
+		cl = &level.clients[cl->sess.spectatorClient];
+	}
+
+	string[0] = '\0';
+	length = 0;
+	for ( i = 0; i < WP_NUM_WEAPONS; i++ ) {
+		if ( cl->stats.weaponHits[i] && cl->stats.weaponShots[i] ) {
+			entryLength = Com_sprintf( entry, sizeof( entry ), " %i", cl->stats.weaponHits[i] * 100 / cl->stats.weaponShots[i] );
+		} else {
+			entryLength = Com_sprintf( entry, sizeof( entry ), " 0" );
+		}
+		if ( length + entryLength + 1 <= (int)sizeof( string ) ) {
+			Q_strncpyz( string + length, entry, sizeof( string ) - length );
+			length += entryLength;
+		}
+	}
+
+	trap_SendServerCommand( ent - g_entities, va( "%s %s", command, string ) );
+}
+
+
+/*
+==================
 CheatsOk
 ==================
 */
@@ -1398,31 +1440,66 @@ int SetTeam( gentity_t *ent, const char *s ) {
 =================
 StopFollowing
 
-If the client being followed leaves the game, or you just want to drop
-to free floating spectator mode
+Retail qagamex86 0x10040d10: the follower floats free from where it
+watched, keeping its team; it stays a spectator.
 =================
 */
-void StopFollowing( gentity_t *ent, qboolean release ) {
-	gclient_t *client;
+void StopFollowing( gentity_t *ent ) {
+	gclient_t	*client = ent->client;
 
-	if ( ent->r.svFlags & SVF_BOT || !ent->inuse )
-		return;
-
-	client = ent->client;
-
-	client->ps.persistant[ PERS_TEAM ] = TEAM_SPECTATOR;	
-	client->sess.sessionTeam = TEAM_SPECTATOR;	
-	if ( release ) {
-		client->ps.stats[STAT_HEALTH] = ent->health = 1;
-		memset( client->ps.powerups, 0, sizeof ( client->ps.powerups ) );
-	}
-	SetClientViewAngle( ent, client->ps.viewangles );
-
-	client->sess.spectatorState = SPECTATOR_FREE;
+	client->ps.persistant[PERS_TEAM] = client->sess.sessionTeam;
+	client->ps.pm_type = PM_SPECTATOR;
 	client->ps.pm_flags &= ~PMF_FOLLOW;
-	//ent->r.svFlags &= ~SVF_BOT;
-
+	client->sess.spectatorState = SPECTATOR_FREE;
 	client->ps.clientNum = ent - g_entities;
+	if ( ent->r.linked ) {
+		trap_UnlinkEntity( ent );
+	}
+}
+
+
+/*
+=================
+G_CountAlivePlayers
+
+Retail qagamex86 0x1006b170: the connected players moving normally, by
+team.
+=================
+*/
+void G_CountAlivePlayers( int counts[TEAM_NUM_TEAMS] ) {
+	const gclient_t	*cl;
+	int				i;
+
+	memset( counts, 0, TEAM_NUM_TEAMS * sizeof( counts[0] ) );
+	for ( i = 0; i < level.maxclients; i++ ) {
+		cl = &level.clients[i];
+		if ( cl->pers.connected == CON_CONNECTED && cl->ps.pm_type == PM_NORMAL ) {
+			counts[cl->sess.sessionTeam]++;
+		}
+	}
+}
+
+
+/*
+=================
+G_FollowNextOrStop
+
+When the followed player is gone (retail qagamex86 0x1003c8fd,
+0x100355be, 0x10040f91): a player of a team still in the game, with both
+teams alive and team spectating not free, follows the next teammate;
+everyone else floats free.
+=================
+*/
+void G_FollowNextOrStop( gentity_t *ent ) {
+	int		counts[TEAM_NUM_TEAMS];
+
+	G_CountAlivePlayers( counts );
+	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR || g_teamSpecFreeCam.integer
+		|| counts[TEAM_RED] <= 0 || counts[TEAM_BLUE] <= 0 ) {
+		StopFollowing( ent );
+	} else {
+		G_FollowCycle( ent, 1 );
+	}
 }
 
 
@@ -1505,15 +1582,22 @@ static void Cmd_Team_f( gentity_t *ent ) {
 /*
 =================
 Cmd_Follow_f
+
+Retail qagamex86 0x10040f30.  With a name, follow that player unless it is
+the follower or a spectator, leaving the game for the spectators first (a
+duelist leaving a match books a loss).  "follow <name> pw" keeps following
+a flag carrier.  Without a name, a follower moves on or floats free.
 =================
 */
 static void Cmd_Follow_f( gentity_t *ent ) {
-	int		i;
-	char	arg[MAX_TOKEN_CHARS];
+	gclient_t	*client = ent->client;
+	gclient_t	*target;
+	char		arg[MAX_TOKEN_CHARS];
+	int			i;
 
-	if ( trap_Argc() != 2 ) {
-		if ( ent->client->sess.spectatorState == SPECTATOR_FOLLOW ) {
-			StopFollowing( ent, qtrue );
+	if ( trap_Argc() < 2 ) {
+		if ( client->sess.spectatorState == SPECTATOR_FOLLOW ) {
+			G_FollowNextOrStop( ent );
 		}
 		return;
 	}
@@ -1524,87 +1608,104 @@ static void Cmd_Follow_f( gentity_t *ent ) {
 		return;
 	}
 
-	// can't follow self
-	if ( &level.clients[ i ] == ent->client ) {
+	if ( client->sess.spectatorState == SPECTATOR_FOLLOW && trap_Argc() >= 3 ) {
+		trap_Argv( 2, arg, sizeof( arg ) );
+		target = &level.clients[client->sess.spectatorClient];
+		if ( !strcmp( arg, "pw" ) && ( target->ps.powerups[PW_REDFLAG] || target->ps.powerups[PW_BLUEFLAG]
+			|| target->ps.powerups[PW_NEUTRALFLAG] ) ) {
+			return;
+		}
+	}
+
+	target = &level.clients[i];
+	if ( target == client || target->ps.pm_type == PM_SPECTATOR ) {
 		return;
 	}
 
-	// can't follow another spectator
-	if ( level.clients[ i ].sess.sessionTeam == TEAM_SPECTATOR ) {
-		return;
+	if ( !level.warmupTime && g_gametype.integer == GT_TOURNAMENT && client->sess.sessionTeam == TEAM_FREE ) {
+		client->sess.losses++;
 	}
-
-	// if they are playing a tournement game, count as a loss
-	if ( (g_gametype.integer == GT_TOURNAMENT )
-		&& ent->client->sess.sessionTeam == TEAM_FREE ) {
-		ent->client->sess.losses++;
-	}
-
-	// first set them to spectator
-	if ( ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		SetTeam( ent, "spectator" );
 	}
+	client->sess.spectatorState = SPECTATOR_FOLLOW;
+	client->sess.spectatorClient = i;
+}
 
-	ent->client->sess.spectatorState = SPECTATOR_FOLLOW;
-	ent->client->sess.spectatorClient = i;
+
+/*
+=================
+G_FollowCycle
+
+Retail qagamex86 0x10041130: follow the next (or previous) player in the
+game that is not following someone itself; in a team mode a team member
+follows only its own team.  Starting to follow brings the scoreboard.
+(Retail also sends race_info in race, milestone 6.)
+=================
+*/
+void G_FollowCycle( gentity_t *ent, int dir ) {
+	gclient_t	*client = ent->client;
+	gclient_t	*cl;
+	int			clientnum, original;
+
+	if ( dir != 1 && dir != -1 ) {
+		G_Error( "FollowCycle: bad dir %i", dir );
+	}
+
+	clientnum = client->sess.spectatorClient;
+	original = clientnum;
+	if ( clientnum < 0 || clientnum >= level.maxclients ) {
+		G_Printf( "FollowCycle: bad input clientnum value: %d, maxclients: %d\n", clientnum, level.maxclients );
+		original = 0;
+	}
+
+	do {
+		clientnum += dir;
+		if ( clientnum >= level.maxclients ) {
+			clientnum = 0;
+		} else if ( clientnum < 0 ) {
+			clientnum = level.maxclients - 1;
+		}
+
+		cl = &level.clients[clientnum];
+		if ( cl->pers.connected != CON_CONNECTED || cl->ps.pm_type == PM_SPECTATOR || ( cl->ps.pm_flags & PMF_FOLLOW ) ) {
+			continue;
+		}
+		if ( client->sess.sessionTeam != TEAM_SPECTATOR && g_gametype.integer >= GT_TEAM
+			&& cl->sess.sessionTeam != client->sess.sessionTeam ) {
+			continue;
+		}
+
+		client->sess.spectatorClient = clientnum;
+		if ( client->sess.spectatorState != SPECTATOR_FOLLOW ) {
+			DeathmatchScoreboardMessage( ent );
+		}
+		client->sess.spectatorState = SPECTATOR_FOLLOW;
+		return;
+	} while ( clientnum != original );
+
+	// leave it where it was
 }
 
 
 /*
 =================
 Cmd_FollowCycle_f
+
+Retail qagamex86 0x100412e0: follownext and followprev leave the game for
+the spectators first (a duelist leaving a match books a loss).
 =================
 */
 void Cmd_FollowCycle_f( gentity_t *ent, int dir ) {
-	int		clientnum;
-	int		original;
-	gclient_t	*client;
+	gclient_t	*client = ent->client;
 
-	// if they are playing a tournement game, count as a loss
-	if ( (g_gametype.integer == GT_TOURNAMENT )
-		&& ent->client->sess.sessionTeam == TEAM_FREE ) {
-		ent->client->sess.losses++;
+	if ( !level.warmupTime && g_gametype.integer == GT_TOURNAMENT && client->sess.sessionTeam == TEAM_FREE ) {
+		client->sess.losses++;
 	}
-
-	client = ent->client;
-
-	// first set them to spectator
-	if ( client->sess.spectatorState == SPECTATOR_NOT ) {
+	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		SetTeam( ent, "spectator" );
 	}
-
-	if ( dir != 1 && dir != -1 ) {
-		G_Error( "Cmd_FollowCycle_f: bad dir %i", dir );
-	}
-
-	clientnum = client->sess.spectatorClient;
-	original = clientnum;
-	do {
-		clientnum += dir;
-		if ( clientnum >= level.maxclients ) {
-			clientnum = 0;
-		}
-		if ( clientnum < 0 ) {
-			clientnum = level.maxclients - 1;
-		}
-
-		// can only follow connected clients
-		if ( level.clients[ clientnum ].pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-
-		// can't follow another spectator
-		if ( level.clients[ clientnum ].sess.sessionTeam == TEAM_SPECTATOR ) {
-			continue;
-		}
-
-		// this is good, we can use it
-		ent->client->sess.spectatorClient = clientnum;
-		ent->client->sess.spectatorState = SPECTATOR_FOLLOW;
-		return;
-	} while ( clientnum != original );
-
-	// leave it where it was
+	G_FollowCycle( ent, dir );
 }
 
 
@@ -2516,12 +2617,27 @@ void ClientCommand( int clientNum ) {
 		Cmd_Score_f (ent);
 		return;
 	}
+	// acc brings the scoreboard along (retail qagamex86 0x10045fa4)
+	if ( Q_stricmp( cmd, "acc" ) == 0 ) {
+		Cmd_Score_f( ent );
+		Cmd_WeaponAccuracy_f( ent, "acc" );
+		return;
+	}
+	if ( Q_stricmp( cmd, "pstats" ) == 0 ) {
+		Cmd_WeaponAccuracy_f( ent, "pstats" );
+		return;
+	}
 
-	// ready-up and votes also work at the intermission; from the moment the
-	// match ends every other command is ignored (retail qagamex86
-	// 0x10045fe3-0x1004602c)
+	// ready-up, ragequit and votes also work at the intermission; from the
+	// moment the match ends every other command is ignored (retail
+	// qagamex86 0x10045fe3-0x1004602c)
 	if ( Q_stricmp( cmd, "readyup" ) == 0 ) {
 		Cmd_ReadyUp_f( ent );
+		return;
+	}
+	if ( Q_stricmp( cmd, "ragequit" ) == 0 ) {
+		// the engine decides what a rage quit does (retail 0x1004600e)
+		trap_MarkClientGotCP( ent->s.clientNum );
 		return;
 	}
 	if ( Q_stricmp( cmd, "vote" ) == 0 ) {

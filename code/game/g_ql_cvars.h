@@ -292,3 +292,6 @@ G_CVAR( g_warmupDelay, "g_warmupDelay", "15", 0, 0, qfalse, qfalse )
 G_CVAR( bot_autoReady, "bot_autoReady", "1", CVAR_GAMERULE, 0, qfalse, qfalse )
 G_CVAR( g_teamForcePresent, "g_teamForcePresent", "1", 0, 0, qfalse, qfalse )
 G_CVAR( sv_warmupReadyPercentage, "sv_warmupReadyPercentage", "0.51", CVAR_LATCH | CVAR_ARCHIVE, 0, qfalse, qfalse )
+
+// end-of-match demo and screenshot requests (retail 0x100632d0)
+G_CVAR( g_autoAction, "g_autoAction", "0", 0, 0, qfalse, qfalse )

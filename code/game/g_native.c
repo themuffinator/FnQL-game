@@ -374,6 +374,10 @@ void trap_DropClient( int clientNum, const char *reason ) {
 	gi->DropClient( clientNum, reason );
 }
 
+void trap_MarkClientGotCP( int clientNum ) {
+	gi->MarkClientGotCP( clientNum );
+}
+
 void trap_SendServerCommand( int clientNum, const char *text ) {
 	gi->SendServerCommand( clientNum, text );
 }

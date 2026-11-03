@@ -276,6 +276,16 @@ if get_option('fnql-dedicated') != ''
   test('server-lockstep-differential-duel_forfeit', python,
     args: forfeit_args + ['--module', qagame.full_path()],
     depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
+  # Auto actions (cg_autoAction demos and screenshots with retail's file
+  # names), acc, pstats and ragequit, and following: a follower stays a
+  # spectator and resumes following after the restart into the match.
+  duel_commands_args = server_lockstep_args + ['--factory', 'duel', '--frames', '1300',
+    '--scenario', files('tests/lockstep/server/duel_commands.txt')]
+  test('server-lockstep-selfcheck-duel_commands', python, args: duel_commands_args + ['--self-check'],
+    suite: 'differential', timeout: 300, is_parallel: false)
+  test('server-lockstep-differential-duel_commands', python,
+    args: duel_commands_args + ['--module', qagame.full_path()],
+    depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
   # A team deathmatch match: the warmup delay, team scoring and its sounds,
   # a team forfeit, and the intermission's team statistics.
   tdm_match_args = server_lockstep_args + ['--factory', 'tdm', '--frames', '1600',

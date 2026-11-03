@@ -11,6 +11,8 @@
 #   defense).
 # - Charlie takes the blue flag; bravo respawns between alpha and charlie
 #   at the blue base and alpha frags it (carrier defense).
+# - Alpha asks for its weapon accuracies (pstats) and bravo for the
+#   scoreboard and its own (acc).
 # - Bravo leaves for the spectators, blue forfeits, and the intermission
 #   hands out the awards.
 # Frames are server frames: 25 msec each at the default sv_fps 40.
@@ -57,5 +59,7 @@ at 1470 alpha buttons=attack
 at 1530 alpha buttons=0
 
 clientcmd 1560 alpha score
+clientcmd 1562 alpha pstats
+clientcmd 1564 bravo acc
 clientcmd 1600 bravo team s
 clientcmd 1640 charlie score

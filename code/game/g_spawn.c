@@ -657,13 +657,16 @@ void SP_worldspawn( void ) {
 	// match
 	level.warmupTime = -1;
 	trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime ) );
+	G_AutoAction();
 	trap_Cvar_Set( "g_gameState", "PRE_GAME" );
 	if ( g_restarted.integer ) {
 		trap_Cvar_Set( "g_restarted", "0" );
 		level.warmupTime = 0;
 		trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", level.warmupTime ) );
+		G_AutoAction();
 		trap_Cvar_Set( "g_gameState", "IN_PROGRESS" );
 	} else if ( g_doWarmup.integer ) {
+		G_AutoAction();
 		G_LogPrintf( "Warmup:\n" );
 	}
 

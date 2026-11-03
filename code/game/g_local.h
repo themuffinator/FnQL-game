@@ -283,6 +283,7 @@ typedef struct {
 	int			teamVoted;
 	int			mapVote;			// the end-of-match map voted for, 1-3 (retail pers +0xf0)
 	int			mapVoteTime;		// level.time of that vote (retail pers +0xec)
+	int			autoAction;			// g_autoAction | cg_autoAction: 1 records the match, 2 screenshots its end (gclient +0x2ec)
 
 	// Quake Live CS_PLAYERS state (keys rp, p, so, pq, st, c).  Ready-up,
 	// privileges, spectate-only and the join queue are driven by the match
@@ -418,6 +419,9 @@ struct gclient_s {
 	qboolean	fireHeld;			// used for hook
 	gentity_t	*hook;				// grapple hook if out
 
+	qboolean	followPending;		// a respawned follower resumes following (retail gclient +0xbd0)
+	int			followPendingClient;	// whom (+0xbd4)
+
 	int			switchTeamTime;		// time the player switched teams
 
 	// timeResidual is used to handle events that happen every second
@@ -462,6 +466,7 @@ typedef struct {
 	int			num_entities;		// current number, <= MAX_GENTITIES
 
 	int			warmupTime;			// restart match at this time
+	int			autoActionState;	// demos started (1) and screenshots taken (2) (retail 0x1049abfc)
 	int			timeoutStartTime;	// CS_TIMEOUT_START_TIME (retail level +0x1bc8)
 	int			timeoutEndTime;		// CS_TIMEOUT_END_TIME
 	int			timeoutsUsed[2];	// red, blue: CS_RED/BLUE_TIMEOUTS_LEFT count down from g_timeoutCount
@@ -596,7 +601,10 @@ char *G_NewString( const char *string );
 // g_cmds.c
 //
 void Cmd_Score_f (gentity_t *ent);
-void StopFollowing( gentity_t *ent, qboolean release );
+void StopFollowing( gentity_t *ent );
+void G_CountAlivePlayers( int counts[TEAM_NUM_TEAMS] );
+void G_FollowNextOrStop( gentity_t *ent );
+void G_FollowCycle( gentity_t *ent, int dir );
 void BroadcastTeamChange( gclient_t *client, team_t oldTeam );
 int SetTeam( gentity_t *ent, const char *s );
 void Cmd_FollowCycle_f( gentity_t *ent, int dir );
@@ -677,6 +685,7 @@ qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *i
 qboolean G_FreezeTagActive( void );
 void G_UpdateSettingsConfigstrings( void );
 void G_UpdateTimeoutConfigstrings( void );
+void G_AutoAction( void );
 int G_InvulnerabilityEffect( gentity_t *targ, vec3_t dir, vec3_t point, vec3_t impactpoint, vec3_t bouncedir );
 void body_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int meansOfDeath );
 void G_StatsDamage( gentity_t *targ, gentity_t *attacker, int mod, int damage );
@@ -957,6 +966,7 @@ float	trap_Cvar_VariableValue( const char *var_name );
 void	trap_Cvar_VariableStringBuffer( const char *var_name, char *buffer, int bufsize );
 void	trap_LocateGameData( gentity_t *gEnts, int numGEntities, int sizeofGEntity_t, playerState_t *gameClients, int sizeofGameClient );
 void	trap_DropClient( int clientNum, const char *reason );
+void	trap_MarkClientGotCP( int clientNum );	// retail import 192, called by ragequit
 void	trap_SendServerCommand( int clientNum, const char *text );
 void	trap_SetConfigstring( int num, const char *string );
 void	trap_GetConfigstring( int num, char *buffer, int bufferSize );

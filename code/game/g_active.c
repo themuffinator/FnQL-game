@@ -300,6 +300,20 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 
 	client = ent->client;
 
+	// retail qagamex86 0x10033e5a: spectators are never linked, and one that
+	// was following before it respawned follows again, scoreboard and all
+	if ( ent->r.linked ) {
+		trap_UnlinkEntity( ent );
+	}
+	if ( client->followPending ) {
+		client->sess.spectatorClient = client->followPendingClient;
+		if ( client->sess.spectatorState != SPECTATOR_FOLLOW ) {
+			DeathmatchScoreboardMessage( ent );
+		}
+		client->sess.spectatorState = SPECTATOR_FOLLOW;
+		client->followPending = qfalse;
+	}
+
 	if ( client->sess.spectatorState != SPECTATOR_FOLLOW ) {
 		client->ps.pm_type = PM_SPECTATOR;
 		client->ps.speed = 480;	// retail qagamex86 0x10033ecc
@@ -328,9 +342,18 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 	client->oldbuttons = client->buttons;
 	client->buttons = ucmd->buttons;
 
-	// attack button cycles through spectators
+	// attack cycles through the players; the 0x800 button frees a
+	// spectator, or a team player under g_teamSpecFreeCam 1 (retail
+	// qagamex86 0x10033f5c)
 	if ( ( client->buttons & BUTTON_ATTACK ) && ! ( client->oldbuttons & BUTTON_ATTACK ) ) {
-		Cmd_FollowCycle_f( ent, 1 );
+		G_FollowCycle( ent, 1 );
+		return;
+	}
+	if ( ( client->buttons & 0x800 ) && !( client->oldbuttons & 0x800 ) ) {
+		if ( client->sess.sessionTeam == TEAM_SPECTATOR
+			|| ( g_teamSpecFreeCam.integer == 1 && client->sess.spectatorState == SPECTATOR_FOLLOW ) ) {
+			StopFollowing( ent );
+		}
 	}
 }
 
@@ -1083,48 +1106,54 @@ void G_RunClient( gentity_t *ent ) {
 ==================
 SpectatorClientEndFrame
 
+Retail qagamex86 0x10035470: a follower takes the followed player's state
+but stays a spectator (pm_type PM_SPECTATOR) and keeps its own ping; a
+spectator-team follower is marked EF_SPECTATOR, while a team player
+watching a teammate keeps its own persistant counters but the followed
+player's hit count.  When a chosen player can no longer be followed, the
+follower moves on or floats free.  (Quake III's scoreboard spectating is
+gone.)
 ==================
 */
 void SpectatorClientEndFrame( gentity_t *ent ) {
-	gclient_t	*cl, *client;
+	gclient_t	*client = ent->client;
+	gclient_t	*cl;
+	int			clientNum, ping;
+	int			persistant[MAX_PERSISTANT];
 
-	client = ent->client;
+	if ( client->sess.spectatorState != SPECTATOR_FOLLOW ) {
+		return;
+	}
 
-	// if we are doing a chase cam or a remote view, grab the latest info
-	if ( client->sess.spectatorState == SPECTATOR_FOLLOW ) {
-		int clientNum;
+	// team follow1 and team follow2 go to whatever clients are playing
+	clientNum = client->sess.spectatorClient;
+	if ( clientNum == -1 ) {
+		clientNum = level.follow1;
+	} else if ( clientNum == -2 ) {
+		clientNum = level.follow2;
+	}
 
-		clientNum = client->sess.spectatorClient;
-
-		// team follow1 and team follow2 go to whatever clients are playing
-		if ( clientNum == -1 ) {
-			clientNum = level.follow1;
-		} else if ( clientNum == -2 ) {
-			clientNum = level.follow2;
-		}
-		if ( (unsigned)clientNum < (unsigned)level.maxclients ) {
-			cl = &level.clients[ clientNum ];
-			if ( cl->pers.connected == CON_CONNECTED && cl->sess.sessionTeam != TEAM_SPECTATOR ) {
-				int flags;
-				flags = (cl->ps.eFlags & ~(EF_VOTED | EF_TEAMVOTED)) | (client->ps.eFlags & (EF_VOTED | EF_TEAMVOTED));
-				client->ps = cl->ps;
-				client->ps.pm_flags |= PMF_FOLLOW;
-				client->ps.eFlags = flags;
+	if ( clientNum >= 0 ) {
+		cl = &level.clients[clientNum];
+		if ( cl->pers.connected == CON_CONNECTED && cl->ps.pm_type != PM_SPECTATOR ) {
+			ping = client->ps.ping;
+			memcpy( persistant, client->ps.persistant, sizeof( persistant ) );
+			client->ps = cl->ps;
+			client->ps.pm_type = PM_SPECTATOR;
+			client->ps.pm_flags |= PMF_FOLLOW;
+			client->ps.ping = ping;
+			if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
+				client->ps.eFlags |= EF_SPECTATOR;
 				return;
-			} else {
-				// drop them to free spectators unless they are dedicated camera followers
-				if ( client->sess.spectatorClient >= 0 ) {
-					client->sess.spectatorState = SPECTATOR_FREE;
-					ClientBegin( client - level.clients );
-				}
 			}
+			memcpy( client->ps.persistant, persistant, sizeof( persistant ) );
+			client->ps.persistant[PERS_HITS] = cl->ps.persistant[PERS_HITS];
+			return;
 		}
 	}
 
-	if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
-		client->ps.pm_flags |= PMF_SCOREBOARD;
-	} else {
-		client->ps.pm_flags &= ~PMF_SCOREBOARD;
+	if ( client->sess.spectatorClient >= 0 ) {
+		G_FollowNextOrStop( ent );
 	}
 }
 

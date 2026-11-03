@@ -1,0 +1,43 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory duel --frames 1300
+# --scenario ...): a duel on campgrounds with auto actions and the stats
+# commands.  Alpha asks for demos and screenshots (cg_autoAction 3), bravo
+# for demos (1) and charlie, who waits in the queue, for screenshots (2).
+# Alpha and bravo ready up; the countdown starts the demos, the restart
+# into the match and a suicide follow, and alpha leaves mid-match so the
+# duel is forfeited; four seconds into the intermission the demos stop and
+# the screenshots are taken, each with retail's file name.  Along the way
+# acc and pstats are asked for during the warmup, the match and the
+# intermission, by players and by a follower, and charlie rage quits.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name ^1Al^7pha cg_autoAction 3
+client bravo name "Bravo.The/Best" cg_autoAction 1
+client charlie name Charlie cg_autoAction 2
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+
+at 0   alpha weapon=2
+at 0   bravo weapon=2
+clientcmd 10 alpha acc
+clientcmd 12 charlie pstats
+clientcmd 14 charlie follow 0
+clientcmd 16 charlie pstats
+clientcmd 18 charlie acc
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+at 520 alpha forward=127 dyaw=1
+at 560 alpha forward=0 dyaw=0 buttons=attack
+at 590 alpha buttons=0
+clientcmd 600 bravo kill
+clientcmd 610 alpha acc
+clientcmd 612 alpha pstats
+clientcmd 614 charlie pstats
+clientcmd 700 alpha team s
+clientcmd 760 bravo acc
+clientcmd 762 charlie pstats
+clientcmd 900 charlie ragequit
+clientcmd 902 bravo pstats

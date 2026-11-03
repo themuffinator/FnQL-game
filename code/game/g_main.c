@@ -732,6 +732,7 @@ void AddTournamentPlayer( void ) {
 
 	level.warmupTime = -1;
 	trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", -1 ) );
+	G_AutoAction();
 	trap_Cvar_Set( "g_gameState", "PRE_GAME" );
 
 	SetTeam( &g_entities[ next - level.clients ], "f" );
@@ -1776,14 +1777,16 @@ CheckIntermissionExit
 Retail qagamex86 0x10057ad0: the intermission lasts ten seconds, or twenty
 while the end-of-match map vote runs; CS_INTERMISSION_EXIT then closes the
 vote, and three seconds later the level exits.  Who has readied up shows
-on the scoreboard meanwhile.  Retail also takes the auto-action screenshot
-here (g_autoAction; not yet in FnQL-game).
+on the scoreboard meanwhile.  The auto-action demos stop and screenshots
+are taken from here (G_AutoAction).
 =================
 */
 void CheckIntermissionExit( void ) {
 	char		nextMaps[MAX_INFO_STRING];
 	gclient_t	*cl;
 	int			duration, readyMask, i;
+
+	G_AutoAction();
 
 	duration = 10000;
 	trap_Cvar_VariableStringBuffer( "nextmaps", nextMaps, sizeof( nextMaps ) );
@@ -2028,7 +2031,169 @@ published game state (PRE_GAME while waiting, COUNT_DOWN, IN_PROGRESS).
 static void G_SetWarmupTime( int time ) {
 	level.warmupTime = time;
 	trap_SetConfigstring( CS_WARMUP, va( "\\time\\%i", time ) );
+	G_AutoAction();
 	trap_Cvar_Set( "g_gameState", time < 0 ? "PRE_GAME" : ( time > 0 ? "COUNT_DOWN" : "IN_PROGRESS" ) );
+}
+
+
+/*
+==================
+G_AutoActionName
+
+Retail qagamex86 0x10062ef0: up to 39 characters of a name for a demo or
+screenshot file, without colour codes and with only the characters retail
+keeps; "invalid" when none remain.
+==================
+*/
+static void G_AutoActionName( const char *in, char *out ) {
+	int		length = 0;
+	char	c;
+
+	while ( *in && length < 39 ) {
+		c = *in;
+		if ( c == Q_COLOR_ESCAPE ) {
+			in += in[1] ? 2 : 1;
+			continue;
+		}
+		in++;
+		if ( c <= ' ' || c >= 127 ) {
+			continue;
+		}
+		switch ( c ) {
+		case '"': case '\'': case '*': case '.': case '/': case ':':
+		case '<': case '>': case '?': case '\\': case '|':
+			continue;
+		default:
+			out[length++] = c;
+			break;
+		}
+	}
+	out[length] = '\0';
+	if ( !length ) {
+		Q_strncpyz( out, "invalid", 40 );
+	}
+}
+
+
+/*
+==================
+G_AutoActionFile
+
+Retail qagamex86 0x10062fd0: the file name for a player's demo or
+screenshot.  A duel names both duelists, marking the player's point of
+view; the other modes name the mode (with an "i" prefix under instagib)
+and the player.  The map and the server's local time follow.  (Retail
+passes the duel names through Com_sprintf as a format; a name with a '%'
+in it would read garbage there, so this copies them instead.)
+==================
+*/
+static const char *G_AutoActionFile( gentity_t *ent ) {
+	static const char *const shortNames[GT_MAX_GAME_TYPE] = {
+		"FFA", "DUEL", "RACE", "TDM", "CA", "CTF", "1F", "OB", "HAR", "FT", "DOM", "AD", "RR"
+	};
+	static char	file[256];
+	char		first[40], second[40], name[40], info[MAX_INFO_STRING];
+	const int	clientNum = ent - g_entities;
+	qtime_t		now;
+
+	file[0] = '\0';
+	if ( g_gametype.integer == GT_TOURNAMENT ) {
+		trap_GetConfigstring( CS_FIRST_PLACE, info, sizeof( first ) );
+		G_AutoActionName( info, first );
+		trap_GetConfigstring( CS_SECOND_PLACE, info, sizeof( second ) );
+		G_AutoActionName( info, second );
+		if ( clientNum == level.sortedClients[0] ) {
+			Q_strncpyz( file, va( "%s(POV)-vs-%s", first, second ), sizeof( file ) );
+		} else if ( clientNum == level.sortedClients[1] ) {
+			Q_strncpyz( file, va( "%s(POV)-vs-%s", second, first ), sizeof( file ) );
+		} else {
+			Q_strncpyz( file, va( "%s-vs-%s", first, second ), sizeof( file ) );
+		}
+	} else {
+		if ( g_instaGib.integer ) {
+			Q_strcat( file, sizeof( file ), "i" );
+		}
+		Q_strcat( file, sizeof( file ), ( g_gametype.integer >= 0 && g_gametype.integer < GT_MAX_GAME_TYPE )
+			? shortNames[g_gametype.integer] : "ERR" );
+		if ( ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+			G_AutoActionName( ent->client->pers.netname, name );
+			Q_strcat( file, sizeof( file ), va( "-%s", name ) );
+		}
+	}
+
+	trap_GetServerinfo( info, sizeof( info ) );
+	Q_strcat( file, sizeof( file ), va( "-%s", Info_ValueForKey( info, "mapname" ) ) );
+	trap_RealTime( &now );
+	Q_strcat( file, sizeof( file ), va( "-%d_%02d_%02d-%02d_%02d_%02d", now.tm_year + 1900, now.tm_mon + 1,
+		now.tm_mday, now.tm_hour, now.tm_min, now.tm_sec ) );
+	return file;
+}
+
+
+/*
+==================
+G_AutoActionSend
+
+Every connected player that asked for the action gets the command.
+==================
+*/
+static void G_AutoActionSend( int action, const char *command ) {
+	gentity_t	*ent;
+	int			i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		if ( !ent->inuse || ent->client->pers.connected != CON_CONNECTED || !( ent->client->pers.autoAction & action ) ) {
+			continue;
+		}
+		trap_SendServerCommand( i, command ? command : va( action == 1 ? "record \"%s\"\n" : "screenshot \"%s\"\n",
+			G_AutoActionFile( ent ) ) );
+	}
+}
+
+
+/*
+==================
+G_AutoAction
+
+Retail qagamex86 0x100632d0, after every warmup change and every
+intermission frame: the players who asked (g_autoAction, cg_autoAction)
+start recording when the countdown starts and stop when the match is back
+to waiting or four seconds into the intermission, where they also take a
+screenshot.
+==================
+*/
+static void G_AutoActionStopRecording( void ) {
+	if ( level.autoActionState & 1 ) {
+		level.autoActionState &= ~1;
+		G_AutoActionSend( 1, "stoprecord" );
+	}
+}
+
+void G_AutoAction( void ) {
+	if ( level.warmupTime == -1 ) {
+		G_AutoActionStopRecording();
+		level.autoActionState = 0;
+		return;
+	}
+
+	if ( level.warmupTime == 0 ) {
+		if ( !level.intermissiontime ) {
+			level.autoActionState |= 1;
+			return;
+		}
+		if ( level.time - level.intermissiontime > 4000 && !( level.autoActionState & 2 ) ) {
+			G_AutoActionStopRecording();
+			level.autoActionState |= 2;
+			G_AutoActionSend( 2, NULL );
+		}
+		return;
+	}
+
+	if ( !( level.autoActionState & 1 ) ) {
+		level.autoActionState |= 1;
+		G_AutoActionSend( 1, NULL );
+	}
 }
 
 
