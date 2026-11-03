@@ -356,11 +356,17 @@ on a busy machine (clean on reruns; no movement code changed); it needs a
 reproduction under controlled frame timing.
 
 Open in M4: grapple impact and hook behaviour, rocket damage through thin
-ceilings (`g_forceDmgThroughSurface`, radius damage 0x1004a3e0), LG
-discharge (0x1004a7a0), the `g_loadout` choices, retail lag compensation
-(`g_lagHaxMs`; baseq3a's unlagged stays meanwhile), `g_dropDamagedHealth`,
-quad hog's quad respawn, and whether the engine marks capsule head hits with
-contents 0x400 (FnQL does not; retail's engine is unverified). Deferred to
+ceilings (`g_forceDmgThroughSurface`, read in G_MissileImpact 0x1005bbe0;
+radius damage 0x1004a3e0), LG discharge (`g_lightningDischarge`, default
+0: radius damage under water from Weapon_LightningFire 0x1006eba1 into
+0x1004a7a0), the `g_loadout` choices, retail lag compensation
+(`g_lagHaxMs`; baseq3a's unlagged stays meanwhile), `g_dropDamagedHealth`
+(default 0: G_Damage 0x10049a2b drops "25 Health"/"5 Health" items through
+0x1004f8c0, dropped items then last 10 s instead of 30, 0x1004f6ec, and
+0x1004ffd0 registers them), quad hog's quad respawn (the quad hog factory
+touches a dozen functions, with the factory variants of M6), and whether
+the engine marks capsule head hits with contents 0x400 (FnQL does not;
+retail's engine is unverified). Deferred to
 M5/M6 with their modes: team-kill complaints (`g_complaintLimit`), freeze
 tag's freezing and thawing, red rover's infection scoring, the round modes'
 respawn rules, and retail's Steam achievements and ZMQ stats reports (engine
@@ -405,7 +411,7 @@ Progress (G3, both with no divergence):
 - `duel_match` (1,827 frames): ready-up and the countdown, during which
   every connected client carries `PMF_ATTACK_LOCKOUT` (0x10057a9b); the
   match starts by `map_restart 0` with `g_restarted` set (0x10058860), not
-  baseq3a's in-place reset; a duelist leaving mid-match forfeits � retail
+  baseq3a's in-place reset; a duelist leaving mid-match forfeits — retail
   tests it in CalculateRanks before the sort (0x1005612b), in the warmup
   check and in CheckExitRules (0x10057cd0/0x10057f10: -999 for the missing
   duelist or empty team, "Game has been forfeited."); `LogExit`
@@ -440,20 +446,61 @@ Progress (G3, both with no divergence):
   repeats). Items first think two server frames after spawning
   (0x10050b0a: `2 * 1000 / sv_fps` msec, not baseq3a's 200), which moved
   the first powerup spawns by one 100 msec settle frame.
-- `ctf_match` (spidercrossings, not yet gated): flag pickup, capture,
-  drop and return follow 0x10069800/0x10069e30 (yellow "got"/"returned"
-  prints, the "CAPTURED the flag! (... captured in m:ss.sss)" print from a
-  carry clock that ClientTimerActions runs, 0x100343f3; 100 for the
-  capture, 25 for teammates, 10 for a return, a pickup from base and an
-  assist; the capture sound reaches everyone but the capturer,
-  `SVF_NOTSINGLECLIENT`; the taken call is throttled to two seconds and
-  names the taker; nothing after the match ends), the flag spawn positions
-  go out in `CS_RED_FLAG_ORIGIN`/`CS_BLUE_FLAG_ORIGIN` (0x100509b7), and
-  the CTF scoreboard's unidentified team stat is the flags taken from base
-  (0x10069fbf). Still diverging: one `scores_ctf` team-stat header after a
-  drop (which team's block a viewer sees, or when the flag time counts)
-  and the end-of-match awards; one flag CTF and `g_droppedFlagBonus`
-  remain baseq3a.
+- `ctf_match` (spidercrossings): flag pickup, capture, drop and return
+  follow 0x10069800/0x10069e30 (yellow "got"/"returned" prints, the
+  "CAPTURED the flag! (... captured in m:ss.sss)" print from a carry clock
+  that ClientTimerActions runs, 0x100343f3; 100 for the capture, 25 for
+  teammates, 10 for a return, a pickup from base and an assist; the
+  capture sound reaches everyone but the capturer, `SVF_NOTSINGLECLIENT`;
+  the taken call is throttled to two seconds and names the taker in
+  `otherEntityNum`, 0x10069532; nothing after the match ends), the flag
+  spawn positions go out in `CS_RED_FLAG_ORIGIN`/`CS_BLUE_FLAG_ORIGIN`
+  (0x100509b7), and the CTF scoreboard's unidentified team stat is the
+  flags taken from base (0x10069fbf). The last header difference was a
+  retail quirk: the team scoreboards hide the other team's item control
+  only partly, leaving invisibility (and in the flag modes medkits and
+  flag time) visible (0x1003e029, 0x1003ea93, 0x1003f0bb).
+- `ctf_defense` (spidercrossings, three players, `give` and `setviewpos`):
+  retail `Team_FragBonuses` (0x10068970): 20 for a carrier frag announced
+  with the carrier's powerup ("fragged BLUE's Haste flag carrier!"), 5
+  for fragging whoever hurt the carrier within 8 s, 10 for a target within
+  1000 units of the attacker's flag and in its PVS (the target's distance
+  only), and 2 near the attacker's carrier (the attacker's distance; Quake
+  III measured the wrong vector). A flag that is neither at its base,
+  dropped nor carried goes home every CTF frame (0x100692b0, from
+  G_RunFrame 0x10059a1e), which returns a carried flag at the
+  intermission and, on a map without flags, prints retail's flag return
+  every frame (the CTF factory test now matches retail).
+- The end-of-match awards (0x100559e0, after every intermission scoreboard
+  broadcast, 0x10055e50): accuracy (most shots break ties), damage (fewest
+  shots), item control (100 a red armor or mega, 50 a yellow, 25 a green,
+  480 a quad or battle suit; not in race, CA, domination, AD or RR) and,
+  in the objective modes, offense (100 a capture, 10 an assist), defense
+  (10 a defend or assist) and the most valuable player (25 a capture plus
+  kills, the longest streak and defense, less deaths). The match stats
+  gained captures, assists and defends (+0x7f8, +0x7fc, +0x800).
+- Smaller retail details found by the CTF scenarios: the powerup pickup
+  print puts the colour after the name (0x1004dd97); entities carry only
+  the low six bits of `generic1` and a frozen player is never `EF_DEAD`
+  (0x1002d5b0); trajectories round each component once, as retail's x87
+  code does, and the sine phase has no modulo (0x1002d210); items think
+  before they move and bounce with the velocity at `level.time` less the
+  trace's fraction of a frame (0x10050de0, 0x10050c00); `give` sets every
+  weapon bit but WP_NONE's, keeps infinite ammo and sets the entity's
+  armor (0x1003fb50).
+- `duel_commands`: `acc` (with the scoreboard) and `pstats` send every
+  weapon slot's accuracy, the followed player's for a following
+  spectator (0x1003f4d0, 0x1003f660); `ragequit` hands the client to
+  engine import 192 (0x1004600e); `g_autoAction` and the `cg_autoAction`
+  userinfo record demos from the countdown and stop them, with
+  screenshots, four seconds into the intermission, under retail's file
+  names (0x100632d0, 0x10062fd0). Following is retail's (0x10035470,
+  0x10040f30, 0x10041130): a follower stays `PM_SPECTATOR` with its own
+  ping, cannot follow a follower, follows only its own team in team modes,
+  gets the scoreboard when it starts following, moves on or floats free
+  when its player goes (0x1003c87b), and resumes after a respawn such as
+  the restart into the match (0x1003c675, 0x10033e5a).
+- One flag CTF and `g_droppedFlagBonus` remain baseq3a.
 - Exit rules follow 0x10058030: the timelimit with `g_overtime` (an
   `EV_OVERTIME` broadcast per extension while tied), the frag limit in FFA,
   duel and TDM, the capture limit in the flag modes, the score limit in
@@ -464,12 +511,13 @@ Progress (G3, both with no divergence):
   (0x10067c03); FnQL-game had no limit and overwrote the match-state
   configstrings from 661 on maps with more.
 
-Open in M5: the end-of-match awards (`CS_AWARD_*`, 0x100559e0, which read
-match statistics FnQL-game does not keep yet), `g_autoAction`'s demo and
-screenshot commands (0x100632d0), callvote's retail rules, timeouts,
-`pstats`/`acc`/`ragequit`, the retail session string (twelve fields,
-0x10065880), team-kill complaints, TDM/CTF/1FCTF match flow scenarios,
-and G5 runs with retail clients.
+Open in M5: callvote's retail rules, timeouts and the admin pause
+(0x10061db0 starts one, 0x10061ee0 shifts every timer at timein, and the
+frame loop and ClientThink honour the pause), the retail session string
+(twelve fields, 0x10065880), team-kill complaints, one flag CTF, and G5
+runs with retail clients.  Spectators also honour a
+0x800 button retail checks in SpectatorThink (0x10033f93: it frees a
+follower); which client key sends it is not yet identified.
 
 ### M6 — Round-based and special modes
 
