@@ -127,82 +127,187 @@ static int QDECL G_NativeBotAIStartFrame( int time ) {
 
 /*
 ================
-Quake Live engine queries
+Retail export-tail predicates (native slots 12-18)
 
-Retail qagame answers these for snapshot culling, Freeze Tag thaw events,
-objective markers, voice routing, admin checks, team relations and score
-lookups.  Until the Quake Live rules land (docs/PLAN.md milestones 4-6) the
-answers are the neutral Quake III ones: everything visible, no objectives,
-no voice suppression, no admins.
+The engine asks these from its snapshot builder, its Steam voice relay, its
+in-band "rcon" command and its Steam player list (FnQL docs/fnql/
+GAME_MODULES.md). Each mirrors the retail qagame body at the address given.
+The retail bodies trust the engine's arguments; these bound them to the
+arrays they index, which changes nothing for the values an engine passes.
 ================
 */
-static gclient_t *G_NativeClient( int clientNum ) {
-	if ( clientNum < 0 || clientNum >= level.maxclients || !level.clients ) {
-		return NULL;
+
+// 0x10067f70: the client slot is on the spectator team.
+static qboolean G_NativeIsSpectator( int clientNum ) {
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS || !level.clients ) {
+		return qfalse;
 	}
-	return &level.clients[ clientNum ];
+	return level.clients[ clientNum ].sess.sessionTeam == TEAM_SPECTATOR;
 }
 
+// 0x10067ec0: retail's team predicate.  Outside the team gametypes only two
+// spectators share a team; OnSameTeam answers false there for everyone.
+static qboolean G_NativeClientsOnSameTeam( const gclient_t *a, const gclient_t *b ) {
+	if ( !a || !b ) {
+		return qfalse;
+	}
+	if ( g_gametype.integer < GT_TEAM && a->sess.sessionTeam != TEAM_SPECTATOR ) {
+		return qfalse;
+	}
+	return a->sess.sessionTeam == b->sess.sessionTeam;
+}
+
+// 0x10067f00: the same predicate by client slot.
+static qboolean G_NativeClientNumsOnSameTeam( int clientNumA, int clientNumB ) {
+	if ( clientNumA < 0 || clientNumA >= MAX_CLIENTS || clientNumB < 0 || clientNumB >= MAX_CLIENTS
+		|| !level.clients ) {
+		return qfalse;
+	}
+	return G_NativeClientsOnSameTeam( &level.clients[ clientNumA ], &level.clients[ clientNumB ] );
+}
+
+// 0x10067f30: the same predicate by entity.
+static qboolean G_NativeEntitiesOnSameTeam( const gentity_t *a, const gentity_t *b ) {
+	return G_NativeClientsOnSameTeam( a->client, b->client );
+}
+
+// Slot 12, 0x10052dc0: the snapshot builder includes the target player for
+// this viewer regardless of PVS.  Teammates always see each other, a
+// spectator sees everyone, One Flag CTF shows bots to everyone, and Red
+// Rover's infection shows everyone to everyone.
 static qboolean QDECL G_NativeCanClientSeeClient( int viewerClientNum, int targetClientNum ) {
-	(void)viewerClientNum;
-	(void)targetClientNum;
-	return qtrue;
+	if ( viewerClientNum < 0 || viewerClientNum >= MAX_CLIENTS
+		|| targetClientNum < 0 || targetClientNum >= MAX_CLIENTS ) {
+		return qfalse;
+	}
+	if ( g_gametype.integer == GT_1FCTF && ( g_entities[ targetClientNum ].r.svFlags & SVF_BOT ) ) {
+		return qtrue;
+	}
+	if ( g_gametype.integer >= GT_TEAM && G_NativeClientNumsOnSameTeam( viewerClientNum, targetClientNum ) ) {
+		return qtrue;
+	}
+	if ( G_NativeIsSpectator( viewerClientNum ) ) {
+		return qtrue;
+	}
+	return g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer
+		&& !G_NativeClientNumsOnSameTeam( viewerClientNum, targetClientNum );
 }
 
+// Slot 13, 0x10053020: true drops the thaw tick from this viewer's snapshot
+// (the engine's historical export name is misleading).  Only a linked viewer
+// is filtered, so spectators, who are never linked, keep seeing the tick.
 static qboolean QDECL G_NativeFreezeCanSeeThawProgressEvent( int clientNum, int entNum ) {
-	gentity_t *event;
+	const gentity_t *event;
 	int owner;
-	// Retail native slot 13, 0x10053020: this result suppresses the tick
-	// for opponents; the engine's historical export name is misleading.
-	if ( clientNum < 0 || clientNum >= level.maxclients || entNum < 0 || entNum >= level.num_entities
-		|| g_gametype.integer != GT_FREEZE || g_freezeThawTick.integer != 1 || !g_entities[clientNum].inuse ) return qfalse;
-	event = &g_entities[entNum];
+
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS || entNum < 0 || entNum >= MAX_GENTITIES
+		|| g_gametype.integer != GT_FREEZE || g_freezeThawTick.integer != 1
+		|| !g_entities[ clientNum ].r.linked ) {
+		return qfalse;
+	}
+	event = &g_entities[ entNum ];
+	if ( event->s.eType != ET_EVENTS + EV_THAW_TICK ) {
+		return qfalse;
+	}
 	owner = event->r.ownerNum;
-	if ( event->s.eType != ET_EVENTS + EV_THAW_TICK || owner < 0 || owner >= level.num_entities ) return qfalse;
-	return !OnSameTeam(&g_entities[clientNum], &g_entities[owner]);
+	if ( owner < 0 || owner >= MAX_GENTITIES ) {
+		return qfalse;
+	}
+	return !G_NativeEntitiesOnSameTeam( &g_entities[ clientNum ], &g_entities[ owner ] );
 }
 
+// Slot 14, 0x10052f40: the snapshot builder includes the entity for every
+// viewer regardless of PVS.  Flags in CTF, One Flag CTF and Attack & Defend,
+// the Harvester obelisks, Quad Hog's quad and, with g_itemTimers, every item
+// the HUD times (the retail row flag gitem_t.timer).
 static qboolean QDECL G_NativeIsObjectiveEntity( int entNum ) {
-	gentity_t *ent;
-	if ( entNum < 0 || entNum >= level.num_entities || entNum >= MAX_GENTITIES ) return qfalse;
-	ent = &g_entities[entNum];
-	// Retail 0x10052f40 exposes the world quad as Quad Hog's objective.
-	if ( G_IsQuadHog() && ent->inuse && ent->item
-		&& ent->item->giType == IT_POWERUP && ent->item->giTag == PW_QUAD ) return qtrue;
-	return qfalse;
+	const gentity_t *ent;
+	const gitem_t *item;
+	const int gametype = g_gametype.integer;
+
+	if ( entNum < 0 || entNum >= MAX_GENTITIES ) {
+		return qfalse;
+	}
+	ent = &g_entities[ entNum ];
+	item = ent->item;
+
+	if ( gametype == GT_CTF || gametype == GT_ATTACK_DEFEND || gametype == GT_1FCTF ) {
+		if ( item && item->giType == IT_TEAM
+			&& ( item->giTag == PW_REDFLAG || item->giTag == PW_BLUEFLAG || item->giTag == PW_NEUTRALFLAG ) ) {
+			return qtrue;
+		}
+	}
+
+	if ( gametype == GT_FFA ) {
+		if ( g_quadHog.integer ) {
+			// Quad Hog skips the item-timer rule entirely
+			return item && item->giType == IT_POWERUP && item->giTag == PW_QUAD;
+		}
+	} else if ( gametype == GT_HARVESTER && ent->classname
+		&& ( !Q_stricmp( ent->classname, "team_redobelisk" ) || !Q_stricmp( ent->classname, "team_blueobelisk" ) ) ) {
+		return qtrue;
+	}
+
+	return g_itemTimers.integer && item && item->timer;
 }
 
+// Slot 15, 0x10052e90: true keeps the sender's Steam voice packet from this
+// recipient.  Bots never receive voice and muted players never send it; a
+// speaker hears themself only with g_allTalk 2.  g_allTalk, the intermission,
+// waiting for players and spectators outside team modes are open to
+// everyone; otherwise voice stays within the team.
 static qboolean QDECL G_NativeShouldSuppressVoiceToClient( int senderClientNum, int recipientClientNum ) {
-	(void)senderClientNum;
-	(void)recipientClientNum;
-	return qfalse;
+	const gclient_t *sender;
+
+	if ( senderClientNum < 0 || senderClientNum >= MAX_CLIENTS
+		|| recipientClientNum < 0 || recipientClientNum >= MAX_CLIENTS ) {
+		return qtrue;
+	}
+	if ( g_entities[ recipientClientNum ].r.svFlags & SVF_BOT ) {
+		return qtrue;
+	}
+	sender = g_entities[ senderClientNum ].client;
+	if ( !sender || sender->sess.muted ) {
+		return qtrue;
+	}
+	if ( senderClientNum == recipientClientNum ) {
+		return g_allTalk.integer != 2;
+	}
+	if ( g_allTalk.integer || level.intermissiontime || level.warmupTime < 0
+		|| ( g_gametype.integer < GT_TEAM && sender->sess.sessionTeam != TEAM_SPECTATOR ) ) {
+		return qfalse;
+	}
+	return !G_NativeEntitiesOnSameTeam( &g_entities[ senderClientNum ], &g_entities[ recipientClientNum ] );
 }
 
+// Slot 16, 0x100530c0: the administrator tier (retail gclient +0x368 == 2)
+// that the engine's in-band "rcon" command requires.
 static qboolean QDECL G_NativeIsClientAdmin( int clientNum ) {
-	(void)clientNum;
-	return qfalse;
+	if ( clientNum < 0 || clientNum >= MAX_GENTITIES || !g_entities[ clientNum ].client ) {
+		return qfalse;
+	}
+	return g_entities[ clientNum ].client->pers.privileges == 2;
 }
 
+// Slot 17, 0x10052e40: two distinct players, neither spectating, on
+// different teams (everyone is an enemy outside the team modes).
 static qboolean QDECL G_NativeAreEnemyClients( int clientNumA, int clientNumB ) {
-	gclient_t *a = G_NativeClient( clientNumA );
-	gclient_t *b = G_NativeClient( clientNumB );
-
-	if ( !a || !b || clientNumA == clientNumB ) {
+	if ( clientNumA < 0 || clientNumA >= MAX_CLIENTS || clientNumB < 0 || clientNumB >= MAX_CLIENTS
+		|| clientNumA == clientNumB ) {
 		return qfalse;
 	}
-	if ( a->pers.connected != CON_CONNECTED || b->pers.connected != CON_CONNECTED ) {
+	if ( G_NativeClientNumsOnSameTeam( clientNumA, clientNumB ) || G_NativeIsSpectator( clientNumA ) ) {
 		return qfalse;
 	}
-	if ( a->sess.sessionTeam == TEAM_SPECTATOR || b->sess.sessionTeam == TEAM_SPECTATOR ) {
-		return qfalse;
-	}
-	return OnSameTeam( &g_entities[ clientNumA ], &g_entities[ clientNumB ] ) ? qfalse : qtrue;
+	return !G_NativeIsSpectator( clientNumB );
 }
 
+// Slot 18, 0x100530f0: the score the engine publishes for the slot.
 static int QDECL G_NativeGetClientScore( int clientNum ) {
-	gclient_t *client = G_NativeClient( clientNum );
-
-	return client ? client->ps.persistant[ PERS_SCORE ] : 0;
+	if ( clientNum < 0 || clientNum >= MAX_GENTITIES || !g_entities[ clientNum ].client ) {
+		return 0;
+	}
+	return g_entities[ clientNum ].client->ps.persistant[ PERS_SCORE ];
 }
 
 static void *g_nativeExports[ GAME_NATIVE_EXPORT_COUNT ];

@@ -53,7 +53,7 @@ exists.
 | G1 Boot smoke | `scripts/smoke_dedicated.py`: the module loads through the retail ABI, identifies itself, initializes on a retail map, hosts a bot, keeps running | M1 |
 | G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands) compared with FnQL-game's tables | M2 |
 | G3a Pmove lockstep | `scripts/pmove_lockstep.py` and `tests/lockstep/`: the retail qagame's `Pmove` and FnQL-game's run the same scripted and fuzzed command streams in one process, and every `playerState_t` and `pmove_t` output matches bit for bit | M3 |
-| G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring and server command frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
+| G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command and engine query answer (FnQL `sv_lockstepQueries`) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
 | G4a Retail prediction | `scripts/prediction_probe.py`: the retail cgame predicts FnQL-game's server-side movement on a stock map with no prediction error at all, VQL and PQL | M3 |
 | G4 Prediction | FnQL-game cgame predicts retail and FnQL-game servers with zero prediction errors over recorded demo and live corpora | M7 |
 | G5a Retail cgame probe | `scripts/listen_probe.py`: the retail cgame joins an FnQL-game listen server, reaches CS_ACTIVE, no errors | M2 |
@@ -755,7 +755,7 @@ FT combat/assisted and automatic thaw/warmup/environmental deaths/reset
 options/continuous rounds/timeouts, RR conversion/scoring/limits, and full
 VCA, IFT and Infected factories. Hosting smoke tests remain separate and do
 not establish gameplay parity. These server gates do not replace
-retail-client interoperability gates or complete the remaining engine queries.
+retail-client interoperability gates; the engine queries are covered below.
 
 Objective base modes (2026-11-04):
 
@@ -866,6 +866,41 @@ relocation and disconnect policy. These establish the tested qagame
 behavior; the separate round-mode gates above cover CA/FT/RR. Remaining
 special modes, cgame presentation and G5 retail-client interoperability
 remain their own milestones.
+
+Engine queries (2026-11-04): the seven export-tail predicates the engine
+asks (native slots 12-18) are rewritten from retail 0x10052dc0-0x100530f0
+and its team helpers 0x10067ec0-0x10067f70, replacing the neutral stubs.
+
+- Visibility (slot 12): teammates in the team modes, everyone for a
+  spectator, bots in One Flag CTF and everyone under Red Rover infection.
+  The old stub showed every player to everyone regardless of PVS.
+- Thaw tick (slot 13): only a linked viewer is filtered, so unlinked
+  spectators keep seeing the tick; retail checks `r.linked`, not `inuse`.
+- Objectives (slot 14): flags in CTF, One Flag CTF and Attack & Defend,
+  Harvester's obelisks (case-insensitive classname), Quad Hog's quad, and
+  with `g_itemTimers` every item whose retail row timer flag is set. Quad
+  Hog skips the item-timer rule.
+- Voice (slot 15): bots never receive and muted players never send;
+  self-echo needs `g_allTalk 2`; `g_allTalk`, the intermission, waiting for
+  players and spectators outside team modes are open; otherwise
+  team-only. `g_allTalk` (default 0, retail flags 0) is now registered;
+  retail reads it nowhere else.
+- Admin (slot 16): privilege tier 2. The FnQL engine's in-band `rcon`
+  client command requires it, as retail's does.
+- Enemies (slot 17) and score (slot 18): retail's spectator and team rules,
+  without a connection check; the score comes from `ent->client`.
+
+Retail's own team predicate treats two spectators as teammates outside the
+team modes; FnQL-game's shared `OnSameTeam` does not, so the exports use a
+local retail-exact helper and the shared function is unchanged. Arguments
+are bounded to the arrays they index, which retail does not do.
+
+FnQL's opt-in `sv_lockstepQueries` record carries every answer, and
+`server_lockstep.py` enables it unless given `--no-queries`, so every G3
+scenario compares them. All 247 differential, self-check, round, objective,
+factory, stock-map, unit, ABI and contract tests pass with zero divergence.
+The previous stubs diverged 305 times on `ctf_match`. The FT thaw and
+`tdm_admin` scenarios record non-zero thaw-suppression and admin answers.
 
 Exit: G3 per mode; G5 per mode.
 

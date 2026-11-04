@@ -385,6 +385,9 @@ class Names:
 
 RECORD_MAGIC = b"FNQLLSTP"
 RECORD_VERSION = 1
+# Version 2 is version 1 plus 'G' records (FnQL sv_lockstepQueries 1).
+RECORD_VERSION_QUERIES = 2
+QUERY_PAIR_BITS = ((1, "canSee"), (2, "suppressVoice"), (4, "enemies"))
 END_REASONS = {0: "frame limit", 1: "server shutdown"}
 COMMAND_KINDS = {0: "cmd", 1: "clientcmd", 2: "userinfo"}
 
@@ -406,11 +409,13 @@ class Frame:
     configstrings: list = field(default_factory=list)
     server_commands: list = field(default_factory=list)
     dropped_commands: int = 0
+    queries: bytes | None = None
 
 
 @dataclass
 class Recording:
     path: Path
+    version: int = 0
     ps_size: int = 0
     es_size: int = 0
     cmd_size: int = 0
@@ -463,8 +468,10 @@ def read_recording(path: Path) -> Recording:
     if r.take(8) != RECORD_MAGIC:
         raise RecordError(f"{path}: not an FnQL lockstep recording")
     version = r.u32()
-    if version != RECORD_VERSION:
-        raise RecordError(f"{path}: recording version {version}, this decoder reads {RECORD_VERSION}")
+    if version not in (RECORD_VERSION, RECORD_VERSION_QUERIES):
+        raise RecordError(f"{path}: recording version {version}, this decoder reads "
+                          f"{RECORD_VERSION} and {RECORD_VERSION_QUERIES}")
+    rec.version = version
     rec.ps_size, rec.es_size, rec.cmd_size = r.u32(), r.u32(), r.u32()
     rec.max_configstrings, rec.max_entities, rec.maxclients = r.u32(), r.u32(), r.u32()
     rec.fps, rec.seed, rec.frame_limit = r.u32(), r.u32(), r.u32()
@@ -510,6 +517,10 @@ def read_recording(path: Path) -> Recording:
             frame.server_commands.append((target, r.string()))
         elif tag == "O":
             frame.dropped_commands += r.u32()
+        elif tag == "G" and version == RECORD_VERSION_QUERIES:
+            payload = r.take(r.u32())
+            decode_queries(payload)  # validate here, so a bad record names its byte
+            frame.queries = payload
         elif tag == "X":
             if r.u32() != frame.number:
                 raise RecordError(f"{path}: frame {frame.number} closed with a different number")
@@ -520,6 +531,30 @@ def read_recording(path: Path) -> Recording:
     if frame is not None:
         raise RecordError(f"{path}: truncated inside frame {frame.number}")
     return rec
+
+
+def decode_queries(payload: bytes) -> dict:
+    """Decode a 'G' payload (FnQL docs/fnql/SERVER_LOCKSTEP.md) into
+    {"clients": {slot: (admin, score)}, "pairs": {(a, b): bits},
+     "entities": {number: (objective, {viewer: suppressed})}}."""
+    r = Reader(payload)
+    count = r.i32()
+    if not 0 <= count <= 64:
+        raise RecordError(f"game query record names {count} clients")
+    slots = [r.i32() for _ in range(count)]
+    clients = {slot: (r.u8(), r.i32()) for slot in slots}
+    pairs = {(a, b): r.u8() for a in slots for b in slots}
+    entity_count = r.i32()
+    if not 0 <= entity_count <= 1 << 16:
+        raise RecordError(f"game query record names {entity_count} entities")
+    entities = {}
+    for _ in range(entity_count):
+        number = r.i32()
+        objective = r.u8()
+        entities[number] = (objective, {slot: r.u8() for slot in slots})
+    if r.pos != len(payload):
+        raise RecordError(f"game query record has {len(payload) - r.pos} trailing bytes")
+    return {"clients": clients, "pairs": pairs, "entities": entities}
 
 
 # ---------------------------------------------------------------------------
@@ -615,6 +650,11 @@ class Differ:
     def run(self) -> None:
         ents = ({}, {})
         css = ({}, {})
+        queries = [None, None]
+        query_sides = (self.a.version == RECORD_VERSION_QUERIES, self.b.version == RECORD_VERSION_QUERIES)
+        if query_sides[0] != query_sides[1]:
+            first = self.a.frames[0] if self.a.frames else Frame(0, 0, 0)
+            self.add(first, "rig.queries", "only one recording has game query records")
         for fa, fb in zip(self.a.frames, self.b.frames):
             if fa.number != fb.number:
                 raise RecordError(f"frame numbering differs: {fa.number} != {fb.number}")
@@ -638,6 +678,13 @@ class Differ:
                         state.pop(index, None)
             self.compare_configstrings(fa, css[0], css[1])
             self.compare_server_commands(fa, fb)
+            if all(query_sides):
+                changed = fa.queries is not None or fb.queries is not None
+                for side, frame in enumerate((fa, fb)):
+                    if frame.queries is not None:
+                        queries[side] = frame.queries
+                if changed and queries[0] != queries[1]:
+                    self.compare_queries(fa, queries[0], queries[1])
         if len(self.a.frames) != len(self.b.frames):
             last = self.a.frames[-1] if self.a.frames else Frame(0, 0, 0)
             self.add(last, "frame.count", f"{len(self.a.frames)} recorded frames != {len(self.b.frames)}")
@@ -709,6 +756,41 @@ class Differ:
                              f"{'<absent>' if va is None else show(va)} != {'<absent>' if vb is None else show(vb)}")
             else:
                 self.add(frame, f"cs[{name}]", f"configstring {index} ({name}): {show(ta)} != {show(tb)}")
+
+    def compare_queries(self, frame: Frame, qa: bytes | None, qb: bytes | None) -> None:
+        if qa is None or qb is None:
+            self.add(frame, "query.presence", "game query answers recorded in only one run")
+            return
+        a, b = decode_queries(qa), decode_queries(qb)
+        if set(a["clients"]) != set(b["clients"]):
+            self.add(frame, "query.clients", f"queried clients {sorted(a['clients'])} != {sorted(b['clients'])}")
+            return
+        for slot in sorted(a["clients"]):
+            (admin_a, score_a), (admin_b, score_b) = a["clients"][slot], b["clients"][slot]
+            if admin_a != admin_b:
+                self.add(frame, "query.isClientAdmin", f"client {slot} IsClientAdmin {admin_a} != {admin_b}")
+            if score_a != score_b:
+                self.add(frame, "query.getClientScore", f"client {slot} GetClientScore {score_a} != {score_b}")
+        for (sa, sb), bits_a in sorted(a["pairs"].items()):
+            bits_b = b["pairs"][(sa, sb)]
+            for bit, name in QUERY_PAIR_BITS:
+                if (bits_a & bit) != (bits_b & bit):
+                    self.add(frame, f"query.{name}",
+                             f"{name}({sa}, {sb}) {int(bool(bits_a & bit))} != {int(bool(bits_b & bit))}")
+        for number in sorted(set(a["entities"]) | set(b["entities"])):
+            ea, eb = a["entities"].get(number), b["entities"].get(number)
+            if ea == eb:
+                continue
+            if ea is None or eb is None:
+                self.add(frame, "query.entities", f"entity {number} queried only in "
+                         f"{'first' if eb is None else 'second'} run")
+                continue
+            if ea[0] != eb[0]:
+                self.add(frame, "query.isObjectiveEntity", f"IsObjectiveEntity({number}) {ea[0]} != {eb[0]}")
+            for viewer in sorted(ea[1]):
+                if ea[1][viewer] != eb[1][viewer]:
+                    self.add(frame, "query.suppressThawTick",
+                             f"thaw-tick suppression({viewer}, {number}) {ea[1][viewer]} != {eb[1][viewer]}")
 
     def compare_server_commands(self, fa: Frame, fb: Frame) -> None:
         if fa.dropped_commands or fb.dropped_commands:
@@ -786,6 +868,8 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
         "+set", "sv_lockstepRecord", "lockstep.rec",
         "+set", "sv_lockstepFrames", str(args.frames),
     ]
+    if args.queries:
+        command += ["+set", "sv_lockstepQueries", "1"]
     for name, value in args.set:
         command += ["+set", name, value]
     if args.entities:
@@ -860,6 +944,9 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
         result.error = result.error or f"recording unreadable: {error}"
         return result
     rec = result.recording
+    if args.queries and rec.version != RECORD_VERSION_QUERIES:
+        result.error = result.error or ("the engine did not record game query answers "
+                                        "(sv_lockstepQueries needs a newer FnQL; --no-queries skips them)")
     if rec.end is None:
         result.error = result.error or "recording has no end record (the server did not shut down cleanly)"
     elif rec.end[1] != 0 or rec.end[0] != args.frames or len(rec.frames) != args.frames:
@@ -978,6 +1065,8 @@ def main() -> int:
                         help="also compare the fnql_game serverinfo identity key")
     parser.add_argument("--set", nargs=2, action="append", default=[], metavar=("CVAR", "VALUE"),
                         help="extra +set for both runs (repeatable)")
+    parser.add_argument("--no-queries", dest="queries", action="store_false",
+                        help="do not record and compare the engine query exports (FnQL sv_lockstepQueries)")
     parser.add_argument("--port", type=int, default=27995)
     parser.add_argument("--timeout", type=float, default=300.0, help="seconds allowed per run")
     parser.add_argument("--keep", action="store_true", help="keep the scratch homes")

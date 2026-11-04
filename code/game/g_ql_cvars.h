@@ -214,6 +214,9 @@ G_CVAR( g_disableLoadout, "g_disableLoadout", "0", CVAR_GAMERULE, 0, qfalse, qfa
 G_CVAR( g_bestStartingWeapons, "g_bestStartingWeapons", "gh bfg rl lg rg hmg cg sg pg mg ng gl g pl", CVAR_GAMERULE, 0, qtrue, qfalse )
 G_CVAR( g_rrInfected, "g_rrInfected", "0", CVAR_GAMERULE | CVAR_QL_FLAG_40000 | CVAR_LATCH, 0, qtrue, qfalse )
 G_CVAR( g_doWarmup, "g_doWarmup", "1", CVAR_ARCHIVE, 0, qtrue, qfalse )
+// read only by the voice relay filter (export 15, 0x10052e90): 1 opens team
+// routing to everyone, 2 also echoes a speaker's own voice back
+G_CVAR( g_allTalk, "g_allTalk", "0", 0, 0, qtrue, qfalse )
 G_CVAR( g_restarted, "g_restarted", "0", CVAR_ROM, 0, qfalse, qfalse )
 G_CVAR( g_spawnDelay_key, "g_spawnDelay_key", "30", CVAR_GAMERULE | CVAR_QL_FLAG_40000, 0, qfalse, qfalse )
 G_CVAR( g_spawnDelayRandom_key, "g_spawnDelayRandom_key", "15", CVAR_GAMERULE | CVAR_QL_FLAG_40000, 0, qfalse, qfalse )
