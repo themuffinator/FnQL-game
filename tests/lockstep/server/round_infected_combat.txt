@@ -1,0 +1,30 @@
+# Strict G3 round-mode replay; options and paired self-checks are in meson.build.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client delta name Delta
+client echo name Echo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+clientcmd 4 delta team b
+clientcmd 5 echo team r
+cmd 10 allready
+cmd 30 set g_rrInfectedSpreadTime 0
+clientcmd 1400 alpha setviewpos -260 320 40 180
+clientcmd 1402 delta setviewpos -700 320 40 0
+clientcmd 1405 alpha give Railgun
+clientcmd 1420 alpha give Quad Damage
+at 1410 alpha weapon=7
+at 1450 alpha buttons=attack
+at 1452 alpha buttons=0
+at 1600 delta buttons=attack
+at 1602 delta buttons=0
+userinfo 1610 delta name Zombie
+clientcmd 1640 alpha setviewpos -400 320 40 180
+clientcmd 1642 delta setviewpos -700 320 40 0
+at 1660 delta weapon=1 buttons=attack
+at 1780 delta buttons=0
+clientcmd 1800 alpha score
+clientcmd 1850 delta score

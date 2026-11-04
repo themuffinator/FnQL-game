@@ -41,8 +41,25 @@ the retail qagame and FnQL-game side by side and finds no difference in FFA,
 duel, TDM and CTF scenarios: kills and respawns, items and item timers, the
 scoreboards, duel queueing and forfeits, ready-up, the end-of-match vote and
 awards, CTF captures and defense bonuses, spectator following, timeouts, and
-the stats and auto-action commands. Bot AI, callvote's retail rules, the
-privileged admin commands and the round-based modes are still open.
+the stats and auto-action commands. Manual weapon, flag and timed-powerup
+transfers also match retail, including powerup decay across timeouts.
+Optional dropped-flag jump-pad and teleporter physics, capture zones,
+portal camera roll and fallback intermission spawns have retail comparison
+gates, including the default-off flag-physics path.
+Scout, Guard, Damage and Armor Regen now have retail comparison gates for
+spawning, effects, combat, transfers, timeouts and relocation, including
+disconnects with powerup drops disabled. Race checkpoint timing, map-local
+personal records and spectator progress now have strict retail comparisons,
+as do Red Rover joins and shuffles during warmup, countdown and live play.
+Clan Arena, Freeze Tag and Red Rover now implement their round lifecycles,
+elimination/thawing/conversion rules and scoring, with strict server
+comparisons covering their VCA, Instagib Freeze Tag and Infected variants.
+Attack & Defend now runs alternating attack turns, elimination and flag
+scoring. Domination has capture points, contested ownership, point-based
+respawns and regeneration. Harvester skull collection/drops/captures and
+Overload damage/destruction/regeneration/reset have strict retail server gates.
+See [server command compatibility](docs/SERVER_COMMANDS.md) for coverage.
+Broader bot behavior and special-mode parity remain in progress.
 
 The module does not yet claim retail wire parity, so FnQL keeps loading the
 retail modules unless told otherwise. cgame and ui arrive in later

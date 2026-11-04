@@ -1,0 +1,13 @@
+fnql-lockstep 1
+client alpha name Alpha
+clientcmd 1 alpha team f
+clientcmd 5 alpha setviewpos 0 0 300 0
+clientcmd 7 alpha racepoint clear
+clientcmd 9 alpha racepoint
+clientcmd 11 alpha racepoint dump
+clientcmd 13 alpha setviewpos 200 0 300 0
+clientcmd 15 alpha racepoint
+clientcmd 17 alpha racepoint dump
+clientcmd 19 alpha raceinit
+clientcmd 21 alpha racepoint clear
+clientcmd 23 alpha racepoint dump

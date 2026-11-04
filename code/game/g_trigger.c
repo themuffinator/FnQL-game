@@ -216,7 +216,7 @@ void Use_target_push( gentity_t *self, gentity_t *other, gentity_t *activator ) 
 /*QUAKED target_push (.5 .5 .5) (-8 -8 -8) (8 8 8) bouncepad
 Pushes the activator in the direction.of angle, or towards a target apex.
 "speed"		defaults to 1000
-if "bouncepad", play bounce noise instead of windfly
+if "bouncepad", play the bounce noise; otherwise no sound is registered
 */
 void SP_target_push( gentity_t *self ) {
 	if (!self->speed) {
@@ -227,9 +227,9 @@ void SP_target_push( gentity_t *self ) {
 
 	if ( self->spawnflags & 1 ) {
 		self->noise_index = G_SoundIndex("sound/world/jumppad.wav");
-	} else {
-		self->noise_index = G_SoundIndex("sound/misc/windfly.wav");
 	}
+	// Retail 0x1006b900-0x1006b912 has no default wind sound. Registering
+	// one shifts every subsequent sound index (e.g. Devilish's electro).
 	if ( self->target ) {
 		VectorCopy( self->s.origin, self->r.absmin );
 		VectorCopy( self->s.origin, self->r.absmax );

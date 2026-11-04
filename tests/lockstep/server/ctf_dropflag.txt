@@ -1,0 +1,29 @@
+# G3: --cheats --map spidercrossings --factory ctf --frames 1000.
+# Pass the flag to a teammate, return an unclaimed flag after ten seconds,
+# and throw a flag with nonzero g_throwFlagVelocity.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+at 0 charlie weapon=2
+clientcmd 20 alpha setviewpos 0 2752 170 0
+clientcmd 30 alpha setviewpos 240 2900 170 0
+clientcmd 32 alpha droppowerup
+clientcmd 40 alpha dropflag
+clientcmd 42 alpha setviewpos -240 2900 170 0
+clientcmd 60 charlie setviewpos 304 2900 170 0
+clientcmd 80 charlie dropflag
+clientcmd 82 charlie setviewpos -240 2500 170 0
+
+# The flag has returned before alpha takes and throws it again.
+clientcmd 520 alpha setviewpos 0 2752 170 0
+clientcmd 530 alpha setviewpos 240 2900 170 0
+cmd 532 g_throwFlagVelocity 100
+clientcmd 540 alpha dropflag
+clientcmd 542 alpha setviewpos -240 2900 170 0
+clientcmd 960 alpha score

@@ -3,6 +3,9 @@
 # machinegun, kills itself, presses attack to respawn, and then the match
 # restarts (map_restart 0) and it runs again.  This exercises bot hosting, a
 # client command that kills, respawning and the restart path in the rig.
+# Regression: preserving projected bot-input speed (retail 0x10021d0a)
+# eliminates the inherited largest-component normalization's velocity error
+# at frame 32 and its later position, pickup and weapon divergence.
 # Frames are server frames: 25 msec each at the default sv_fps 40.
 # Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
 fnql-lockstep 1

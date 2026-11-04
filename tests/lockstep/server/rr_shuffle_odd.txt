@@ -1,0 +1,21 @@
+fnql-lockstep 1
+client a name Alpha
+client b name Bravo
+client c name Charlie
+client d name Delta
+client e name Echo
+clientcmd 1 a team r
+clientcmd 2 b team b
+clientcmd 3 c team r
+clientcmd 4 d team b
+clientcmd 5 e team f
+cmd 10 forceshuffle
+cmd 20 forceshuffle
+cmd 30 forceshuffle
+cmd 40 forceshuffle
+cmd 50 lock
+cmd 60 forceshuffle
+cmd 70 unlock
+clientcmd 75 c kill
+cmd 80 forceshuffle
+clientcmd 90 a score

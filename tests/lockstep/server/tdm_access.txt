@@ -1,0 +1,33 @@
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 5 addadmin 0
+cmd 7 addmod 1
+clientcmd 9 alpha listaccess
+clientcmd 11 alpha mute 2
+clientcmd 13 charlie say muted message
+clientcmd 15 charlie tell 0 hidden tell
+clientcmd 17 alpha unmute 2
+clientcmd 19 charlie tell 0 hello
+clientcmd 21 alpha put 99 r
+clientcmd 23 alpha put -1 r
+clientcmd 25 alpha lock invalid
+clientcmd 27 alpha lock s
+clientcmd 29 alpha unlock s
+clientcmd 31 alpha listaccess 99
+clientcmd 33 alpha demote 1
+clientcmd 35 alpha listaccess
+cmd 37 reload_access
+clientcmd 39 alpha players
+clientcmd 41 alpha ?
+clientcmd 43 charlie ?
+clientcmd 45 alpha tempban 2
+clientcmd 47 alpha listaccess
+clientcmd 49 alpha unban 0
+clientcmd 51 alpha listaccess
+cmd 53 demote 0
+cmd 55 ban 0
+cmd 57 listaccess

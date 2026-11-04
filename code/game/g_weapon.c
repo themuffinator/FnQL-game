@@ -218,8 +218,8 @@ static void Bullet_Fire( gentity_t *ent, float spread, int damage, int mod ) {
 			tent = G_TempEntity( tr.endpos, EV_BULLET_HIT_FLESH );
 			tent->s.eventParm = traceEnt->s.number;
 
-			// unlagged
-			tent->s.clientNum = ent->s.clientNum;
+			// Retail 0x1006cecf-0x1006cefe leaves clientNum at zero.
+			// The shooter is carried by otherEntityNum below, for both impacts.
 
 			if( LogAccuracyHit( traceEnt, ent ) ) {
 				G_StatsHit( ent->client, ent->s.weapon );

@@ -1,0 +1,20 @@
+# G3: spidercrossings, ictf, cheats, 1700 frames. Flag capture,
+# explicit drop/return and disabled suicide in an instagib match.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 1020 alpha setviewpos 0 2752 170 0
+clientcmd 1060 alpha setviewpos 0 -2752 170 0
+clientcmd 1080 alpha give Blue Flag
+clientcmd 1100 bravo setviewpos 32 -2752 170 0
+clientcmd 1120 bravo dropflag
+clientcmd 1140 bravo kill
+clientcmd 1200 alpha score
+clientcmd 1300 bravo team s
+clientcmd 1330 alpha score

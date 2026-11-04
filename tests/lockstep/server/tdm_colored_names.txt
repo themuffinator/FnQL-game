@@ -1,0 +1,46 @@
+# G3: --factory tdm --frames 500. Connect/rename color resets, aliases,
+# black removal, fallback names, whitespace, and the retail 39-byte limit.
+fnql-lockstep 1
+client alpha name ^2Alpha model sarge headmodel sarge color1 4 color2 5
+client bravo name ^7Bravo
+client observer name Observer
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+userinfo 20 alpha name Alpha
+userinfo 30 alpha name ^2Alpha
+userinfo 40 alpha name ^2Alpha^7
+userinfo 50 alpha handicap 100
+userinfo 60 alpha name ^2
+userinfo 70 alpha name ^7^2
+userinfo 80 alpha name ^0Alpha
+userinfo 90 alpha name ^2Alpha^0
+userinfo 100 alpha name ^aAlias
+userinfo 110 alpha name ^?White
+userinfo 120 alpha name ^^Caret
+userinfo 130 alpha name Alpha^
+userinfo 140 alpha name ^2Alpha^
+userinfo 150 alpha name ^1Red^2Green^7White
+userinfo 160 alpha name ^1Red^2Green
+userinfo 170 alpha name "   ^2Alpha    Beta"
+userinfo 180 alpha name "^2   Alpha"
+userinfo 190 alpha name "^2A<B>&C'D"
+userinfo 200 alpha name ^0
+userinfo 210 alpha name "   "
+userinfo 220 alpha name 12345678901234567890123456789012345
+userinfo 230 alpha name 1234567890123456789012345678901234567890
+userinfo 240 alpha name ^212345678901234567890123456789012345
+userinfo 250 alpha name ^2123456789012345678901234567890123456
+userinfo 260 alpha name ^21234567890123456789012345678901234567
+userinfo 270 alpha name ^212345678901234567890123456789012345678
+userinfo 280 alpha name 12345678901234567890123456789012345678^2Z
+userinfo 290 alpha name 12345678901234567890123456789012345^2Z
+userinfo 300 alpha name ^1^2^3^4^5^6^1^2^3^4^5^6ManyColors
+userinfo 310 alpha name ^2Alpha
+userinfo 320 observer name ^5Spectator
+userinfo 330 observer name ^5Spectator^7
+userinfo 340 observer handicap 100
+clientcmd 350 alpha score
+clientcmd 360 observer score
+cmd 400 map_restart 0

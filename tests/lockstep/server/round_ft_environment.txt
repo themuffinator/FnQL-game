@@ -1,0 +1,15 @@
+# Strict G3 round-mode replay; options and paired self-checks are in meson.build.
+# Telefrag removes the frozen shell; teammate keeps the round alive.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team b
+cmd 20 allready
+clientcmd 1400 bravo setviewpos -700 320 40 0
+clientcmd 1402 alpha setviewpos -700 320 40 0
+at 1600 bravo buttons=attack
+at 1602 bravo buttons=0
+clientcmd 1700 bravo score

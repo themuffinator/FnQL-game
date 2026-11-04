@@ -1,0 +1,26 @@
+# G3: ffa, cheats, g_startingHealth 300, g_startingHealthBonus 0,
+# g_vampiricDamage 0.75. Tests the VCA health rules independently of CA rounds.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+userinfo 10 alpha handicap 50
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+clientcmd 25 alpha give Railgun
+at 40 alpha weapon=7
+at 60 alpha buttons=attack
+at 62 alpha buttons=0
+at 110 alpha buttons=attack
+at 112 alpha buttons=0
+at 160 alpha buttons=attack
+at 162 alpha buttons=0
+at 210 alpha buttons=attack
+at 212 alpha buttons=0
+clientcmd 250 alpha pstats
+clientcmd 260 alpha score
+userinfo 270 alpha handicap 101
+userinfo 280 bravo handicap 1
+cmd 300 map_restart 0
+clientcmd 320 alpha score

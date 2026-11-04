@@ -2,6 +2,7 @@
 //
 
 #include "g_local.h"
+#include <limits.h>
 
 
 /*
@@ -49,12 +50,14 @@ void P_DamageFeedback( gentity_t *player ) {
 		client->ps.damageYaw = angles[YAW]/360.0 * 256;
 	}
 
-	// play an apropriate pain sound
-	if ( (level.time >= player->pain_debounce_time) && !(player->flags & FL_GODMODE) ) {
+	// Retail 0x100338dd-0x10033923 quantizes pain to four health bands.
+	// The damage sequence advances on every hit, even while sound is muted.
+	if ( (level.time > player->pain_debounce_time) && !(player->flags & FL_GODMODE) ) {
+		const int pain = player->health < 25 ? 20 : player->health < 50 ? 40 : player->health < 75 ? 60 : 80;
 		player->pain_debounce_time = level.time + 700;
-		G_AddEvent( player, EV_PAIN, player->health );
-		client->ps.damageEvent++;
+		G_AddEvent( player, EV_PAIN, pain );
 	}
+	client->ps.damageEvent++;
 
 
 	client->ps.damageCount = count;
@@ -400,13 +403,15 @@ Actions that happen once a second
 */
 void ClientTimerActions( gentity_t *ent, int msec ) {
 	gclient_t	*client;
-#ifdef MISSIONPACK
-	int			maxHealth;
-#endif
 
 	client = ent->client;
 	client->timeResidual += msec;
-	client->flagCarryTime += msec;	// retail qagamex86 0x100343f3
+	// Retail 100343f3 supplies Race's millisecond clock too. Saturate an
+	// unrepresentable run so it cannot wrap into a new personal best.
+	if ( g_gametype.integer == GT_RACE ) {
+		long long elapsed = (long long)client->flagCarryTime + msec;
+		client->flagCarryTime = elapsed > INT_MAX ? INT_MAX : elapsed < 0 ? 0 : (int)elapsed;
+	} else client->flagCarryTime += msec;
 
 	while ( client->timeResidual >= 1000 ) {
 		client->timeResidual -= 1000;
@@ -436,32 +441,7 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 			}
 		}
 
-		// regenerate
-#ifdef MISSIONPACK
-		if( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_GUARD ) {
-			maxHealth = client->ps.stats[STAT_MAX_HEALTH] / 2;
-		}
-		else if ( client->ps.powerups[PW_REGEN] ) {
-			maxHealth = client->ps.stats[STAT_MAX_HEALTH];
-		}
-		else {
-			maxHealth = 0;
-		}
-		if( maxHealth ) {
-			if ( ent->health < maxHealth ) {
-				ent->health += 15;
-				if ( ent->health > maxHealth * 1.1 ) {
-					ent->health = maxHealth * 1.1;
-				}
-				G_AddEvent( ent, EV_POWERUP_REGEN, 0 );
-			} else if ( ent->health < maxHealth * 2) {
-				ent->health += 5;
-				if ( ent->health > maxHealth * 2 ) {
-					ent->health = maxHealth * 2;
-				}
-				G_AddEvent( ent, EV_POWERUP_REGEN, 0 );
-			}
-#else
+		// Retail 0x100344d3: only Regeneration heals, not the Guard rune.
 		if ( client->ps.powerups[PW_REGEN] ) {
 			if ( ent->health < client->ps.stats[STAT_MAX_HEALTH]) {
 				ent->health += 15;
@@ -476,58 +456,68 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 				}
 				G_AddEvent( ent, EV_POWERUP_REGEN, 0 );
 			}
-#endif
 		} else {
 			// count down health when over max
-			if ( ent->health > client->ps.stats[STAT_MAX_HEALTH] ) {
+			if ( ent->health > client->ps.stats[STAT_MAX_HEALTH]
+				&& (!G_IsRoundBasedGametype(g_gametype.integer) || (level.roundState == 3 && !level.roundDeadline)) ) {
 				ent->health--;
 			}
 		}
 
-		// count down armor when over max
-		if ( client->ps.stats[STAT_ARMOR] > client->ps.stats[STAT_MAX_HEALTH] ) {
+		// QL's Armor Regen restores armor, not Team Arena's ammunition
+		// (retail 0x10034601). Tiered armor permits the last increment past max.
+		if ( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_ARMORREGEN
+			&& client->ps.stats[STAT_ARMOR] < client->ps.stats[STAT_MAX_HEALTH] ) {
+			client->ps.stats[STAT_ARMOR] += 10;
+			if ( !armor_tiered.integer && client->ps.stats[STAT_ARMOR] > client->ps.stats[STAT_MAX_HEALTH] ) {
+				client->ps.stats[STAT_ARMOR] = client->ps.stats[STAT_MAX_HEALTH];
+			}
+			ent->s.armor = client->ps.stats[STAT_ARMOR];
+			G_AddEvent( ent, EV_POWERUP_ARMORREGEN, 0 );
+		}
+
+		// Scout has its own faster decay below. Retail 0x100346b6 also
+		// distinguishes tiered armor and Clan Arena's armor countdown.
+		if ( client->ps.stats[STAT_ARMOR] > client->ps.stats[STAT_MAX_HEALTH]
+			&& ( g_gametype.integer == GT_CLAN_ARENA ? armor_tiered.integer
+				: !armor_tiered.integer && client->ps.stats[STAT_PERSISTANT_POWERUP] != PP_SCOUT ) ) {
 			client->ps.stats[STAT_ARMOR]--;
 			ent->s.armor = client->ps.stats[STAT_ARMOR];
 		}
 	}
-#ifdef MISSIONPACK
-	if( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_ARMORREGEN ) {
-		int w, max, inc, t, i;
-    int weapList[]={WP_MACHINEGUN,WP_SHOTGUN,WP_GRENADE_LAUNCHER,WP_ROCKET_LAUNCHER,WP_LIGHTNING,WP_RAILGUN,WP_PLASMAGUN,WP_BFG,WP_NAILGUN,WP_PROX_LAUNCHER,WP_CHAINGUN};
-    int weapCount = ARRAY_LEN( weapList );
-		//
-    for (i = 0; i < weapCount; i++) {
-		  w = weapList[i];
-
-		  switch(w) {
-			  case WP_MACHINEGUN: max = 50; inc = 4; t = 1000; break;
-			  case WP_SHOTGUN: max = 10; inc = 1; t = 1500; break;
-			  case WP_GRENADE_LAUNCHER: max = 10; inc = 1; t = 2000; break;
-			  case WP_ROCKET_LAUNCHER: max = 10; inc = 1; t = 1750; break;
-			  case WP_LIGHTNING: max = 50; inc = 5; t = 1500; break;
-			  case WP_RAILGUN: max = 10; inc = 1; t = 1750; break;
-			  case WP_PLASMAGUN: max = 50; inc = 5; t = 1500; break;
-			  case WP_BFG: max = 10; inc = 1; t = 4000; break;
-			  case WP_NAILGUN: max = 10; inc = 1; t = 1250; break;
-			  case WP_PROX_LAUNCHER: max = 5; inc = 1; t = 2000; break;
-			  case WP_CHAINGUN: max = 100; inc = 5; t = 1000; break;
-			  default: max = 0; inc = 0; t = 1000; break;
-		  }
-		  client->ammoTimes[w] += msec;
-		  if ( client->ps.ammo[w] >= max ) {
-			  client->ammoTimes[w] = 0;
-		  }
-		  if ( client->ammoTimes[w] >= t ) {
-			  while ( client->ammoTimes[w] >= t )
-				  client->ammoTimes[w] -= t;
-			  client->ps.ammo[w] += inc;
-			  if ( client->ps.ammo[w] > max ) {
-				  client->ps.ammo[w] = max;
-			  }
-		  }
-    }
+	// Retail 0x100347d6: Scout loses one armor every 500 ms down to 50.
+	G_QuadHogTimer( ent, msec );
+	// Its residual is retained between rune pickups, and pauses freeze it.
+	if ( g_gametype.integer != GT_CLAN_ARENA && client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
+		client->scoutArmorResidual += msec;
+		while ( client->scoutArmorResidual >= 500 ) {
+			client->scoutArmorResidual -= 500;
+			if ( client->ps.stats[STAT_ARMOR] > 50 ) {
+				client->ps.stats[STAT_ARMOR]--;
+			}
+		}
 	}
-#endif
+	// Retail 0x10034260 / 0x100342f0: independent residuals, armed by
+	// damage, with armor optionally waiting for health. Keep the pre-tick
+	// cap check (a tick may overshoot); reject nonpositive rates safely.
+	if ( g_regenHealth.integer && g_regenHealthRate.integer > 0 ) {
+		if ( ent->health >= client->ps.stats[STAT_MAX_HEALTH] ) client->healthRegenActive = qfalse;
+		if ( client->healthRegenActive && client->regenDamageTime
+			&& (long long)level.time - client->regenDamageTime > g_regenHealth.integer ) client->healthRegenResidual += msec;
+		ent->health += client->healthRegenResidual / g_regenHealthRate.integer;
+		client->healthRegenResidual %= g_regenHealthRate.integer;
+	}
+	if ( g_regenArmor.integer && g_regenArmorRate.integer > 0 ) {
+		int cap = armor_tiered.integer ? 50 * (client->ps.stats[STAT_ARMOR_TIER] + 1) : client->ps.stats[STAT_MAX_HEALTH];
+		if ( client->ps.stats[STAT_ARMOR] >= cap ) client->armorRegenActive = qfalse;
+		if ( client->armorRegenActive && (long long)level.time - client->regenDamageTime > g_regenArmor.integer
+			&& (!g_regenArmorAfterHealth.integer || ent->health >= client->ps.stats[STAT_MAX_HEALTH]) ) client->armorRegenResidual += msec;
+		if ( client->armorRegenResidual >= g_regenArmorRate.integer ) {
+			client->ps.stats[STAT_ARMOR] += client->armorRegenResidual / g_regenArmorRate.integer;
+			client->armorRegenResidual %= g_regenArmorRate.integer;
+			ent->s.armor = client->ps.stats[STAT_ARMOR];
+		}
+	}
 }
 
 /*
@@ -839,11 +829,14 @@ void ClientThink_real( gentity_t *ent ) {
 	// a deferred spawn tries again once its time has passed (retail
 	// qagamex86 0x10034d79); until then the player flies about as a
 	// spectator, unlinked
-	if ( client->deferredSpawnTime ) {
+	if ( client->deferredSpawnTime && (g_gametype.integer != GT_ATTACK_DEFEND
+		|| client->deferredSpawnTime < level.time || client->ps.pm_type == PM_SPECTATOR) ) {
 		if ( client->deferredSpawnTime < level.time ) {
 			client->deferredSpawnTime = 0;
 			client->ps.pm_type = PM_NORMAL;
-			ClientSpawn( ent );
+			// Retail 0x10034dd0 re-enters AD's round-aware spawn dispatch.
+			if ( g_gametype.integer == GT_ATTACK_DEFEND ) G_RoundSpawn(ent);
+			else ClientSpawn( ent );
 		} else {
 			pmove_t pm;
 
@@ -865,7 +858,7 @@ void ClientThink_real( gentity_t *ent ) {
 	}
 
 	// spectators don't do much
-	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
+	if ( client->sess.sessionTeam == TEAM_SPECTATOR || client->ps.pm_type == PM_SPECTATOR ) {
 		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
 			return;
 		}
@@ -885,10 +878,12 @@ void ClientThink_real( gentity_t *ent ) {
 
 	if ( client->noclip ) {
 		client->ps.pm_type = PM_NOCLIP;
+	} else if ( client->ps.powerups[PW_FROZEN] ) {
+		client->ps.pm_type = PM_FREEZE;
 	} else if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
 		client->ps.pm_type = PM_DEAD;
 	} else {
-		client->ps.pm_type = PM_NORMAL;
+		client->ps.pm_type = g_gametype.integer == GT_ATTACK_DEFEND && level.roundState == 1 ? PM_FREEZE : PM_NORMAL;
 	}
 
 	client->ps.gravity = g_gravity.value;
@@ -896,15 +891,14 @@ void ClientThink_real( gentity_t *ent ) {
 	// set speed
 	client->ps.speed = g_speed.value;
 
-#ifdef MISSIONPACK
-	if( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
-		client->ps.speed *= 1.5;
-	}
-	else
-#endif
+	// Retail 0x10034ee5: Haste takes precedence over Scout's 1.25 scale.
 	if ( client->ps.powerups[PW_HASTE] ) {
 		client->ps.speed *= 1.3;
+	} else if ( client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
+		client->ps.speed = (int)( (double)client->ps.speed * 1.25 );
 	}
+
+	if ( g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer && client->sess.sessionTeam == TEAM_RED ) client->ps.speed = (int)((float)client->ps.speed * g_rrInfectedZombieSpeed.value);
 
 	// Let go of the hook if we aren't firing
 	if ( client->ps.weapon == WP_GRAPPLING_HOOK &&
@@ -972,6 +966,8 @@ void ClientThink_real( gentity_t *ent ) {
 	pm.debugLevel = g_debugMove.integer;
 
 	pm.settings = &level.pmoveSettings;
+	// Retail 0x1003517e: dmflags bit 32 suppresses surface footsteps.
+	pm.noFootsteps = (g_dmflags.integer & DF_NO_FOOTSTEPS) != 0;
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 
@@ -1043,14 +1039,25 @@ void ClientThink_real( gentity_t *ent ) {
 	client->buttons = ucmd->buttons;
 	client->latched_buttons |= client->buttons & ~client->oldbuttons;
 
+	if ( client->ps.powerups[PW_FROZEN] ) {
+		G_FreezeThink(ent, msec);
+		return;
+	}
+
 	// check for respawning
 	if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
 		// retail qagamex86 0x10039f20: once the respawn time has come, attack
 		// or use respawns, and g_respawn_delay_max later the respawn is
 		// forced; during a round mode's countdown the dead come straight
-		// back (clan arena's and attack and defend's waiting for the next
-		// round arrives with milestone 6)
+		// back. Clan Arena spectators wait for the next round.
 		if ( level.time >= client->respawnTime ) {
+			if ( (g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_ATTACK_DEFEND) && !level.warmupTime && !G_RoundCountingDown() ) {
+				CopyToBodyQue(ent);
+				client->ps.pm_type = PM_SPECTATOR;
+				ClientSpawn(ent);
+				G_FollowNextOrStop(ent);
+				return;
+			}
 			qboolean countdown = qfalse;
 
 			switch ( g_gametype.integer ) {
@@ -1189,7 +1196,7 @@ void ClientEndFrame( gentity_t *ent ) {
 
 	// spectators, and players waiting out a deferred spawn, as in retail
 	// (qagamex86 0x1003560b, which tests the spectator pm_type)
-	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR || ent->client->deferredSpawnTime ) {
+	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR || ent->client->ps.pm_type == PM_SPECTATOR || ent->client->deferredSpawnTime ) {
 		SpectatorClientEndFrame( ent );
 		return;
 	}

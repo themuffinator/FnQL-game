@@ -150,13 +150,25 @@ static qboolean QDECL G_NativeCanClientSeeClient( int viewerClientNum, int targe
 }
 
 static qboolean QDECL G_NativeFreezeCanSeeThawProgressEvent( int clientNum, int entNum ) {
-	(void)clientNum;
-	(void)entNum;
-	return qtrue;
+	gentity_t *event;
+	int owner;
+	// Retail native slot 13, 0x10053020: this result suppresses the tick
+	// for opponents; the engine's historical export name is misleading.
+	if ( clientNum < 0 || clientNum >= level.maxclients || entNum < 0 || entNum >= level.num_entities
+		|| g_gametype.integer != GT_FREEZE || g_freezeThawTick.integer != 1 || !g_entities[clientNum].inuse ) return qfalse;
+	event = &g_entities[entNum];
+	owner = event->r.ownerNum;
+	if ( event->s.eType != ET_EVENTS + EV_THAW_TICK || owner < 0 || owner >= level.num_entities ) return qfalse;
+	return !OnSameTeam(&g_entities[clientNum], &g_entities[owner]);
 }
 
 static qboolean QDECL G_NativeIsObjectiveEntity( int entNum ) {
-	(void)entNum;
+	gentity_t *ent;
+	if ( entNum < 0 || entNum >= level.num_entities || entNum >= MAX_GENTITIES ) return qfalse;
+	ent = &g_entities[entNum];
+	// Retail 0x10052f40 exposes the world quad as Quad Hog's objective.
+	if ( G_IsQuadHog() && ent->inuse && ent->item
+		&& ent->item->giType == IT_POWERUP && ent->item->giTag == PW_QUAD ) return qtrue;
 	return qfalse;
 }
 
@@ -303,6 +315,13 @@ void trap_UnlockSteamAchievement( int clientNum, int achievementId ) {
 
 qboolean trap_GetValue( char *value, int valueSize, const char *key ) {
 	return G_NativeGetValue( value, valueSize, key );
+}
+
+qboolean trap_FactoryExists( const char *name ) {
+	// Retail import 206, not a negotiated FnQL extension. Fail closed if a
+	// host supplies no registry callback; never invent a built-in catalog.
+	return name && name[0] && gi->FactoryExists
+		? gi->FactoryExists( name ) : qfalse;
 }
 
 /*

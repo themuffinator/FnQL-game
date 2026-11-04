@@ -1,0 +1,12 @@
+# g_voteFlags 8 disables factory changes but permits map-only votes.
+# Start under the custom factory and verify its identity survives execution.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 10 alpha callvote map campgrounds ffa
+clientcmd 20 alpha callvote map campgrounds
+clientcmd 22 bravo vote yes
+at 200 alpha forward=127
+at 240 alpha forward=0

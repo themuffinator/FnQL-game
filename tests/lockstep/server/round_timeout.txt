@@ -1,0 +1,24 @@
+# Strict G3 round-mode replay; options and paired self-checks are in meson.build.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 12 g_timeoutCount 2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 1400 alpha setviewpos -260 320 40 180
+clientcmd 1402 bravo setviewpos -700 320 40 0
+at 1410 alpha weapon=7
+clientcmd 1420 alpha give Quad Damage
+at 1450 alpha buttons=attack
+at 1452 alpha buttons=0
+at 1510 alpha buttons=attack
+at 1512 alpha buttons=0
+clientcmd 1540 alpha score
+at 1600 bravo buttons=attack
+at 1602 bravo buttons=0
+clientcmd 1850 alpha score
+clientcmd 1700 alpha timeout
+clientcmd 2100 alpha timein
+clientcmd 2100 alpha score

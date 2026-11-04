@@ -1,0 +1,17 @@
+# Strict G3 round-mode replay; options and paired self-checks are in meson.build.
+# Warmup freeze auto-thaws, then readiness starts a normal round.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+clientcmd 25 alpha give Railgun
+clientcmd 30 alpha give Quad Damage
+at 35 alpha weapon=7
+at 80 alpha buttons=attack
+at 82 alpha buttons=0
+clientcmd 180 bravo score
+cmd 250 allready
+clientcmd 1600 alpha score

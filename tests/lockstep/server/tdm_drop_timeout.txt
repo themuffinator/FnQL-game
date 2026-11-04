@@ -1,0 +1,25 @@
+# G3: --cheats --factory tdm --frames 1500 on campgrounds.
+# A dropped quad's decay clock pauses with the match. Drop commands are
+# refused during the timeout; after timein the other team takes the quad.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+cmd 12 g_timeoutCount 2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 990 alpha setviewpos -260 320 40 0
+clientcmd 992 alpha give Quad Damage
+clientcmd 994 bravo setviewpos -700 320 40 0
+clientcmd 1000 alpha droppowerup
+clientcmd 1002 alpha setviewpos -400 -320 40 0
+clientcmd 1016 alpha timeout
+clientcmd 1040 alpha dropweapon
+clientcmd 1042 alpha droppowerup
+clientcmd 1100 alpha timein
+clientcmd 1380 bravo setviewpos -196 320 40 0
+clientcmd 1450 alpha score
+clientcmd 1452 bravo score

@@ -1,0 +1,30 @@
+# G3: campgrounds, quadhog, cheats, g_quadHogTime 3, 900 frames.
+# Non-carriers cannot hurt each other; a carrier can fight, loses quad on
+# death or expiry, and periodic locators stop after expiry. Restart resets it.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+clientcmd 25 alpha give Railgun
+at 40 alpha weapon=7
+at 60 alpha buttons=attack
+at 62 alpha buttons=0
+clientcmd 70 bravo score
+clientcmd 80 alpha give Quad Damage
+at 100 alpha buttons=attack
+at 102 alpha buttons=0
+clientcmd 110 alpha score
+at 200 bravo buttons=attack
+at 202 bravo buttons=0
+clientcmd 220 bravo setviewpos -700 320 40 0
+at 240 alpha buttons=attack
+at 242 alpha buttons=0
+clientcmd 260 alpha pstats
+clientcmd 280 bravo give Quad Damage
+clientcmd 300 bravo kill
+cmd 400 map_restart 0
+clientcmd 420 alpha give Quad Damage
+clientcmd 600 alpha score

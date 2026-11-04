@@ -1,0 +1,15 @@
+# Factory validation against retail import 206. Run in duel warmup. Also
+# run with g_voteFlags 1 and 8 to exercise policy precedence. No successful
+# vote executes, so the map and recording stay in place.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 10 alpha callvote map
+clientcmd 20 alpha callvote map fnql_missing_map
+clientcmd 30 alpha callvote map campgrounds fnql_missing_factory
+clientcmd 32 alpha callvote map campgrounds "bad factory"
+clientcmd 34 alpha callvote map campgrounds "bad%factory"
+clientcmd 36 alpha callvote map campgrounds bad-factory
+clientcmd 40 alpha callvote map campgrounds ffa

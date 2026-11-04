@@ -1,0 +1,50 @@
+# G3: --cheats --factory tdm --frames 600, g_playerCylinders 0 and 1.
+# Active and spectator renames broadcast once, including implicit color resets;
+# unchanged names and unrelated userinfo updates do not announce a rename.
+# Shooter slot 2 hits flesh and walls with MG/HMG/CG. Impacts identify the
+# shooter via otherEntityNum, the victim via eventParm, and leave clientNum 0.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client delta name Delta
+clientcmd 1 charlie team r
+clientcmd 2 delta team b
+at 0 charlie weapon=2
+at 0 delta weapon=2
+clientcmd 20 charlie setviewpos -400 -320 40 0
+clientcmd 22 delta setviewpos -240 -320 40 180
+userinfo 30 bravo name Observer
+userinfo 40 charlie name ^2Shooter
+userinfo 42 charlie handicap 100
+userinfo 44 charlie name ^2Shooter
+at 60 charlie buttons=attack
+at 70 charlie buttons=0
+userinfo 90 charlie name Shooter
+clientcmd 100 delta give health
+clientcmd 102 delta setviewpos -240 -320 40 180
+clientcmd 104 charlie give Heavy Machinegun
+at 110 charlie weapon=14
+at 140 charlie buttons=attack
+at 150 charlie buttons=0
+clientcmd 180 delta give health
+clientcmd 182 delta setviewpos -240 -320 40 180
+clientcmd 184 charlie give Chaingun
+at 190 charlie weapon=13
+at 220 charlie buttons=attack
+at 230 charlie buttons=0
+
+# Turn toward a wall and repeat; its direction byte must remain intact.
+clientcmd 260 charlie setviewpos -400 -320 40 270
+at 270 charlie weapon=2
+at 300 charlie buttons=attack
+at 310 charlie buttons=0
+at 330 charlie weapon=14
+at 360 charlie buttons=attack
+at 370 charlie buttons=0
+at 390 charlie weapon=13
+at 420 charlie buttons=attack
+at 430 charlie buttons=0
+clientcmd 460 charlie pstats
+clientcmd 462 delta score
+userinfo 480 bravo name ^5Observer

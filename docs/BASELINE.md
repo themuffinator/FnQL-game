@@ -150,6 +150,20 @@ comments and docs/PLAN.md):
 - The FFA scoreboard is retail's `scores_ffa`, and `smscores` replaces an
   oversized one; the other modes still send Quake III's `scores` until their
   retail grammars land.
+- Rename notifications use a single server broadcast, including spectator
+  recipients, as retail qagamex86 0x1003a7e1 does. The connected/name-change
+  guards and message payload remain unchanged. Bullet flesh impacts leave
+  `clientNum` at zero (0x1006cecf-0x1006cefe); `eventParm` identifies the
+  victim and `otherEntityNum` identifies the shooter for both flesh and
+  wall impacts. MG, HMG and chaingun use this shared path.
+- Server player names now use `g_names.c`, independently normalized from
+  retail 0x1003a0b0-0x1003a212. Nonwhite names receive a trailing `^7`;
+  explicit white needs no extra reset and black codes do not change the
+  current color. Normalization precedes the 39-byte stored-name copy
+  (0x1003a771), including retail's clipping at a color-token boundary.
+  Empty/color-only input retains the `UnnamedPlayer` fallback. Control
+  characters remain excluded from protocol text. Other `BG_CleanName`
+  callers retain their existing behavior.
 - Items follow retail `Touch_Item` and the `Pickup_*` functions: respawn
   delays are seconds from `g_weaponRespawn`/`g_ammoRespawn`/
   `g_powerupRespawn` and the retail constants (baseq3a's `SpawnTime` is
@@ -192,3 +206,146 @@ comments and docs/PLAN.md):
   (one flag CTF still baseq3a's).
 - A `map_restart` reconnect no longer repeats the team announcement, and
   training servers greet no one.
+- Manual `dropweapon`, `dropflag`, `droppowerup` and `droprune` commands now
+  share a bounded placement/policy implementation in `g_drop.c`, independently
+  written from retail qagamex86 0x10044910-0x10045630 and 0x100513b0.
+  Weapon drops transfer ammo and publish `EV_DROP_WEAPON`; flags pass or
+  throw and return after ten seconds. Powerups can decay on the ground and
+  retain their remaining duration through a timeout. Death-drop behavior
+  remains separate. Rune release translates PW_* slots to PP_* item tags;
+  rune lifecycle and effects now have their own G3 coverage below.
+- Dropped pickups no longer emit the map-pickup announcement (the guard
+  at retail 0x1004dcbc covers the whole announcement). Dynamically spawned
+  timed items now notify spectators before their first think, matching
+  G_SpawnItem's call at 0x10050ba1. Both initial and pickup notifications
+  carry a zero groundEntityNum marker, as retail's callers specify.
+- Optional `g_flagPhysics` attaches a per-frame callback to manual flag
+  drops at creation, following retail 0x10050f80 and 0x100515f9. It handles
+  jump pads, teleporters and capture zones; death drops keep their own path.
+  `trigger_capturezone` now resolves the opposing carrier (or thrown flag's
+  owner) and uses the zone's `count` for the team score (0x1006bda0).
+- Portal cameras transmit raw roll in `angles2` and surfaces copy it, as
+  retail 0x1005a77f and 0x1005a919 do; Quake III's byte in `clientNum` is gone.
+  Intermission fallback uses the retail spawn picker and its nine-unit offset
+  (0x10054f4b), preserving the legacy picker for its other callers.
+- Sine trajectories retain precision through the angle multiplication
+  (0x1002d297 / 0x1002d42b), avoiding early float rounding that moved items
+  differently on bobbing platforms. Both position and velocity have a
+  direct retail comparison in the existing x86 lockstep harness.
+- Rune initialization and relocation are independently implemented in
+  `g_runes.c`: four registered items, reserved eligible spawn points,
+  alternating team starts, and random relocation after a manual drop
+  (ten seconds), death drop (thirty seconds), or entry into a no-drop
+  volume. Invalid spawn layouts warn and stop instead of looping.
+- Scout uses a 1.25 speed multiplier, with Haste taking precedence, and
+  drains armor toward 50 every 500 ms outside Clan Arena. Guard no longer
+  regenerates health or doubles the handicap on a userinfo update. Armor
+  Regen restores ten armor per second, observes tiered armor, and never
+  replenishes ammo. Rune timers pause during a timeout.
+- Rune combat tests also corrected pain-event health bands and damage
+  sequencing (0x100338dd-0x10033923), plus knockback normalization precision
+  (0x10048d9d). Damage/Quad precedence, Guard absorption, Armor Regen
+  absorption and Scout self-damage immunity retain their retail behavior.
+- Disconnects use the regular powerup-drop policy for runes, as retail
+  0x1003c9f7 does. The inherited Team Arena pickup-relink path is removed;
+  it bypassed `g_dropPowerups 0` and could expose a freed entity.
+- Factory lookup now calls the host's retail import 206, including custom
+  definitions, without a module-local factory catalog. The map-vote contract
+  is checked against retail qagamex86 0x100428bf-0x10042a1b and the strict
+  `factory-contract` G3 suite; the engine remains responsible for applying
+  and restoring factory settings.
+- Factory gameplay replaces inherited map-item and spawn-weapon behavior:
+  Instagib keeps flag objectives and its rail/gauntlet kit, while CA/RR,
+  Domination and ordinary Race map pickups are suppressed. Race's explicit
+  gametype inclusion and the `give` cheat retain retail's force-spawn bypass
+  (0x100507e0). Handicap now scales factory starting health (0x1003a878).
+- `g_quadhog.c` independently implements the world-quad lifecycle and carrier
+  locator from retail 0x1004d290-0x1004d500, 0x10034725 and 0x1004f21a.
+  Spawn selection preserves retail's random stream; missing spawn points
+  terminate safely. Idle deadlines and locator accumulation use bounded
+  arithmetic. The native objective query identifies Quad Hog's world item.
+- Factory rule groups publish retail's HUD settings mask at initialization
+  and update it with `g_customSettings` after live rule changes
+  (0x10053400-0x10054915). The `factory-gameplay` suite compares the resulting
+  gameplay and network state against the user's retail x86 module.
+
+- Public voting is independently implemented in `g_vote.c` from retail
+  0x100423a0/0x10043920/0x10044270/0x100588f0/0x10058ab0/0x100591b0.
+  Q3's multi-command grammar, fixed three-call limit, EF_VOTED bookkeeping
+  and non-retail vote options are replaced by QL policy, private ballot
+  states, moderator overrides and the retail action allowlist. Map/factory
+  queries remain at the host boundary. The end-of-match map vote retains
+  its existing owner. Inputs that would truncate a token or overflow an
+  integer are rejected. Execution strings now have retail's 1,024-byte
+  storage rather than the inherited 256-byte cvar buffer.
+- A disconnect's teleport-out event keeps its default zero clientNum,
+  matching retail 0x1003c9ef; the disconnect-voting differential covers the
+  correction, including disconnects after a passed clientkick.
+- Bot movement no longer scales the largest projected component to full
+  speed. The independently rewritten projection follows retail qagamex86
+  0x10021d0a-0x10021d76: float storage for scaled input speed, wide dot
+  products before command-byte truncation, and integer-absolute vertical
+  projection. The existing strict `ffa_bot_restart` G3 gate now matches
+  all 400 frames, removing its previously documented 803 field-frames
+  of drift without changing the bot decision logic or player movement.
+
+- Server command completion uses independently written `g_admin.c` and
+  `g_access.c` for the shared retail privilege table and account policy.
+  `g_commandextras.c` adds bot chat and spectator selectors; `g_race.c`
+  implements bounded checkpoint editing. Mute/privilege session persistence,
+  SteamID ban admission, team locks, shuffle suppression and first-human
+  leader selection connect the commands to the existing game lifecycle.
+- Chat packets now carry the retail two-digit sender prefix and location
+  color reset. Legacy voice commands retain dispatch/logging/bookkeeping but
+  emit no Q3 voice packets, matching both retail HLIL and runtime probes.
+  Unknown server-console text is no longer broadcast as player chat. The
+  full inventory, evidence and regression gates are in [Server command compatibility](SERVER_COMMANDS.md).
+
+- Race now maintains map-local personal best times and checkpoint splits,
+  including retail timing events, spectator progress, ascending score order,
+  tied-time adjustment and reset versus respawn semantics. Checkpoint chains
+  and editor storage are bounded. Evidence: 0x100634f0, 0x10063580,
+  0x1003c3fe, 0x10041238, 0x1002cc40; production unit tests and strict G3
+  editor/record fixtures exercise the implementation.
+- Red Rover shuffle respawns unchanged-team players and uses ClientSpawn for
+  changed teams, preserving match records (0x1004066c/0x1006a47f). Equal-team
+  joins consume retail's RNG draw and join blue (0x1003a07a/0x1003a099), and the mode has its
+  nineteen-field scores_rr serializer (0x1003f260).
+
+- `g_rounds.c` independently implements Clan Arena, Freeze Tag and Red
+  Rover round controllers, including Infected. Private qagame state drives
+  the retail round/countdown configstrings, result events, scoring and
+  awards without changing the engine-shared ABI. Evidence and strict
+  `round-modes` scenarios are listed under M6 in [the plan](PLAN.md).
+- Round spawns now distinguish warmup, live players, frozen players and
+  eliminated team spectators. Freeze Tag owns its collision shells,
+  helper/automatic thaw, environmental respawn and native thaw-tick filter.
+  RR conversion preserves round scores across respawns, sorts tied match
+  scores by round score and publishes independently sorted round winners.
+- Retail probes exposed shared corrections: kit weapons register for
+  warmup ammo, CA/RR pickups use ordinary ammo caps, dmflags suppresses
+  footsteps, and enemy timed-powerup carrier deaths announce the powerup.
+  None of these additions copies implementation text from the reference.
+
+- Attack & Defend extends the private round controller with alternating
+  turns, role-aware flag scoring, round awards and rolling score history.
+  Domination now owns capture points, contention, periodic scoring, defense
+  and owned-point respawns in `g_domination.c`. Factory regeneration is
+  connected to damage and spawn lifecycle hooks. Harvester skull counts,
+  tosses, pickup events and captures match the six-bit retail contract;
+  Overload retains its verified baseline controller with arithmetic and
+  non-player-attacker guards. No engine-shared layouts change. Retail HLIL
+  evidence and the 30 strict `objective-modes` scenarios are documented in
+  [the plan](PLAN.md); map fixtures are independently authored.
+- Stock-map rotation parity: door travel distance retains double arithmetic
+  until after lip subtraction (retail 0x1005fbe5-0x1005fbf5), avoiding an early
+  rounding error on Brimstone Abbey's 360-degree doors. `target_push` no longer
+  registers the Quake III default wind sound; retail only registers the
+  flagged bounce sound (0x1006b900-0x1006b912). Extended objective limit gates
+  cover the subsequent stock map; `stock-maps` also checks direct empty-server
+  startup and both push-sound cases. No external implementation was copied.
+
+- Spawn registration retains authored origins, matching retail 0x10055000.
+  The inherited floor-lowering pass was removed because it displaced the
+  missing-intermission spectator fallback on Devilish (0x10054f4b). The
+  stock-map gates now compare two spectators as well as map entities.

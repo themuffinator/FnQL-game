@@ -820,7 +820,6 @@ void BotInputToUserCommand(bot_input_t *bi, usercmd_t *ucmd, int delta_angles[3]
 	vec3_t angles, forward, right;
 	short temp;
 	int j;
-	float f, r, u, m;
 
 	//clear the whole structure
 	memset(ucmd, 0, sizeof(usercmd_t));
@@ -874,31 +873,17 @@ void BotInputToUserCommand(bot_input_t *bi, usercmd_t *ucmd, int delta_angles[3]
 	angles[ROLL] = 0;
 	AngleVectors(angles, forward, right, NULL);
 	//bot input speed is in the range [0, 400]
-	bi->speed = bi->speed * 127 / 400;
+	bi->speed = (float)( (double)bi->speed * 127.0 / 400.0 );
 
-	//set the view independent movement
-	f = DotProduct( forward, bi->dir );
-	r = DotProduct( right, bi->dir );
-	u = fabs( forward[2] ) * bi->dir[2];
-	m = fabs( f );
-
-	if ( fabs( r ) > m ) {
-		m = fabs( r );
-	}
-
-	if ( fabs( u ) > m) {
-		m = fabs( u );
-	}
-
-	if ( m > 0 ) {
-		f *= bi->speed / m;
-		r *= bi->speed / m;
-		u *= bi->speed / m;
-	}
-
-	ucmd->forwardmove = f;
-	ucmd->rightmove = r;
-	ucmd->upmove = u;
+	// Retail 1069, 0x10021d0a-0x10021d76: preserve the projected speed;
+	// normalizing by the largest component makes diagonal bots too fast.
+	// Keep the products/sums wide until command-byte truncation, as in
+	// retail's x87 path. Its vertical projection uses integer abs.
+	ucmd->forwardmove = ((double)forward[0] * bi->dir[0] +
+		(double)forward[1] * bi->dir[1] + (double)forward[2] * bi->dir[2]) * bi->speed;
+	ucmd->rightmove = ((double)right[0] * bi->dir[0] +
+		(double)right[1] * bi->dir[1] + (double)right[2] * bi->dir[2]) * bi->speed;
+	ucmd->upmove = (double)abs( (int)forward[2] ) * bi->dir[2] * bi->speed;
 
 	if (bi->actionflags & ACTION_MOVEFORWARD) ucmd->forwardmove = 127;
 	if (bi->actionflags & ACTION_MOVEBACK) ucmd->forwardmove = -127;

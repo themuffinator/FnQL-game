@@ -1,0 +1,22 @@
+# G3: ffa, cheats. Live HUD/serverinfo rule bits, restoration, and health.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+cmd 20 set g_vampiricDamage 0.75
+cmd 40 set pmove_AirControl 1
+cmd 60 set g_damage_rg 90
+cmd 80 set g_vampiricDamage 0
+cmd 100 set g_damage_rg 80
+cmd 120 set pmove_AirControl 0
+cmd 140 set g_quadHog 1
+cmd 160 set g_quadHog 0
+cmd 180 set g_startingHealth 300
+clientcmd 200 alpha team s
+clientcmd 260 alpha team f
+cmd 270 set g_ammoPackHack 1
+clientcmd 280 alpha give Ammo Pack
+cmd 290 set g_ammoPackHack 0
+cmd 310 set g_vampiricDamage 0.75
+cmd 330 map_restart 0

@@ -1,0 +1,32 @@
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client observer name Observer
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+clientcmd 5 observer spec r
+clientcmd 7 observer spec b
+clientcmd 9 observer spec red
+clientcmd 11 observer spec blue
+clientcmd 13 observer spec r
+clientcmd 15 observer spec Red
+clientcmd 17 observer spec fc
+clientcmd 19 observer spec pu
+clientcmd 21 alpha give quad
+clientcmd 23 observer spec pu
+clientcmd 25 observer spec
+clientcmd 27 observer botSay 0 5 ignored
+clientcmd 29 observer racepoint
+clientcmd 31 observer raceinit
+clientcmd 33 charlie say_team team message
+clientcmd 35 charlie vsay affirmative
+clientcmd 37 charlie vsay_team affirmative
+clientcmd 39 charlie vtell 0 affirmative
+clientcmd 41 charlie vosay affirmative
+clientcmd 43 charlie vosay_team affirmative
+clientcmd 45 charlie votell 0 affirmative
+cmd 47 mute 2
+clientcmd 49 charlie vsay affirmative
+cmd 51 unmute 2

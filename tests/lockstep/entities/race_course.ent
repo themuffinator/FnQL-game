@@ -1,0 +1,36 @@
+// Hand-authored floating checkpoint course on the installed campgrounds BSP.
+{
+"classname" "worldspawn"
+"message" "FnQL Race record gate"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-400 320 250"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-400 -320 40"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "120 -320 40"
+}
+{
+"classname" "race_point"
+"origin" "-600 320 200"
+"target" "split"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-350 320 200"
+"targetname" "split"
+"target" "finish"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-100 320 200"
+"targetname" "finish"
+"spawnflags" "1"
+}

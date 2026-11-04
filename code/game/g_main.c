@@ -274,6 +274,56 @@ static void G_UpdatePmoveSettings( void ) {
 	BG_WeaponReloadFromInfo( info, &level.pmoveSettings );
 }
 
+// Retail qagamex86 0x10053400-0x10054915: the HUD's settings mask groups
+// cvars by gameplay effect. Compare registered default strings, not numeric
+// values: retail distinguishes e.g. "1" from "1.0". The singular Weapon
+// spelling in bit 22 is retail's; g_spawnItemWeapons does not set that bit.
+static unsigned G_CustomSettingsMask( void ) {
+	static const char *const groups[] = {
+		"weapon_reload_gauntlet g_damage_g g_knockback_g",
+		"weapon_reload_mg g_damage_mg g_knockback_mg g_ironsights_mg",
+		"weapon_reload_sg g_damage_sg g_damage_sg_outer g_knockback_sg g_damage_sg_falloff",
+		"weapon_reload_gl g_damage_gl g_splashdamage_gl g_splashradius_gl g_velocity_gl g_knockback_gl",
+		"weapon_reload_rl g_damage_rl g_splashdamage_rl g_splashradius_rl g_velocity_rl g_knockback_rl g_knockback_rl_self g_accelFactor_rl weapon_gravity_rl",
+		"weapon_reload_lg g_damage_lg g_knockback_lg g_damage_lg_falloff",
+		"weapon_reload_rg g_damage_rg g_knockback_rg",
+		"weapon_reload_pg g_damage_pg g_splashdamage_pg g_splashradius_pg g_velocity_pg g_knockback_pg g_knockback_pg_self g_accelFactor_pg weapon_gravity_pg",
+		"weapon_reload_bfg g_damage_bfg g_splashdamage_bfg g_splashradius_bfg g_velocity_bfg g_knockback_bfg g_accelFactor_bfg weapon_gravity_bfg",
+		"g_damage_gh weapon_reload_gh weapon_reload_hook g_velocity_gh g_knockback_gh pmove_velocity_gh",
+		"weapon_reload_ng g_damage_ng g_nailspeed g_knockback_ng g_nailcount g_nailspread g_nailbounce g_nailbouncepercentage weapon_gravity_ng",
+		"weapon_reload_prox g_splashdamage_pl g_splashradius_pl g_knockback_pl g_proxMineTimeout",
+		"weapon_reload_cg g_damage_cg g_knockback_cg",
+		"pmove_AirControl", "pmove_RampJump",
+		"g_speed pmove_AirAccel pmove_WalkAccel pmove_WalkFriction pmove_AirSteps pmove_BunnyHop pmove_StepJump pmove_StepHeight",
+		"pmove_WeaponRaiseTime pmove_WeaponDropTime", "g_instaGib", "g_quadHog",
+		"g_regenHealth g_regenArmor", "g_dropDamagedHealth", "g_vampiricDamage",
+		"g_spawnItemWeapon g_spawnItemPowerup g_spawnItemHoldable g_spawnItemHealth g_spawnItemArmor g_spawnItemAmmo g_spawnDelay_key g_spawnDelay_powerup g_spawnDelayRandom_key g_spawnDelayRandom_powerup",
+		"g_headShotDamage_rg", "g_railJump", "pmove_noPlayerClip", "g_rrInfected", "g_lightningDischarge"
+	};
+	unsigned mask = 0;
+	int i, group;
+	for ( i = 0; i < ARRAY_LEN( gameCvarTable ); ++i ) {
+		const cvarTable_t *cv = &gameCvarTable[i];
+		size_t length = strlen( cv->cvarName );
+		if ( !cv->vmCvar || !( cv->cvarFlags & CVAR_QL_FLAG_40000 )
+			|| !Q_stricmp( cv->vmCvar->string, cv->defaultString ) ) continue;
+		for ( group = 0; group < ARRAY_LEN( groups ); ++group ) {
+			const char *token = groups[group];
+			while ( *token ) {
+				const char *end = strchr( token, ' ' );
+				size_t size = end ? (size_t)( end - token ) : strlen( token );
+				if ( size == length && !Q_stricmpn( token, cv->cvarName, (int)length ) ) {
+					mask |= 1u << group;
+					break;
+				}
+				if ( !end ) break;
+				token = end + 1;
+			}
+		}
+	}
+	return mask;
+}
+
 
 /*
 =================
@@ -284,6 +334,9 @@ void G_RegisterCvars( void ) {
 	qboolean remapped = qfalse;
 	cvarTable_t *cv;
 	int i;
+	// Retail 0x10054936 resets the serverinfo value on each module init;
+	// CS_SETTINGS_MASK is then computed from the current factory rules.
+	trap_Cvar_Set( "g_customSettings", "0" );
 
 	for ( i = 0, cv = gameCvarTable ; i < ARRAY_LEN( gameCvarTable ) ; i++, cv++ ) {
 		trap_Cvar_Register( cv->vmCvar, cv->cvarName,
@@ -325,6 +378,7 @@ static void G_UpdateCvars( void ) {
 	cvarTable_t	*cv;
 	qboolean remapped = qfalse;
 	qboolean pmoveChanged = qfalse;
+	qboolean settingsChanged = qfalse;
 
 	for ( i = 0, cv = gameCvarTable ; i < ARRAY_LEN( gameCvarTable ) ; i++, cv++ ) {
 		if ( cv->vmCvar ) {
@@ -332,6 +386,7 @@ static void G_UpdateCvars( void ) {
 
 			if ( cv->modificationCount != cv->vmCvar->modificationCount ) {
 				cv->modificationCount = cv->vmCvar->modificationCount;
+				if ( cv->cvarFlags & CVAR_QL_FLAG_40000 ) settingsChanged = qtrue;
 
 				if ( cv->cvarFlags & ( CVAR_QL_PMOVE_SETTINGS | CVAR_QL_WEAPON_RELOAD ) ) {
 					pmoveChanged = qtrue;
@@ -358,17 +413,20 @@ static void G_UpdateCvars( void ) {
 	if ( pmoveChanged ) {
 		G_UpdatePmoveSettings();
 	}
+	if ( settingsChanged ) {
+		// Retail callback 0x10053400 and the live factory-rules G3 probe:
+		// the HUD changes this frame; serverinfo follows on the next frame.
+		const char *mask = va( "%d", (int)G_CustomSettingsMask() );
+		trap_Cvar_Set( "g_customSettings", mask );
+		trap_Cvar_Update( &g_customSettings );
+		trap_SetConfigstring( CS_SETTINGS_MASK, mask );
+	}
 }
 
 
 static void G_LocateSpawnSpots( void ) 
 {
-	static const vec3_t playerMins = { -12, -12, -24 };
-	static const vec3_t playerMaxs = { 12,  12,  32 };
-	vec3_t spawn_origin;
-	vec3_t spawn_ground;
 	gentity_t *ent;
-	trace_t tr;
 	int i, n;
 
 	level.spawnSpots[ SPAWN_SPOT_INTERMISSION ] = NULL;
@@ -435,26 +493,9 @@ static void G_LocateSpawnSpots( void )
 	}
 	level.numSpawnSpots = n;
 
-	// try to lower spawn spots if possible to minimize nasty bouncing
-	for ( i = 0; i < level.numSpawnSpots; i++ ) {
-		ent = level.spawnSpots[i];
-		
-		n = trap_PointContents( ent->s.origin, ent->s.number ) & ~(CONTENTS_FOG | CONTENTS_TRANSLUCENT);
-		if ( n != 0 ) {
-			continue;
-		}
+	// Retail 0x10055000 registers spawns without lowering their map origins.
+	// The intermission fallback (0x10054f4b) must see the authored height.
 
-		VectorCopy( ent->s.origin, spawn_origin );
-		VectorCopy( ent->s.origin, spawn_ground );
-		spawn_ground[2] -= 32.0f;
-		trap_Trace( &tr, spawn_origin, playerMins, playerMaxs, spawn_ground, ent->s.number, CONTENTS_SOLID | CONTENTS_PLAYERCLIP );
-		if ( tr.fraction != 1.0f && tr.entityNum == ENTITYNUM_WORLD ) {
-			ent->s.origin[2] = (int) (tr.endpos[2] + 0.999f);
-			ent->s.groundEntityNum = tr.entityNum;
-		} else {
-			ent->s.groundEntityNum = ENTITYNUM_NONE;
-		}
-	}
 }
 
 
@@ -540,7 +581,13 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 		G_Printf( "Not logging to disk.\n" );
 	}
 
+	if ( g_gametype.integer == GT_RED_ROVER || g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_FREEZE ) {
+		if ( !(g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer) ) trap_SetConfigstring(CS_MATCH_STATE, "\\time\\-1\\round\\0");
+		trap_SetConfigstring(CS_RED_PLAYERS_LEFT, "0");
+		trap_SetConfigstring(CS_BLUE_PLAYERS_LEFT, "0");
+	}
 	G_InitWorldSession();
+	G_LoadAccess();
 
 	// initialize all entities for this game
 	memset( g_entities, 0, MAX_GENTITIES * sizeof(g_entities[0]) );
@@ -583,6 +630,12 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	ClearRegisteredItems();
 
 	// parse the key/value pairs and spawn gentities
+	// Map entities are rebuilt on restart; never retain a generator from
+	// the previous map when the next Harvester map omits one.
+	{
+		extern gentity_t *neutralObelisk;
+		neutralObelisk = NULL;
+	}
 	G_SpawnEntitiesFromString();
 
 	// general initialization
@@ -603,6 +656,7 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	// before the first frame (qagamex86 0x10054f00); the cached spawn spots
 	// above are where it looks
 	FindIntermissionPoint();
+	G_InitRounds();
 
 	// CTF's item timers say which half an item is on (retail qagamex86 0x10055475)
 	if ( g_gametype.integer == GT_CTF ) {
@@ -634,6 +688,8 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 			ParseMapRotation();
 		}
 	}
+	G_CheckQuadHog(); // retail 0x100555ba, before runes
+	G_InitRunes(); // retail qagamex86 0x100555c1, after the map's other setup
 }
 
 
@@ -655,6 +711,7 @@ static void G_ShutdownGame( int restart )
 
 	// write all the client session data so we can get it back
 	G_WriteSessionData();
+	G_ShutdownAccess();
 
 	if ( trap_Cvar_VariableIntegerValue( "bot_enable" ) ) {
 		BotAIShutdown( restart );
@@ -871,6 +928,11 @@ static int QDECL SortRanks( const void *a, const void *b ) {
 		return -1;
 	}
 
+	// Race ranks lower elapsed times first (retail 10055eb0).
+	if ( g_gametype.integer == GT_RACE ) {
+		int aScore = ca->ps.persistant[PERS_SCORE], bScore = cb->ps.persistant[PERS_SCORE];
+		return (aScore > bScore) - (aScore < bScore);
+	}
 	// then sort by score
 	if ( ca->ps.persistant[PERS_SCORE]
 		> cb->ps.persistant[PERS_SCORE] ) {
@@ -879,6 +941,10 @@ static int QDECL SortRanks( const void *a, const void *b ) {
 	if ( ca->ps.persistant[PERS_SCORE]
 		< cb->ps.persistant[PERS_SCORE] ) {
 		return 1;
+	}
+	// Retail 0x10055f80: round score breaks Red Rover match-score ties.
+	if ( g_gametype.integer == GT_RED_ROVER ) {
+		return (ca->roundScore < cb->roundScore) - (ca->roundScore > cb->roundScore);
 	}
 	return 0;
 }
@@ -907,11 +973,11 @@ qboolean G_IsRoundBasedGametype( int gametype ) {
 G_RoundInProgress
 
 Retail level +0x2740 (0x105df580) at 3 or more: a round of a round-based
-mode is being played.  The rounds arrive with milestone 6.
+mode is being played.
 ==================
 */
 qboolean G_RoundInProgress( void ) {
-	return qfalse;
+	return G_IsRoundBasedGametype( g_gametype.integer ) && level.roundState >= 3;
 }
 
 
@@ -920,11 +986,11 @@ qboolean G_RoundInProgress( void ) {
 G_RoundCountingDown
 
 Retail level +0x2740 at 1: a round-based mode counts down to its next
-round.  The rounds arrive with milestone 6.
+round.
 ==================
 */
 qboolean G_RoundCountingDown( void ) {
-	return qfalse;
+	return G_IsRoundBasedGametype( g_gametype.integer ) && level.roundState == 1;
 }
 
 
@@ -1067,7 +1133,7 @@ void CalculateRanks( void ) {
 		sizeof(level.sortedClients[0]), SortRanks );
 
 	// set the rank value for all clients that are connected and not spectators
-	if ( g_gametype.integer >= GT_TEAM ) {
+	if ( G_IsTeamGametype(g_gametype.integer) ) {
 		// in team games, rank is just the order of the teams, 0=red, 1=blue, 2=tied
 		for ( i = 0;  i < level.numConnectedClients; i++ ) {
 			cl = &level.clients[ level.sortedClients[i] ];
@@ -1399,7 +1465,7 @@ void FindIntermissionPoint( void ) {
 	ent = level.spawnSpots[ SPAWN_SPOT_INTERMISSION ];
 
 	if ( !ent ) { // the map creator forgot to put in an intermission point...
-		SelectSpawnPoint( NULL, vec3_origin, level.intermission_origin, level.intermission_angle );
+		G_SelectIntermissionSpawnPoint( level.intermission_origin, level.intermission_angle );
 	} else {
 		VectorCopy (ent->s.origin, level.intermission_origin);
 		VectorCopy (ent->s.angles, level.intermission_angle);
@@ -2224,7 +2290,7 @@ bots count as ready under bot_autoReady.  While waiting, everyone sees the
 ready players in STAT_CLIENTS_READY.  g_doWarmup 0 starts at once.
 ==================
 */
-static qboolean G_ReadyToStart( void ) {
+qboolean G_ReadyToStart( void ) {
 	gclient_t	*cl;
 	int			i, ready = 0, readyHumans = 0, readyMask = 0;
 	int			red, blue;
@@ -2263,7 +2329,7 @@ static qboolean G_ReadyToStart( void ) {
 	red = TeamConnectedCount( -1, TEAM_RED );
 	blue = TeamConnectedCount( -1, TEAM_BLUE );
 	if ( g_teamForcePresent.integer ) {
-		if ( g_gametype.integer < GT_TEAM ) {
+		if ( !G_IsTeamGametype(g_gametype.integer) ) {
 			if ( level.numPlayingClients < 2 ) {
 				return qfalse;
 			}
@@ -2271,7 +2337,7 @@ static qboolean G_ReadyToStart( void ) {
 			return qfalse;
 		}
 	}
-	if ( g_teamForceBalance.integer && g_gametype.integer >= GT_TEAM && ( red > blue + 1 || blue > red + 1 ) ) {
+	if ( g_teamForceBalance.integer && G_IsTeamGametype(g_gametype.integer) && ( red > blue + 1 || blue > red + 1 ) ) {
 		return qfalse;
 	}
 
@@ -2372,52 +2438,6 @@ static void CheckTournament( void ) {
 
 /*
 ==================
-CheckVote
-==================
-*/
-static void CheckVote( void ) {
-
-	// the intermission's map vote ends with the intermission
-	if ( level.intermissiontime ) {
-		return;
-	}
-
-	if ( level.voteExecuteTime ) {
-		 if ( level.voteExecuteTime < level.time ) {
-			level.voteExecuteTime = 0;
-			trap_SendConsoleCommand( EXEC_APPEND, va( "%s\n", level.voteString ) );
-		 }
-		 return;
-	}
-
-	if ( !level.voteTime ) {
-		return;
-	}
-
-	if ( level.time - level.voteTime >= VOTE_TIME ) {
-		G_BroadcastServerCommand( -1, "print \"Vote failed.\n\"" );
-	} else {
-		// ATVI Q3 1.32 Patch #9, WNF
-		if ( level.voteYes > level.numVotingClients/2 ) {
-			// execute the command, then remove the vote
-			G_BroadcastServerCommand( -1, "print \"Vote passed.\n\"" );
-			level.voteExecuteTime = level.time + 3000;
-		} else if ( level.voteNo >= level.numVotingClients/2 ) {
-			// same behavior as a timeout
-			G_BroadcastServerCommand( -1, "print \"Vote failed.\n\"" );
-		} else {
-			// still waiting for a majority
-			return;
-		}
-	}
-
-	level.voteTime = 0;
-	trap_SetConfigstring( CS_VOTE_TIME, "" );
-}
-
-
-/*
-==================
 PrintTeam
 ==================
 */
@@ -2470,52 +2490,18 @@ CheckTeamLeader
 ==================
 */
 void CheckTeamLeader( team_t team ) {
-	int i;
-	int	max_score, max_id;
-	int	max_bot_score, max_bot_id;
-
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
-
-		if ( level.clients[i].sess.sessionTeam != team || level.clients[i].pers.connected == CON_DISCONNECTED )
-			continue;
-
-		if ( level.clients[i].sess.teamLeader )
-			return;
+	int i, candidate = -1;
+	// Retail 100683e0 chooses the first human, then the first bot; it sets
+	// the session bit without publishing another player's configstring here.
+	for ( i = 0; i < level.maxclients; ++i ) {
+		if ( level.clients[i].sess.sessionTeam == team && level.clients[i].sess.teamLeader ) return;
 	}
-
-	// no leaders? find player with highest score
-	max_score = SHRT_MIN;
-	max_id = -1;
-	max_bot_score = SHRT_MIN;
-	max_bot_id = -1;
-
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
-
-		if ( level.clients[i].sess.sessionTeam != team )
-			continue;
-
-		if ( g_entities[i].r.svFlags & SVF_BOT ) {
-			if ( level.clients[i].ps.persistant[PERS_SCORE] > max_bot_score ) {
-				max_bot_score = level.clients[i].ps.persistant[PERS_SCORE];
-				max_bot_id = i;
-			}
-		} else {
-			if ( level.clients[i].ps.persistant[PERS_SCORE] > max_score ) {
-				max_score = level.clients[i].ps.persistant[PERS_SCORE];
-				max_id = i;
-			}
-		}
+	for ( i = 0; i < level.maxclients; ++i ) {
+		if ( level.clients[i].sess.sessionTeam != team ) continue;
+		if ( candidate < 0 ) candidate = i;
+		if ( !(g_entities[i].r.svFlags & SVF_BOT) ) { candidate = i; break; }
 	}
-
-	if ( max_id != -1 ) {
-		SetLeader( team, max_id ); 
-		return;
-	}
-
-	if ( max_bot_id != -1 ) {
-		SetLeader( team, max_bot_id );
-		return;
-	}
+	if ( candidate >= 0 ) level.clients[candidate].sess.teamLeader = qtrue;
 }
 
 
@@ -2559,7 +2545,7 @@ void G_UpdateSettingsConfigstrings( void ) {
 	trap_SetConfigstring( CS_FACTORY_FLAGS, va( "%d", g_debugFlags.integer ) );
 	trap_SetConfigstring( CS_RR_PING_RATE, va( "%f", g_rrInfectedSurvivorMinSpeed.value ) );
 	trap_SetConfigstring( CS_DOM_CAPTURE_TIME, va( "%f", g_dmgThroughSurfaceDistance.value ) );
-	trap_SetConfigstring( CS_SETTINGS_MASK, va( "%d", g_customSettings.integer ) );
+	trap_SetConfigstring( CS_SETTINGS_MASK, va( "%d", (int)G_CustomSettingsMask() ) );
 	trap_SetConfigstring( CS_STARTING_WEAPONS, va( "%d", g_startingWeapons.integer ) );
 	if ( g_loadout.integer ) {
 		trap_SetConfigstring( CS_DISABLED_LOADOUTS, va( "%d", g_disableLoadout.integer ) );
@@ -2593,8 +2579,8 @@ respawn time, powerups and external event move on by the length of the
 pause, and so do the counting-down item timers.  (Retail also adds the
 pause to its inactivity counter and its once-a-second timer; FnQL-game's
 inactivity deadline already counted it, and its timeResidual did not
-advance while ClientThink was frozen.  Retail moves decaying dropped
-powerups too, which FnQL-game does not have yet.)
+advance while ClientThink was frozen.)  Decaying drops also keep their
+remaining duration, provided g_droppedPowerupsDecay is still enabled.
 ==================
 */
 void G_CheckTimein( void ) {
@@ -2615,6 +2601,8 @@ void G_CheckTimein( void ) {
 		cl = ent->client;
 		cl->ps.pm_flags &= ~PMF_NO_MOVE;
 		cl->respawnTime += paused;
+		// Retail 0x10061fd3 preserves the frozen shell's age across a pause.
+		if ( cl->freezeTime ) cl->freezeTime += paused;
 		for ( j = 0; j < MAX_POWERUPS; j++ ) {
 			if ( cl->ps.powerups[j] && cl->ps.powerups[j] != INT_MAX ) {
 				cl->ps.powerups[j] += paused;
@@ -2625,9 +2613,10 @@ void G_CheckTimein( void ) {
 		}
 	}
 
-	if ( g_itemTimers.integer ) {
+	if ( g_itemTimers.integer || g_droppedPowerupsDecay.integer ) {
 		for ( i = 0; i < MAX_GENTITIES; i++ ) {
-			if ( g_entities[i].flags & FL_ITEM_TIMER ) {
+			if ( ( g_itemTimers.integer && ( g_entities[i].flags & FL_ITEM_TIMER ) )
+				|| ( g_droppedPowerupsDecay.integer && ( g_entities[i].flags & FL_POWERUP_DECAY ) ) ) {
 				g_entities[i].s.time += paused;
 			}
 		}
@@ -2636,6 +2625,9 @@ void G_CheckTimein( void ) {
 	level.timeoutStartTime = 0;
 	trap_SetConfigstring( CS_TIMEOUT_START_TIME, "" );
 	trap_SetConfigstring( CS_LEVEL_START_TIME, va( "%i", level.startTime ) );
+	if ( G_IsRoundBasedGametype(g_gametype.integer) ) {
+		trap_SetConfigstring(CS_ROUND_START_TIME, va("%d", level.roundStartTime));
+	}
 }
 
 
@@ -2813,6 +2805,7 @@ static void G_RunFrame( int levelTime ) {
 
 	// see if it is time to do a tournement restart
 	CheckTournament();
+	G_UpdateRoundCounts();
 
 	// a timeout stops the match clock until its end (retail qagamex86
 	// 0x100598f6)
@@ -2826,6 +2819,9 @@ static void G_RunFrame( int levelTime ) {
 
 	// update to team status?
 	CheckTeamStatus();
+	G_RunRounds();
+	G_RunDomination();
+	G_CheckQuadHog(); // retail 0x10059a0c, after entity simulation
 
 	// a capture the flag flag nobody holds goes home (retail qagamex86
 	// 0x10059a1e)
@@ -2835,7 +2831,7 @@ static void G_RunFrame( int levelTime ) {
 	}
 
 	// cancel vote if timed out
-	CheckVote();
+	G_CheckVote();
 
 	// check team votes
 	// Quake Live has no team votes (retail qagame registers only callvote and vote).

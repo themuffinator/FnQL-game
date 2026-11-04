@@ -1,0 +1,10 @@
+# A passed shuffle with too few players, followed by a named kick.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 10 alpha callvote shuffle
+clientcmd 12 bravo vote yes
+clientcmd 160 alpha callvote kick Bravo
+clientcmd 162 bravo vote yes

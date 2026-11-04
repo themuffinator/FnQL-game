@@ -1,0 +1,29 @@
+# Privileged table and console routing (retail qagame 1069).
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 4 lock
+clientcmd 6 alpha team b
+cmd 8 unlock
+cmd 10 mute 0
+clientcmd 12 alpha say hello
+cmd 14 unmute 0
+cmd 16 put 0 b
+cmd 18 put 0 r
+cmd 20 allready
+cmd 990 addadmin 0
+cmd 992 addmod 1
+clientcmd 994 alpha mute 1
+clientcmd 996 bravo say hello
+clientcmd 998 alpha unmute 1
+clientcmd 1000 alpha addscore 0 5
+clientcmd 1002 alpha addteamscore r 3
+clientcmd 1004 alpha setmatchtime 30
+clientcmd 1006 alpha pause
+clientcmd 1008 alpha abort
+cmd 1010 unpause
+cmd 1220 demote 1
+cmd 1222 opsay test message
+cmd 1230 abort

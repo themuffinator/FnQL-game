@@ -1,0 +1,76 @@
+# Strict objective-mode replay; paired retail self-checks are in meson.build.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 20 allready
+clientcmd 1400 alpha setviewpos -260 320 40 180
+clientcmd 1402 bravo setviewpos -700 320 40 0
+clientcmd 1420 alpha give Blue Skull
+clientcmd 1422 alpha give Blue Skull
+clientcmd 1424 alpha give Blue Skull
+clientcmd 1426 alpha give Blue Skull
+clientcmd 1428 alpha give Blue Skull
+clientcmd 1430 alpha give Blue Skull
+clientcmd 1432 alpha give Blue Skull
+clientcmd 1434 alpha give Blue Skull
+clientcmd 1436 alpha give Blue Skull
+clientcmd 1438 alpha give Blue Skull
+clientcmd 1440 alpha give Blue Skull
+clientcmd 1442 alpha give Blue Skull
+clientcmd 1444 alpha give Blue Skull
+clientcmd 1446 alpha give Blue Skull
+clientcmd 1448 alpha give Blue Skull
+clientcmd 1450 alpha give Blue Skull
+clientcmd 1452 alpha give Blue Skull
+clientcmd 1454 alpha give Blue Skull
+clientcmd 1456 alpha give Blue Skull
+clientcmd 1458 alpha give Blue Skull
+clientcmd 1460 alpha give Blue Skull
+clientcmd 1462 alpha give Blue Skull
+clientcmd 1464 alpha give Blue Skull
+clientcmd 1466 alpha give Blue Skull
+clientcmd 1468 alpha give Blue Skull
+clientcmd 1470 alpha give Blue Skull
+clientcmd 1472 alpha give Blue Skull
+clientcmd 1474 alpha give Blue Skull
+clientcmd 1476 alpha give Blue Skull
+clientcmd 1478 alpha give Blue Skull
+clientcmd 1480 alpha give Blue Skull
+clientcmd 1482 alpha give Blue Skull
+clientcmd 1484 alpha give Blue Skull
+clientcmd 1486 alpha give Blue Skull
+clientcmd 1488 alpha give Blue Skull
+clientcmd 1490 alpha give Blue Skull
+clientcmd 1492 alpha give Blue Skull
+clientcmd 1494 alpha give Blue Skull
+clientcmd 1496 alpha give Blue Skull
+clientcmd 1498 alpha give Blue Skull
+clientcmd 1500 alpha give Blue Skull
+clientcmd 1502 alpha give Blue Skull
+clientcmd 1504 alpha give Blue Skull
+clientcmd 1506 alpha give Blue Skull
+clientcmd 1508 alpha give Blue Skull
+clientcmd 1510 alpha give Blue Skull
+clientcmd 1512 alpha give Blue Skull
+clientcmd 1514 alpha give Blue Skull
+clientcmd 1516 alpha give Blue Skull
+clientcmd 1518 alpha give Blue Skull
+clientcmd 1520 alpha give Blue Skull
+clientcmd 1522 alpha give Blue Skull
+clientcmd 1524 alpha give Blue Skull
+clientcmd 1526 alpha give Blue Skull
+clientcmd 1528 alpha give Blue Skull
+clientcmd 1530 alpha give Blue Skull
+clientcmd 1532 alpha give Blue Skull
+clientcmd 1534 alpha give Blue Skull
+clientcmd 1536 alpha give Blue Skull
+clientcmd 1538 alpha give Blue Skull
+clientcmd 1540 alpha give Blue Skull
+clientcmd 1542 alpha give Blue Skull
+clientcmd 1544 alpha give Blue Skull
+clientcmd 1546 alpha give Blue Skull
+clientcmd 1600 alpha score
+clientcmd 1610 alpha setviewpos 0 320 40 0
+clientcmd 1700 alpha score

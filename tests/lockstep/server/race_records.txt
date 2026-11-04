@@ -1,0 +1,41 @@
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client observer name Observer
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 5 alpha setviewpos -600 320 220 0
+clientcmd 7 alpha setviewpos -700 320 220 0
+clientcmd 10 observer follownext
+clientcmd 15 alpha setviewpos -350 320 220 0
+clientcmd 17 alpha setviewpos -700 320 220 0
+clientcmd 20 observer follownext
+clientcmd 30 alpha setviewpos -100 320 220 0
+clientcmd 32 alpha score
+clientcmd 35 bravo setviewpos -600 320 220 0
+clientcmd 37 bravo setviewpos -700 320 220 0
+clientcmd 40 bravo setviewpos -350 320 220 0
+clientcmd 42 bravo setviewpos -700 320 220 0
+clientcmd 45 bravo setviewpos -100 320 220 0
+clientcmd 47 bravo score
+clientcmd 50 alpha setviewpos -600 320 220 0
+clientcmd 52 alpha setviewpos -700 320 220 0
+clientcmd 55 alpha setviewpos -350 320 220 0
+clientcmd 57 alpha setviewpos -700 320 220 0
+clientcmd 60 alpha setviewpos -100 320 220 0
+clientcmd 62 alpha score
+clientcmd 65 alpha kill
+at 200 alpha buttons=attack
+at 202 alpha buttons=0
+clientcmd 210 alpha setviewpos -600 320 220 0
+clientcmd 212 alpha setviewpos -700 320 220 0
+clientcmd 220 alpha setviewpos -350 320 220 0
+clientcmd 222 alpha setviewpos -700 320 220 0
+clientcmd 240 alpha setviewpos -100 320 220 0
+clientcmd 242 alpha score
+clientcmd 245 observer follownext
+clientcmd 250 alpha raceinit
+clientcmd 252 alpha score
+clientcmd 260 alpha team s
+clientcmd 265 alpha team f
+clientcmd 267 alpha score

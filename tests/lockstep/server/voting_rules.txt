@@ -1,0 +1,45 @@
+# Public vote eligibility, policy refusals, majority/failure, execution and expiry.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client spectator name Spectator
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+clientcmd 10 spectator callvote timelimit 12
+clientcmd 12 alpha callvote
+clientcmd 14 alpha callvote timelimit bad
+clientcmd 16 alpha callvote timelimit 12
+clientcmd 18 spectator vote yes
+clientcmd 20 alpha vote yes
+clientcmd 22 bravo vote yes
+clientcmd 24 charlie callvote fraglimit 20
+clientcmd 150 alpha callvote fraglimit 20
+clientcmd 152 bravo vote no
+clientcmd 154 charlie vote no
+cmd 160 g_voteLimit 2
+clientcmd 162 alpha callvote fraglimit 20
+cmd 164 g_voteLimit 0
+cmd 166 g_voteFlags 32
+clientcmd 168 bravo callvote timelimit 15
+cmd 170 g_voteFlags 0
+cmd 172 g_allowVote 0
+clientcmd 174 bravo callvote timelimit 15
+cmd 176 g_allowVote 1
+cmd 178 g_allowSpecVote 1
+clientcmd 180 spectator callvote weaprespawn 7
+clientcmd 182 alpha vote yes
+clientcmd 184 bravo vote yes
+cmd 310 g_voteDelay 10000
+clientcmd 312 alpha callvote fraglimit 30
+cmd 314 g_voteDelay 0
+clientcmd 316 charlie callvote fraglimit 30
+clientcmd 318 alpha callvote timelimit 1
+clientcmd 320 bravo vote no
+clientcmd 1540 alpha callvote random 10
+clientcmd 1542 bravo vote yes
+clientcmd 1544 charlie vote yes
+clientcmd 1670 alpha callvote cointoss heads
+clientcmd 1672 bravo vote yes
+clientcmd 1674 charlie vote yes

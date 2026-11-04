@@ -1,0 +1,15 @@
+# G3: campgrounds, quadhog, cheats, 1600 frames. World pickup, locator,
+# suicide/drop, respawn, forced give, map restart, and 30-second idle expiry.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+clientcmd 20 alpha setviewpos 437 -160 274 0
+clientcmd 100 alpha score
+clientcmd 120 alpha kill
+at 260 alpha buttons=attack
+at 270 alpha buttons=0
+clientcmd 300 alpha give Quad Damage
+clientcmd 340 alpha score
+cmd 380 map_restart 0

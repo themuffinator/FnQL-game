@@ -312,10 +312,14 @@ qagame (HLIL/disassembly addresses in the code comments):
 G3 status: `ffa_two_players`, `ffa_kill_restart` and `ffa_items` pass with
 no divergence (two scripted players: movement, firing, a suicide, the
 respawn delay, the body queue, the scoreboard, `map_restart`, and 1,400
-frames of item pickups and respawns). `ffa_bot_restart` diverges
-only on the bot's own entity (803 field-frames, from 77,773 and then 2,505):
-its movement drifts by a unit from frame 32, so bot AI parity (M9) is all
-that is left there. The random streams match retail draw for draw (FnQL
+frames of item pickups and respawns). `ffa_bot_restart` also passes its
+400-frame retail self-check and differential with zero divergence. The
+remaining 803 field-frames were caused by the inherited bot-input converter
+normalizing projected movement by its largest component. Retail preserves
+the projected speed instead (qagamex86 0x10021d0a-0x10021d76); matching that
+conversion removes both the initial frame-32 velocity error and the later
+position, pickup and weapon drift, including after `map_restart`.
+The random streams match retail draw for draw (FnQL
 `sv_lockstepTraceRand` traces the retail module's `rand()` and re-arms after
 a `map_restart` reloads it; FnQL-game's `-Dtrace-rand=true` traces its own):
 the Microsoft runtime's generator on every platform, the retail spawn picker
@@ -346,14 +350,51 @@ fixed: a mode whose spawns the map lacks now defers the spawn as retail
 does (0x1003bcfa: 600 msec as a spectator, then after `g_maxDeferredSpawns`
 any deathmatch spot) instead of `G_Error`, and Harvester registers QL's
 "Red Skull"/"Blue Skull" rather than Team Arena's cubes. The remaining
-per-mode divergences are milestone 6: race's untimed score, the round
-modes' kits and match state, Harvester's skull toss, and retail's repeated
-flag-return prints on a map without flags. Duel's queue and scoreboard
+per-mode divergences moved to milestone 6: round kits and match state now
+have the CA/FT/RR gates below. Harvester's skull toss is now covered by the
+objective-mode gates; retail's repeated flag-return prints on a map without
+flags remain open. Duel's queue and scoreboard
 moved to M5 and pass (below).
 
 The G4a PQL prediction probe missed twice in the crouch segment in 18 runs
 on a busy machine (clean on reruns; no movement code changed); it needs a
 reproduction under controlled frame timing.
+
+Rename and bullet-impact metadata follow-up (2026-11-04):
+`ClientUserinfoChanged` now sends the single broadcast observed at retail
+0x1003a7e1. `Bullet_Fire` leaves `clientNum` zero, as 0x1006cecf-0x1006cefe
+does; its victim stays in `eventParm` and shooter in `otherEntityNum`.
+The `tdm_event_metadata0/1` G3 pairs exercise box/capsule traces, a shooter
+in slot 2, active and spectator renames, repeated names and unrelated
+userinfo updates. Inspection confirmed four broadcasts at frames 30, 40,
+90 and 480, plus three MG, four HMG and three chaingun impacts on each of
+flesh and walls, identically in retail and FnQL-game.
+
+The colored-name gap from that probe is also resolved (2026-11-04).
+Server-side `G_CleanPlayerName` normalizes into an info-sized buffer before
+the final name copy, matching retail 0x1003a0b0 and 0x1003a771. Nonwhite
+names get `^7` at the normalization stage (0x1003a1c6), explicit white and
+its aliases get no extra reset, and ignored black codes preserve the
+active color. The private stored-name capacity is corrected from 35 to
+39 bytes plus NUL. Runtime probes confirm that this final byte copy may
+clip the appended reset or a color token; preserving that order is needed
+for retail-compatible configstrings and rename messages.
+
+`game-names` covers fallback names, whitespace/filtering, color aliases,
+small/zero/negative capacities, in-place cleanup and oversized input with
+buffer guards. `tdm_colored_names` covers connection, active/spectator
+renames, unchanged normalized names, 35-40 byte boundaries and restart;
+the metadata scenarios now use implicit resets too. The independent
+implementation reserves bounded storage and preserves control-character
+filtering even for invalid inputs outside the retail probe. The inherited
+shared `BG_CleanName` and its client/UI callers remain unchanged.
+
+Separate userinfo-policy finding: the retail probe drops a client whose
+name cleans to `UnnamedPlayer` when both color fields and Steam ID are
+absent, under `g_kickBadUserinfo` (0x1003aa03-0x1003aa9d). FnQL-game does
+not yet apply that exact check. The name-normalization scenario supplies
+ordinary color fields so fallback names can be compared without changing
+the retail rejection policy.
 
 Open in M4: grapple impact and hook behaviour, rocket damage through thin
 ceilings (`g_forceDmgThroughSurface`, read in G_MissileImpact 0x1005bbe0;
@@ -363,14 +404,14 @@ radius damage 0x1004a3e0), LG discharge (`g_lightningDischarge`, default
 (`g_lagHaxMs`; baseq3a's unlagged stays meanwhile), `g_dropDamagedHealth`
 (default 0: G_Damage 0x10049a2b drops "25 Health"/"5 Health" items through
 0x1004f8c0, dropped items then last 10 s instead of 30, 0x1004f6ec, and
-0x1004ffd0 registers them), quad hog's quad respawn (the quad hog factory
-touches a dozen functions, with the factory variants of M6), and whether
+0x1004ffd0 registers them), and whether
 the engine marks capsule head hits with contents 0x400 (FnQL does not;
-retail's engine is unverified). Deferred to
-M5/M6 with their modes: team-kill complaints (`g_complaintLimit`), freeze
-tag's freezing and thawing, red rover's infection scoring, the round modes'
-respawn rules, and retail's Steam achievements and ZMQ stats reports (engine
+retail's engine is unverified). Still deferred to
+M5/M6: team-kill complaints (`g_complaintLimit`) and retail's Steam
+achievements and ZMQ stats reports (engine
 imports 185/186 and 201-204, under the online-services rules).
+Freeze Tag thawing, Red Rover infection scoring and CA/FT/RR respawn rules
+are implemented and gated under M6 below.
 
 Exit: G3 differential over combat and item scenarios.
 
@@ -384,7 +425,10 @@ Exit: G3 differential over combat and item scenarios.
 - Voting and autoshuffle.
 - Admin tiers from `access.txt`.
 - Factory integration: the engine parses factories, the game checks them with
-  import 206.
+  import 206. Implemented through `trap_FactoryExists`, including custom
+  host definitions. The `factory-contract` suite requires zero divergence
+  for factory-aware map votes and checks identity across transitions (see
+  the progress entry below).
 - Stats events (`MATCH_STARTED`, `PLAYER_*`, `ROUND_OVER`, `TEAM_WON`, …)
   through imports 185/186, under FnQL's online-services rules (explicit,
   default-off where services are involved).
@@ -393,6 +437,21 @@ Exit: G3 over full matches; first G5 runs with retail clients on an FnQL
 server.
 
 Progress (G3, both with no divergence):
+
+- Factory integration (`factory-contract` suite): the native wrapper uses
+  retail import 206 directly and fails closed if the host supplies no
+  callback. The voting implementation validates optional factory IDs
+  against that registry, after the map/gametype vote-disable flags and BSP
+  existence check. Retail qagamex86 0x100428bf-0x10042a1b does not parse
+  factory files or reject arena metadata in the module; the engine owns
+  those decisions. `factory_votes` covers missing maps/factories, invalid
+  token characters, and accepted stock IDs under vote flags 0, 1 and 8.
+  `factory_custom` passes a vote for a hand-authored host definition,
+  observes speed 333/gravity 777, retains it through map-only and restart
+  commands, then restores stock duel. `factory_map_only` confirms flag 8
+  still allows a map vote without a factory. Each has a retail self-check;
+  explicit `g_factory` assertions guard against matching failed transitions.
+  These gates establish the factory contract, not M6 special-mode gameplay.
 
 - `duel_queue`: the duel queue. Retail keeps `so` (spectate-only) and `pq`
   (queue position) in the session at gclient +0x36c/+0x370. `so` starts at
@@ -532,13 +591,94 @@ Progress (G3, both with no divergence):
   (0x10067c03); FnQL-game had no limit and overwrote the match-state
   configstrings from 661 on maps with more.
 
-Open in M5: callvote's retail rules, the admin commands behind
-privileges (access lists; `pause`/`unpause`, `allready`, `lock`, `put`,
-`mute`, bans and the rest of the table, and the server console's route
-into it, ConsoleCommand 0x10066ef2), decaying dropped powerups
-(`g_droppedPowerupsDecay`, which the time in also shifts), the drop
-commands (`dropweapon`, `dropflag`, `droppowerup`, `droprune`), the retail
-session string (twelve fields, 0x10065880), team-kill complaints, one
+- Manual drops (2026-11-03): `g_dropCmds` gates `dropflag` (bit 1),
+  `droppowerup` (bit 2), and `dropweapon` (bit 4); `g_runes` gates
+  `droprune`. Mode, spectator, timeout and instagib restrictions follow
+  retail qagamex86 0x10044910, 0x10044ae0, 0x10044f10 and 0x10045250.
+  Drops require a clear solid-world box trace, transfer ownership and
+  expire after ten seconds. Weapon ammo is limited to the item's pickup
+  quantity; the next lower owned weapon is selected with `EV_DROP_WEAPON`.
+  Flag passes and `g_throwFlagVelocity`/`g_throwFlagForwardMult` use
+  0x100513b0. `g_droppedPowerupsDecay` marks only manual timed-powerup
+  drops (0x80000), caps their lifetime at the carried expiry, subtracts
+  elapsed whole seconds on pickup (0x1004dfe0), and shifts their decay
+  timestamp on timein (0x10061ee0). Death drops keep their existing rules.
+  G3 scenarios `tdm_drops` (1,800 frames), `tdm_drop_timeout` (1,500) and
+  `ctf_dropflag` (1,000) compare inventory, pickups, expiry, messages,
+  spectator timers and flag throws with retail. All three pass with zero
+  divergence, including their retail-twice determinism checks.
+  `game-drops` independently
+  gates policy, blocked drops, ammo bounds, and rune release.
+  The tests also identified and fixed dropped-pickup announcements
+  (0x1004dcbc) and dynamic item spectator notifications (0x10050ba1).
+
+- Flag physics and capture zones (2026-11-04): `g_flagPhysics` defaults off
+  and attaches `frameThink` only when a flag is manually dropped
+  (0x100515f9). The callback queries a 30-unit cube, applies push velocity
+  with a 1,500 ms sound debounce, teleports to the target with a snapped
+  400-unit exit velocity plus 96 upward, and touches capture zones
+  (0x10050f80). Missing destinations stop that frame without a crash.
+  Capture zones use their `team` and `count`, credit the opposing player
+  or dropped flag's owner, and share the existing capture rules
+  (0x1006bda0 / 0x10069800). CTF still requires the player to carry the
+  flag; the thrown neutral-flag branch awaits full 1FCTF validation.
+  G3 `ctf_flagphysics0` and `ctf_flagphysics1` each pass 1,000 frames on
+  Ironworks. `ctf_capturezone` passes 600 frames with a hand-authored
+  entity fixture, including non-scoring empty/own-team touches and a
+  three-point opposing-team capture. Retail determinism checks also pass.
+  Unit coverage includes malformed area-query entries, missing targets,
+  sound timing and a capture that frees the flag.
+  These probes also exposed and fixed portal roll replication through
+  `angles2` (0x1005a77f / 0x1005a919), the fallback intermission spawn's
+  nine-unit offset (0x10054f4b), and early rounding of sine phases on
+  bobbing movers (0x1002d297 / 0x1002d42b). Sine position and velocity
+  are additionally compared directly with retail in the Pmove harness.
+
+- Public voting (2026-11-04): `g_vote.c` owns the retail callvote grammar,
+  vote flags, delay/limit policy, spectator eligibility, moderator pass/veto,
+  and the frozen electorate (0x100423a0, 0x10043920, 0x10044270,
+  0x100588f0). It executes approved votes after three seconds through either
+  the engine command buffer or the module's toggle/random/shuffle handlers
+  (0x10058ab0, 0x100591b0). Public voting leaves playerState flags unchanged;
+  map-vote intermission behavior remains separate. The retail delay cvar is
+  an absolute level-time threshold in milliseconds, not a between-vote
+  cooldown. `g_allowSpecVote`, `g_allowVoteMidGame`, `g_voteDelay` and
+  `g_voteLimit` have their observed default zero and flags zero.
+  `game-voting` gates policy, malformed input, overflow, electorate changes,
+  moderator overrides and execution once. Five `voting_*` G3 scenarios
+  cover 5,250 frames: accepted/refused calls, majority/failure/expiry,
+  ready countdown and midgame restrictions, spectators, team changes,
+  disconnects, coin/random results, scalar/toggle actions, map restarts,
+  shuffle and kicks. Their retail-twice self-checks and differentials pass
+  with zero divergence. Factory voting has its separate `factory-contract`
+  gates. The disconnect probe also corrected EV_PLAYER_TELEPORT_OUT's
+  clientNum to retail's default zero (0x1003c9ef).
+  Overlong tokens and overflowing integer arguments fail closed instead of
+  truncating into a different vote target. The inherited multi-command Q3
+  voting grammar and non-retail options (`rotate`, `g_gametype`,
+  `g_unlagged`, `g_warmup`, `capturelimit`) are replaced by the observed QL
+  allowlist; `map <name> <factory>` is the retail gametype-change path.
+  These gates use the x86 retail 1069 module hosted by FnQL; live retail
+  clients and other-platform runtime validation remain separate gates.
+
+- Server commands (2026-11-04): the full shared administrative table and
+  console route are implemented in `g_admin.c`/`g_access.c`, including
+  privileges, persistent/temporary bans, locks, forced moves, pause/abort,
+  ready and score/time controls. Chat/mute formatting, retail voice-command
+  suppression, spectator selectors, bot chat, shuffle and diagnostic routing
+  have corresponding fixes. Five strict G3 scenarios cover 2,590 frames;
+  all self-checks and comparisons pass. `game-admin` covers malformed input,
+  privilege boundaries, persistence failures and bounded editor operations.
+  [Server command audit](SERVER_COMMANDS.md) records the full inventory,
+  retail evidence, safety deviations and remaining special-mode dependencies.
+  Race checkpoint scoring and map-local records are now implemented, with
+  strict 40-frame editor and 280-frame records gates plus `game-race` bounds
+  tests. Red Rover command shuffles respawn unchanged-team players and
+  preserve match stats; `rr_shuffle` and `rr_shuffle_live` cover the mode.
+
+Open in M5: the remaining retail session-string differences (twelve fields,
+0x10065880; FnQL-game appends mute/privilege state to its existing ten-field
+prefix), team-kill complaints, one
 flag CTF, and G5 runs with retail clients.  Spectators also honour a
 0x800 button retail checks in SpectatorThink (0x10033f93: it frees a
 follower); which client key sends it is not yet identified.
@@ -550,6 +690,182 @@ Rover, Race (checkpoints, records), Domination, Harvester, Overload, plus the
 instagib, quad hog and infected factory variants. This milestone also fills in
 the QL engine queries: visibility, objectives, voice suppression, admin,
 enemy relations and score.
+
+Factory gameplay progress (2026-11-04):
+
+- Instagib's map-item suppression preserves flag objectives; the starting
+  weapon remains the kit's railgun when retail skips normal weapon selection
+  (0x1005084d, 0x1003b4f9, 0x1003ba11). Strict G3 probes cover combat,
+  infinite ammo, disabled suicide, forced item giving, restart, and a played
+  Instagib CTF match with capture/drop/return.
+- Quad Hog now registers and creates its world quad, announces pickup,
+  selects respawns with retail's fixed sixteen-step random walk, replaces
+  expired/dropped objectives, and sends periodic carrier locator events.
+  Evidence: 0x100500ba, 0x1004d290-0x1004d500, 0x1004f889,
+  0x10034725 and 0x1004f21a. `IsObjectiveEntity` recognizes its world quad
+  (0x10052f40). Missing spawn points return safely instead of hanging.
+  Unit checks cover ownership and bounded timers; strict G3 probes cover
+  pickup, death drops, idle/powerup expiry, locators, combat restrictions,
+  forced giving and restart.
+- Factory starting health scales handicap rather than retaining a fixed
+  100-point maximum (0x1003a878). A strict FFA probe isolates the shared VCA
+  health and vampiric-healing rules, including invalid handicap and restart.
+- HUD rule bits reflect factory settings and live changes, with serverinfo
+  following the next frame (0x10053400-0x10054915 and the live-rules probe).
+  Map-item rules retain the explicit Race inclusion and cheat force-spawn
+  bypass (0x100507e0). All six scenarios have retail-twice self-checks and
+  zero-divergence gates in the `factory-gameplay` suite.
+
+Base-mode implementation (2026-11-04):
+
+- **Clan Arena / VCA:** `g_rounds.c` now controls countdown, attack lockout,
+  elimination, automatic teammate following, round results/reset, damage
+  scoring, last-player warnings, accuracy/perfect awards, draws and match
+  limits. Evidence: 0x10037fd0, 0x10038160, 0x10038230, 0x100389f0 and
+  0x10035960. Warmup spawn selection, kit registration and waiting-player
+  entity conversion follow 0x1003b4f9 and 0x1003c59f. Full VCA combat also
+  verifies health/healing, turbo movement and dmflags footstep suppression
+  (0x1003517e). The round-state queries now report actual state.
+- **Freeze Tag / IFT:** frozen players retain their collision shell and
+  movement state. Teammates thaw by proximity with optional line-of-sight;
+  the original nearby helper receives the assist. Auto-thaw, warmup thaw,
+  environmental removal/respawn, spawn protection and thaw tick visibility
+  follow 0x1004bc80, 0x1004cd40, 0x10049659 and 0x10053020. Round transitions
+  preserve living positions and honor health/armor/weapon reset controls,
+  winning-team thaw policy, powerup removal and continuous rounds
+  (0x1004c1b0). The thaw delay pauses during timeouts.
+- **Red Rover / Infected:** deaths convert teams, retain per-round scores
+  across respawns and update `scores_rr`. Match-score ties use round score;
+  round winner lists use their own round-score order. Rounds shuffle/reset,
+  award bonuses and end on round/time limits. Infected selects the initial
+  infected player, remembers the last survivor, applies the infected
+  gauntlet/health/speed/movement kit, converts killed/timed-out survivors,
+  and awards timed or death-triggered survivor bonuses. Evidence:
+  0x100643e0-0x10065700 and 0x10055f80. The existing survivor movement
+  threshold configstring is retained; no server-side locator event is
+  invented for the unreferenced `g_rrInfectedSurvivorPingRate` cvar.
+- Related retail differences exposed by these modes are corrected: CA/RR
+  ammo pickups use normal caps (0x1004dab0), and enemy powerup-carrier kills
+  announce their powerup (0x10059d40). Damage without protection bypasses
+  the round score/protection hook, as at 0x10049577.
+
+The `round-modes` suite contains 21 strict G3 scenarios, each paired with a
+retail-twice self-check. It covers CA combat/following/timeouts/draws/limits,
+FT combat/assisted and automatic thaw/warmup/environmental deaths/reset
+options/continuous rounds/timeouts, RR conversion/scoring/limits, and full
+VCA, IFT and Infected factories. Hosting smoke tests remain separate and do
+not establish gameplay parity. These server gates do not replace
+retail-client interoperability gates or complete the remaining engine queries.
+
+Objective base modes (2026-11-04):
+
+- **Attack & Defend:** the round controller alternates attack roles, freezes
+  countdown movement, scores the first base touch once, scores captures and
+  attacker eliminations, and ends matches only after the second attack turn.
+  It publishes the retail turn/round state and rolling twenty-turn `scores_ad`
+  history. Flags persist when dropped and reset between turns. Defensive
+  bonuses use the current defending team; perfect-round awards include self
+  and friendly damage. Deferred spawns retain the round-aware dispatch and
+  attack lockout. Evidence: 0x10035780-0x100367bf, 0x10034dd0, 0x10034ea9,
+  0x100398ee, 0x1004999f, 0x1004f6b7, 0x10069df2 and 0x1006a008-0x1006a276.
+- **Domination:** `g_domination.c` owns bounded map-point registration,
+  floor placement, signed capture progress, contention/neutralization,
+  capture assists, defensive awards, batched point scoring and HUD ownership
+  counts. Respawns use owned points' target associations, with retail's
+  deathmatch fallback. Factory health/armor regeneration uses independent
+  damage delays and residual clocks, including armor-after-health and armor
+  tiers. Evidence: 0x1004aa80-0x1004bb10, 0x10038b60-0x1003994f,
+  0x10059b08, 0x10034260-0x100343e0, 0x1003c319 and 0x10049789.
+- **Harvester:** death creates a team skull at the neutral generator and
+  optionally drops carried enemy skulls at the death position. Collection
+  caps the six-bit carry count at 62, preserves upper state bits, removes
+  friendly skulls and emits the retail pickup event. Captures use only those
+  six bits. Toss speed/random order, expiry and capture announcements match
+  retail. Evidence: 0x10046970-0x10046d65, 0x1006a0c6 and
+  0x1006a800-0x1006a980. Map restart clears the cached neutral generator.
+- **Overload:** the inherited Team Arena controller's damage, friendly-fire
+  rejection, attack warnings, regeneration, destruction, scoring and respawn
+  match retail in played probes (0x1006a570-0x1006b109). Percentage arithmetic
+  now tolerates zero health settings and large values, and destruction does
+  not dereference a missing player attacker.
+
+The `objective-modes` suite adds 30 strict scenarios and 30 retail-twice
+self-checks. It covers all four played modes, including score limits,
+timeouts, restarts, long AD score history, Domination owned-point spawning,
+Harvester's carry cap and Overload's complete damage/reset cycle. The
+`game-domination` unit gate exercises registry/spawn bounds, invalid cap
+times, extreme scaling and timer saturation. Malformed settings use safe
+bounded fallbacks; online achievement/stat-service work remains separate.
+
+Stock-map rotation follow-up (2026-11-04): both recorded discrepancies are
+resolved. Brimstone Abbey's 360-degree doors now retain double intermediates
+through the projected brush extent minus lip, then round to float as retail
+does (0x1005fbe5-0x1005fbf5). This preserves the small transverse component
+and yields the observed 23200.001953125 velocity instead of 23200. The change
+is local to door travel-distance calculation; shared vector math is unchanged.
+`target_push` now registers `jumppad.wav` only with its bounce-pad flag, with
+no default wind sound (0x1006b900-0x1006b912). This preserves Devilish's
+subsequent `sound/world/electro.wav` index.
+
+All four objective limit scenarios now run for 3,600 frames, through automatic
+rotation into the next stock map, and compare client states as well as entities
+and configstrings. They reproduce the original failures before the fixes and
+match retail afterward. The `stock-maps` suite additionally checks server
+startup on Brimstone Abbey and Devilish, and a hand-authored fixture containing
+both default and bounce-pad `target_push` entities. Each has a retail-twice
+self-check and a zero-tolerance differential gate.
+
+Devilish spectator-height follow-up (2026-11-04): resolved by removing the
+inherited spawn-floor adjustment. Retail's spawn registration (0x10055000)
+preserves map origins; its missing-intermission fallback (0x10054f4b) selects
+an authored deathmatch spawn. Lowering that spawn had changed the initial
+spectator Z from 1 to -5. The stock-map gates now include two spectators and
+compare their complete player states, covering the fallback as well as maps
+with explicit intermission points. Retail-client rendering and online services
+remain outside these dedicated-server replays.
+
+The rune gameplay slice is implemented and gated against the retail x86
+qagame (2026-11-04). Static evidence and observed behavior are recorded
+separately from the broader special-mode work:
+
+- Initialization (0x1004d950, called at 0x100555c1) creates all four runes
+  outside Race/intermission. Item registration (0x1005011f) handles
+  `g_runes` and `com_build`. Spawn selection (0x1004d650) needs five
+  eligible spots, considers at most sixteen available candidates and
+  reserves a spot until pickup (0x1004e4e5). With five spawns on each
+  team, initial runes alternate sides. The rewrite bounds malformed-map
+  searches and logs missing spots/items rather than hanging or crashing.
+- Manual/death drops relocate after ten/thirty seconds (0x1004f6ce;
+  the manual command overrides the deadline). No-drop volumes relocate
+  immediately (0x10050f27). Relocation chooses a fresh eligible side and
+  frees the old entity before spawning its replacement (0x1004da10).
+  The Space CTF recording confirms a throw at frame 23 and relocation
+  at frame 57, in both modules, before its timer expires.
+- Scout speed is 1.25, with Haste taking precedence (0x10034ee5); its
+  separate 500 ms timer drains armor to 50 outside Clan Arena
+  (0x100347d6). Guard does not regenerate health (0x100344d3), and a
+  userinfo probe with handicap 100 preserves maximum health 100.
+  Armor Regen adds ten armor each second, allows the last increment
+  past the soft cap with tiered armor and does not regenerate ammo
+  (0x10034601). Ordinary over-armor decay follows 0x100346b6.
+- The combat probe exposed unrelated shared combat differences that
+  affected rune gameplay: pain events need retail health bands and a
+  damage sequence independent of sound debounce (0x100338dd-0x10033923);
+  knockback needs the existing retail-precision vector normalization
+  (0x10048d9d). Both are corrected and covered by the normal-mode gates.
+- A disconnect probe with `g_dropPowerups 0` exposed Team Arena's obsolete
+  pickup-relink path. Retail uses only the ordinary drop path at
+  0x1003c9f7; removing the extra relink avoids resurrecting a freed item
+  and preserves disabled-drop policy. Enabled/disabled death drops,
+  team changes and disconnects have separate comparison gates.
+
+`game-runes` checks eligibility, bounds, reservations, team distribution
+and malformed maps. Eight full-server scenarios, each with a retail-twice
+self-check, cover lifecycle, combat, tiered armor, timeouts, no-drop
+relocation and disconnect policy. These establish the tested qagame
+behavior; the separate round-mode gates above cover CA/FT/RR. Remaining
+special modes, cgame presentation and G5 retail-client interoperability
+remain their own milestones.
 
 Exit: G3 per mode; G5 per mode.
 
@@ -577,6 +893,11 @@ A retail-ABI `fnql_uix86.dll`:
 - Coexists with the engine-hosted WebUI.
 
 ### M9 — Bots
+
+The FFA movement/restart slice passes G3: `BotInputToUserCommand` now
+preserves retail's projected speed, wide arithmetic before command-byte
+truncation, and integer-absolute vertical projection. This focused gate
+does not establish complete bot AI parity across modes or maps.
 
 Quake Live bot behavior over FnQL's botlib:
 

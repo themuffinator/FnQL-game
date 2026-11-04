@@ -179,8 +179,9 @@ void locateCamera( gentity_t *ent ) {
 		ent->s.powerups = 1;
 	}
 
-	// clientNum holds the rotate offset
-	ent->s.clientNum = owner->s.clientNum;
+	// QL carries portal rotation in angles2, not Q3's byte-sized clientNum
+	// offset (retail qagamex86 0x1005a77f-0x1005a797).
+	VectorCopy( owner->s.angles2, ent->s.angles2 );
 
 	VectorCopy( owner->s.origin, ent->s.origin2 );
 
@@ -229,7 +230,9 @@ void SP_misc_portal_camera(gentity_t *ent) {
 
 	G_SpawnFloat( "roll", "0", &roll );
 
-	ent->s.clientNum = roll/360.0 * 256;
+	// Retail 0x1005a919-0x1005a941: roll stays in degrees, unquantized.
+	VectorClear( ent->s.angles2 );
+	ent->s.angles2[ROLL] = roll;
 }
 
 /*

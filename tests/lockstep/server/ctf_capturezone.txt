@@ -1,0 +1,19 @@
+# Hand-authored capturezone.ent on campgrounds, ctf, cheats, 600 frames.
+# Empty touches and the zone's own team cannot score; an opposing carrier
+# scores the zone's count (3), clears the flag and receives the capture award.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha setviewpos -1472 320 50 0
+clientcmd 70 alpha setviewpos -400 -320 40 0
+clientcmd 80 bravo setviewpos -260 320 40 0
+clientcmd 100 bravo setviewpos -1472 320 50 0
+clientcmd 150 bravo setviewpos 120 -320 40 0
+clientcmd 170 alpha setviewpos -700 320 40 0
+clientcmd 200 alpha setviewpos -1472 320 50 0
+clientcmd 250 alpha score
+clientcmd 400 bravo score

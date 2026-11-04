@@ -355,19 +355,20 @@ void	Svcmd_EntityList_f (void) {
 	}
 }
 
-gclient_t	*ClientForString( const char *s ) {
+static gclient_t *ClientForString( const char *s, qboolean partial ) {
 	gclient_t	*cl;
 	int			i;
 	int			idnum;
 
 	// numeric values are just slot numbers
 	if ( s[0] >= '0' && s[0] <= '9' ) {
-		idnum = atoi( s );
-		if ( idnum < 0 || idnum >= level.maxclients ) {
-			Com_Printf( "Bad client slot: %i\n", idnum );
+		unsigned long long slot;
+		if ( !G_ParseAccount(s, &slot) || slot >= (unsigned)level.maxclients ) {
+			Com_Printf( "Bad client slot: %s\n", s );
 			return NULL;
 		}
 
+		idnum = (int)slot;
 		cl = &level.clients[idnum];
 		if ( cl->pers.connected == CON_DISCONNECTED ) {
 			G_Printf( "Client %i is not connected\n", idnum );
@@ -382,8 +383,11 @@ gclient_t	*ClientForString( const char *s ) {
 		if ( cl->pers.connected == CON_DISCONNECTED ) {
 			continue;
 		}
-		if ( !Q_stricmp( cl->pers.netname, s ) ) {
-			return cl;
+		{
+			char name[MAX_NETNAME];
+			Q_strncpyz(name, cl->pers.netname, sizeof(name));
+			Q_CleanStr(name);
+			if ( !Q_stricmp(name, s) || (partial && *s && strstr(name, s)) ) return cl;
 		}
 	}
 
@@ -410,7 +414,7 @@ void	Svcmd_ForceTeam_f( void ) {
 
 	// find the player
 	trap_Argv( 1, str, sizeof( str ) );
-	cl = ClientForString( str );
+	cl = ClientForString( str, qfalse );
 	if ( !cl ) {
 		return;
 	}
@@ -446,6 +450,59 @@ void Svcmd_Rotate_f( void ) {
 
 char	*ConcatArgs( int start );
 
+/* Retail 1006a2d0: randomize the playing slots, alternate the teams, and
+ * give an odd final player to the smaller team. The comparator's random
+ * calls are part of retail's random stream (1006a2b0). */
+static int QDECL ShuffleCompare( const void *a, const void *b ) {
+	(void)a; (void)b;
+	return rand() % 3 - 1;
+}
+
+void G_ShuffleTeams( void ) {
+	int slots[MAX_CLIENTS], count = 0, i, moved = 0;
+	team_t team = (rand() & 1) ? TEAM_BLUE : TEAM_RED;
+	if ( level.numNonSpectatorClients < g_shuffle_minplayers.integer && g_gametype.integer != GT_RED_ROVER ) {
+		trap_SendServerCommand(-1, "print \"Unable to shuffle: Not enough players.\n\"");
+		return;
+	}
+	for ( i = 0; i < level.maxclients; ++i ) {
+		gclient_t *client = &level.clients[i];
+		if ( client->pers.connected == CON_CONNECTED &&
+			(client->sess.sessionTeam == TEAM_RED || client->sess.sessionTeam == TEAM_BLUE) ) slots[count++] = i;
+	}
+	if ( level.warmupTime || g_gametype.integer != GT_RED_ROVER )
+		trap_SendServerCommand(-1, "print \"Shuffling Teams.\n\"");
+	level.shuffling = qtrue;
+	qsort(slots, count, sizeof(slots[0]), ShuffleCompare);
+	for ( i = 0; i < count; ++i ) {
+		gclient_t *client = &level.clients[slots[i]];
+		if ( i == count - 1 && (count & 1) ) team = OtherTeam(team);
+		if ( client->sess.sessionTeam != team ) {
+			G_ForceTeam(&g_entities[slots[i]], team == TEAM_RED ? "r" : "b");
+			++moved;
+		} else if ( g_gametype.integer == GT_RED_ROVER ) {
+			G_RespawnForShuffle(&g_entities[slots[i]]);
+		}
+		client->switchTeamTime = level.time + 5000;
+		team = OtherTeam(team);
+	}
+	if ( moved ) CalculateRanks();
+	else trap_SendServerCommand(-1, "print \"No players shuffled.\n\"");
+	level.shuffling = qfalse;
+}
+
+static void Svcmd_DumpVars( void ) {
+	char text[MAX_TOKEN_CHARS];
+	gclient_t *client;
+	trap_Argv(1, text, sizeof(text));
+	client = ClientForString(text, qtrue);
+	if ( !client ) return;
+	G_Printf("Data Dump: (%s)\nclientNum: %d\npm_type: 0x%08x\npm_flags: 0x%08x\npm_time: %d\neFlags: %d\norigin: (%0.3f, %0.3f, %0.3f)\n",
+		client->pers.netname, (int)(client - level.clients), client->ps.pm_type,
+		client->ps.pm_flags, client->ps.pm_time, client->ps.eFlags,
+		client->ps.origin[0], client->ps.origin[1], client->ps.origin[2]);
+}
+
 /*
 =================
 ConsoleCommand
@@ -456,6 +513,17 @@ qboolean	ConsoleCommand( void ) {
 	char	cmd[MAX_TOKEN_CHARS];
 
 	trap_Argv( 0, cmd, sizeof( cmd ) );
+	if ( !Q_stricmp(cmd, "forceshuffle") ) { G_ShuffleTeams(); return qtrue; }
+	if ( !Q_stricmp(cmd, "dumpvars") ) { Svcmd_DumpVars(); return qtrue; }
+	if ( !Q_stricmp(cmd, "game_crash") ) {
+		if ( trap_Cvar_VariableIntegerValue("developer") ) G_Error("game_crash requested");
+		return qtrue;
+	}
+	if ( !Q_stricmp(cmd, "reload_access") ) { G_ReloadAccess(); return qtrue; }
+	if ( G_AdminCommand(NULL, cmd) ) return qtrue;
+	if ( !Q_stricmp(cmd, "markstate") || !Q_stricmp(cmd, "diffstate") ||
+		!Q_stricmp(cmd, "dumpentities") || !Q_stricmp(cmd, "printentitystates") ) return qtrue;
+
 
 	if ( Q_stricmp (cmd, "entitylist") == 0 ) {
 		Svcmd_EntityList_f();
@@ -507,14 +575,24 @@ qboolean	ConsoleCommand( void ) {
 		return qtrue;
 	}
 
+	if (g_dedicated.integer && !Q_stricmp(cmd, "tell")) {
+		char slot[MAX_TOKEN_CHARS];
+		unsigned long long number;
+		trap_Argv(1, slot, sizeof(slot));
+		if ( !G_ParseAccount(slot, &number) || number >= (unsigned)level.maxclients ) {
+			G_Printf("Bad slot number: %s\n", slot);
+			return qtrue;
+		}
+		if ( trap_Argc() > 2 ) trap_SendServerCommand((int)number, va("print \"server whisper: %s\"", ConcatArgs(2)));
+		return qtrue;
+	}
+
 	if (g_dedicated.integer) {
 		if (Q_stricmp (cmd, "say") == 0) {
 			G_BroadcastServerCommand( -1, va("print \"server: %s\"", ConcatArgs(1) ) );
 			return qtrue;
 		}
-		// everything else will also be printed as a say command
-		G_BroadcastServerCommand( -1, va("print \"server: %s\"", ConcatArgs(0) ) );
-		return qtrue;
+
 	}
 
 	return qfalse;

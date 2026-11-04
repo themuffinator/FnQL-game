@@ -1,0 +1,23 @@
+# G3: campgrounds, iffa, cheats, 500 frames. Rail/gauntlet kit, infinite
+# ammo, one-shot kill, disabled suicide, forced give and restart.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+at 0 alpha weapon=7
+at 0 bravo weapon=7
+at 50 alpha buttons=attack
+at 52 alpha buttons=0
+clientcmd 70 alpha pstats
+clientcmd 80 bravo kill
+at 150 bravo buttons=attack
+at 152 bravo buttons=0
+clientcmd 180 bravo give Rocket Launcher
+clientcmd 190 bravo give Quad Damage
+clientcmd 200 bravo drop
+clientcmd 210 alpha score
+cmd 300 map_restart 0
+clientcmd 320 alpha score

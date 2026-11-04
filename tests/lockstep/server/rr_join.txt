@@ -1,0 +1,8 @@
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 10 forceshuffle
+cmd 20 forceshuffle
+clientcmd 30 alpha score

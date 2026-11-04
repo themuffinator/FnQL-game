@@ -1,0 +1,21 @@
+# Strict objective-mode replay; paired retail self-checks are in meson.build.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 10 alpha setviewpos -400 320 40 0
+clientcmd 12 bravo setviewpos -900 -320 40 0
+clientcmd 220 alpha score
+cmd 250 allready
+clientcmd 1400 alpha setviewpos -400 320 40 0
+clientcmd 1402 bravo setviewpos -900 -320 40 0
+clientcmd 1700 alpha score
+clientcmd 1702 bravo setviewpos -700 320 40 0
+clientcmd 1710 alpha setviewpos -260 320 40 180
+clientcmd 1720 alpha give Railgun
+clientcmd 1721 alpha give Quad Damage
+at 1730 alpha weapon=7
+at 1750 alpha buttons=attack
+at 1752 alpha buttons=0
+clientcmd 1800 alpha score

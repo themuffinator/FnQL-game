@@ -1,0 +1,71 @@
+// Hand-authored objective positions on campgrounds.
+{
+"classname" "worldspawn"
+"message" "FnQL objective replay"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-400 320 250"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-260 320 40"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-700 320 40"
+}
+{
+"classname" "team_CTF_redplayer"
+"origin" "-260 -320 40"
+}
+{
+"classname" "team_CTF_redspawn"
+"origin" "-260 -320 40"
+}
+{
+"classname" "team_CTF_blueplayer"
+"origin" "-700 -320 40"
+}
+{
+"classname" "team_CTF_bluespawn"
+"origin" "-700 -320 40"
+}
+{
+"classname" "team_dom_point"
+"origin" "-400 320 40"
+"count" "256"
+"identifier" "1"
+"target" "dom_red"
+}
+{
+"classname" "team_dom_point"
+"origin" "-400 -320 40"
+"count" "256"
+"identifier" "2"
+"target" "dom_blue"
+}
+
+{
+"classname" "info_player_deathmatch"
+"targetname" "dom_red"
+"origin" "-260 320 40"
+}
+
+{
+"classname" "info_player_deathmatch"
+"targetname" "dom_red"
+"origin" "-700 320 40"
+}
+
+{
+"classname" "info_player_deathmatch"
+"targetname" "dom_blue"
+"origin" "-260 -320 40"
+}
+
+{
+"classname" "info_player_deathmatch"
+"targetname" "dom_blue"
+"origin" "-700 -320 40"
+}

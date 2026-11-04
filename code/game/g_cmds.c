@@ -475,6 +475,31 @@ static const char *G_ScoreboardOverload( void ) {
 }
 
 
+/* Retail 1003f260: Red Rover's nineteen-field player rows. */
+static const char *G_ScoreboardRedRover( void ) {
+	char rows[MAX_STRING_CHARS] = "", row[256];
+	int i, length = 0, bestAccuracy = 0;
+	for ( i = 0; i < level.numConnectedClients; ++i ) {
+		scoreboardPlayer_t p;
+		gclient_t *cl;
+		int n;
+		G_ScoreboardPlayer(i, &p);
+		cl = &level.clients[p.clientNum];
+		if ( cl->stats.weaponShots[p.best] ) bestAccuracy = p.bestAccuracy;
+		n = Com_sprintf(row, sizeof(row), " %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
+			p.clientNum, p.score, cl->roundScore, p.ping, p.minutes, cl->stats.kills, cl->stats.deaths,
+			p.accuracy, p.best, bestAccuracy, cl->stats.damageGiven,
+			cl->ps.persistant[PERS_IMPRESSIVE_COUNT], cl->ps.persistant[PERS_EXCELLENT_COUNT],
+			cl->ps.persistant[PERS_DEFEND_COUNT], cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+			cl->ps.persistant[PERS_ASSIST_COUNT], p.perfect, cl->ps.persistant[PERS_CAPTURES], p.alive);
+		if ( length + n >= sizeof(rows) ) break;
+		memcpy(rows + length, row, n + 1);
+		length += n;
+	}
+	return va("scores_rr %i %i %i%s", i, level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], rows);
+}
+
+
 /*
 ==================
 G_SendIntermissionTeamStats
@@ -615,7 +640,7 @@ static const char *G_ScoreboardLegacy( void ) {
 
 	// estimate prefix length to avoid oversize of final string
 	prefix = BG_sprintf( entry, "scores %i %i %i", level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE], numSorted );
-	
+
 	for ( i = 0 ; i < numSorted ; i++ ) {
 
 		cl = &level.clients[level.sortedClients[i]];
@@ -635,12 +660,12 @@ static const char *G_ScoreboardLegacy( void ) {
 			(level.time - cl->pers.enterTime)/60000,
 			0,
 			g_entities[level.sortedClients[i]].s.powerups,
-			accuracy, 
+			accuracy,
 			cl->ps.persistant[PERS_IMPRESSIVE_COUNT],
 			cl->ps.persistant[PERS_EXCELLENT_COUNT],
-			cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT], 
-			cl->ps.persistant[PERS_DEFEND_COUNT], 
-			cl->ps.persistant[PERS_ASSIST_COUNT], 
+			cl->ps.persistant[PERS_GAUNTLET_FRAG_COUNT],
+			cl->ps.persistant[PERS_DEFEND_COUNT],
+			cl->ps.persistant[PERS_ASSIST_COUNT],
 			perfect,
 			cl->ps.persistant[PERS_CAPTURES]);
 
@@ -681,7 +706,7 @@ void DeathmatchScoreboardMessage( gentity_t *ent ) {
 		message = G_ScoreboardOverload();
 		break;
 	case GT_RED_ROVER:
-		message = G_ScoreboardLegacy();	// scores_rr arrives with red rover (milestone 6)
+		message = G_ScoreboardRedRover();
 		break;
 	default:
 		message = G_ScoreboardTeam( ent );
@@ -971,7 +996,7 @@ void Cmd_Give_f( gentity_t *ent )
 		it_ent = G_Spawn();
 		VectorCopy( ent->r.currentOrigin, it_ent->s.origin );
 		it_ent->classname = it->classname;
-		G_SpawnItem (it_ent, it);
+		G_SpawnItemForced( it_ent, it );
 		FinishSpawningItem(it_ent );
 		memset( &trace, 0, sizeof( trace ) );
 		Touch_Item (it_ent, ent, &trace);
@@ -1077,7 +1102,7 @@ void Cmd_LevelShot_f( gentity_t *ent ) {
 
 	// doesn't work in single player
 	if ( G_IsSinglePlayer() ) {
-		trap_SendServerCommand( ent-g_entities, 
+		trap_SendServerCommand( ent-g_entities,
 			"print \"Must be in g_gametype 0 for levelshot\n\"" );
 		return;
 	}
@@ -1156,7 +1181,7 @@ void BroadcastTeamChange( gclient_t *client, team_t oldTeam )
 	char		name[40], clean[40];
 	const char	*sep;
 
-	if ( g_training.integer || level.time < 5000 ) {
+	if ( g_training.integer || level.shuffling || level.time < 5000 ) {
 		return;
 	}
 
@@ -1187,6 +1212,10 @@ void BroadcastTeamChange( gclient_t *client, team_t oldTeam )
 
 static qboolean AllowTeamSwitch( int clientNum, team_t newTeam ) {
 
+	if ( (newTeam == TEAM_RED || newTeam == TEAM_BLUE) && level.teamLocked[newTeam] ) {
+		trap_SendServerCommand(clientNum, va("print \"The %s team is locked!\n\"", TeamName(newTeam)));
+		return qfalse;
+	}
 	if ( g_teamForceBalance.integer  ) {
 		int		counts[TEAM_NUM_TEAMS];
 
@@ -1233,7 +1262,7 @@ static void G_SetSpectateOnly( gclient_t *client ) {
 SetTeam
 =================
 */
-int SetTeam( gentity_t *ent, const char *s ) {
+static int SetTeamInternal( gentity_t *ent, const char *s, qboolean force ) {
 	team_t				team, oldTeam;
 	gclient_t			*client;
 	int					clientNum;
@@ -1255,11 +1284,11 @@ int SetTeam( gentity_t *ent, const char *s ) {
 		if ( !Q_stricmp( s, "red" ) || !Q_stricmp( s, "r" ) ) {
 			team = TEAM_RED;
 		} else if ( !Q_stricmp( s, "blue" ) || !Q_stricmp( s, "b" ) ) {
-			team = TEAM_BLUE; 
+			team = TEAM_BLUE;
 		} else {
 			team = -1;
 		}
-		if ( team != -1 && AllowTeamSwitch( clientNum, team ) ) {
+		if ( team != -1 && (force || AllowTeamSwitch( clientNum, team )) ) {
 			client->sess.sessionTeam = team;
 			client->pers.teamState.state = TEAM_BEGIN;
 			G_WriteClientSessionData( client );
@@ -1302,6 +1331,8 @@ int SetTeam( gentity_t *ent, const char *s ) {
 		team = TEAM_SPECTATOR;
 		specState = SPECTATOR_FREE;
 		G_SetSpectateOnly( client );
+	} else if ( g_gametype.integer == GT_RED_ROVER && !force ) {
+		team = g_rrInfected.integer ? G_RoverJoinTeam(clientNum) : PickTeam(clientNum);
 	} else if ( g_gametype.integer >= GT_TEAM ) {
 		// if running a team game, assign player to one of the teams
 		specState = SPECTATOR_NOT;
@@ -1314,7 +1345,7 @@ int SetTeam( gentity_t *ent, const char *s ) {
 			team = PickTeam( clientNum );
 		}
 
-		if ( !AllowTeamSwitch( clientNum, team ) ) {
+		if ( !force && !AllowTeamSwitch( clientNum, team ) ) {
 			return -1;
 		}
 
@@ -1329,12 +1360,12 @@ int SetTeam( gentity_t *ent, const char *s ) {
 
 	// a duel takes only the next in line while it lacks players; everyone
 	// else asking waits as a spectator (retail qagamex86 0x10040c83)
-	if ( g_gametype.integer == GT_TOURNAMENT ) {
+	if ( !force && g_gametype.integer == GT_TOURNAMENT ) {
 		if ( !( level.numNonSpectatorClients < 2 && G_NextInLine() == client )
 			&& ( team != client->sess.sessionTeam || team == TEAM_SPECTATOR ) ) {
 			team = TEAM_SPECTATOR;
 		}
-	} else if ( g_maxGameClients.integer > 0 &&
+	} else if ( !force && g_maxGameClients.integer > 0 &&
 		level.numNonSpectatorClients >= g_maxGameClients.integer ) {
 		team = TEAM_SPECTATOR;
 	}
@@ -1353,8 +1384,9 @@ int SetTeam( gentity_t *ent, const char *s ) {
 	// execute the team change
 	//
 
-	// if the player was dead leave the body
-	if ( ent->health <= 0 ) {
+	// Retail 0x10040489 tests the viewed player state (a round spectator
+	// may be following a living teammate), rather than the old entity health.
+	if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
 		CopyToBodyQue( ent );
 	}
 
@@ -1362,10 +1394,7 @@ int SetTeam( gentity_t *ent, const char *s ) {
 	client->pers.teamState.state = TEAM_BEGIN;
 
 	if ( oldTeam != TEAM_SPECTATOR ) {
-		
-		// revert any casted votes
-		if ( oldTeam != team )
-			G_RevertVote( ent->client );
+
 
 		// Kill him (makes sure he loses flags, etc)
 		ent->flags &= ~FL_GODMODE;
@@ -1430,11 +1459,15 @@ int SetTeam( gentity_t *ent, const char *s ) {
 	// get and distribute relevent paramters
 	ClientUserinfoChanged( clientNum );
 
-	ClientBegin( clientNum );
+	if ( level.shuffling && g_gametype.integer == GT_RED_ROVER ) G_RespawnForShuffle(ent);
+	else ClientBegin( clientNum );
 
 	return team;
 }
 
+
+int SetTeam( gentity_t *ent, const char *team ) { return SetTeamInternal(ent, team, qfalse); }
+int G_ForceTeam( gentity_t *ent, const char *team ) { return SetTeamInternal(ent, team, qtrue); }
 
 /*
 =================
@@ -1640,7 +1673,7 @@ G_FollowCycle
 Retail qagamex86 0x10041130: follow the next (or previous) player in the
 game that is not following someone itself; in a team mode a team member
 follows only its own team.  Starting to follow brings the scoreboard.
-(Retail also sends race_info in race, milestone 6.)
+Race also sends the current run and upcoming checkpoint entities.
 =================
 */
 void G_FollowCycle( gentity_t *ent, int dir ) {
@@ -1681,6 +1714,7 @@ void G_FollowCycle( gentity_t *ent, int dir ) {
 			DeathmatchScoreboardMessage( ent );
 		}
 		client->sess.spectatorState = SPECTATOR_FOLLOW;
+		if ( g_gametype.integer == GT_RACE ) G_RaceInfo(ent, cl);
 		return;
 	} while ( clientnum != original );
 
@@ -1737,8 +1771,15 @@ static void G_SayTo( gentity_t *ent, gentity_t *other, int mode, int color, cons
 		return;
 	}
 
-	trap_SendServerCommand( other-g_entities, va( "%s \"%s%c%c%s\" %i", mode == SAY_TEAM ? "tchat" : "chat", 
-		name, Q_COLOR_ESCAPE, color, message, ent - g_entities ) );
+	// Retail 10041820: muted tells are suppressed; broadcast chat exposes
+	// only a red marker to the sender and higher-privilege recipients.
+	if ( ent->client->sess.muted ) {
+		if ( mode == SAY_TELL || (other != ent && other->client->pers.privileges <= ent->client->pers.privileges) ) return;
+		message = "(muted)";
+		color = COLOR_RED;
+	}
+	trap_SendServerCommand( other-g_entities, va( "%s \"%02i %s%c%c%s\"", mode == SAY_TEAM ? "tchat" : "chat",
+		(int)(ent - g_entities), name, Q_COLOR_ESCAPE, color, message ) );
 }
 
 #define EC		"\x19"
@@ -1766,10 +1807,10 @@ static void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chat
 	case SAY_TEAM:
 		G_LogPrintf( "sayteam: %s: %s\n", ent->client->pers.netname, chatText );
 		if (Team_GetLocationMsg(ent, location, sizeof(location)))
-			Com_sprintf (name, sizeof(name), EC"(%s%c%c"EC") (%s)"EC": ", 
+			Com_sprintf (name, sizeof(name), EC"(%s%c%c"EC") (%s^7)"EC": ",
 				ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE, location);
 		else
-			Com_sprintf (name, sizeof(name), EC"(%s%c%c"EC")"EC": ", 
+			Com_sprintf (name, sizeof(name), EC"(%s%c%c"EC")"EC": ",
 				ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE );
 		color = COLOR_CYAN;
 		break;
@@ -1777,7 +1818,7 @@ static void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chat
 		if (target && target->inuse && target->client && g_gametype.integer >= GT_TEAM &&
 			target->client->sess.sessionTeam == ent->client->sess.sessionTeam &&
 			Team_GetLocationMsg(ent, location, sizeof(location)))
-			Com_sprintf (name, sizeof(name), EC"[%s%c%c"EC"] (%s)"EC": ", ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE, location );
+			Com_sprintf (name, sizeof(name), EC"[%s%c%c"EC"] (%s^7)"EC": ", ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE, location );
 		else
 			Com_sprintf (name, sizeof(name), EC"[%s%c%c"EC"]"EC": ", ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE );
 		color = COLOR_MAGENTA;
@@ -1868,67 +1909,13 @@ static void Cmd_Tell_f( gentity_t *ent ) {
 
 #ifdef MISSIONPACK
 
-static void G_VoiceTo( gentity_t *ent, gentity_t *other, int mode, const char *id, qboolean voiceonly ) {
-	int color;
-	char *cmd;
-
-	if (!other) {
-		return;
-	}
-	if (!other->inuse) {
-		return;
-	}
-	if (!other->client) {
-		return;
-	}
-	if ( mode == SAY_TEAM && !OnSameTeam(ent, other) ) {
-		return;
-	}
-	// no chatting to players in tournements
-	if ( g_gametype.integer == GT_TOURNAMENT ) {
-		return;
-	}
-
-	if (mode == SAY_TEAM) {
-		color = COLOR_CYAN;
-		cmd = "vtchat";
-	}
-	else if (mode == SAY_TELL) {
-		color = COLOR_MAGENTA;
-		cmd = "vtell";
-	}
-	else {
-		color = COLOR_GREEN;
-		cmd = "vchat";
-	}
-
-	trap_SendServerCommand( other-g_entities, va("%s %d %d %d %s", cmd, voiceonly, ent->s.number, color, id));
-}
-
+/* Retail 10041e40/10041e60 consume legacy voice commands without sending
+ * Q3 voice packets. The vtell logger and vtaunt bookkeeping still run.
+ * tdm_commands locks down all six transports, including muted callers. */
 void G_Voice( gentity_t *ent, gentity_t *target, int mode, const char *id, qboolean voiceonly ) {
-	int			j;
-	gentity_t	*other;
-
-	if ( g_gametype.integer < GT_TEAM && mode == SAY_TEAM ) {
-		mode = SAY_ALL;
-	}
-
-	if ( target ) {
-		G_VoiceTo( ent, target, mode, id, voiceonly );
-		return;
-	}
-
-	// echo the text to the console
-	if ( g_dedicated.integer ) {
-		G_Printf( "voice: %s %s\n", ent->client->pers.netname, id);
-	}
-
-	// send it to all the apropriate clients
-	for (j = 0; j < level.maxclients; j++) {
-		other = &g_entities[j];
-		G_VoiceTo( ent, other, mode, id, voiceonly );
-	}
+	(void)ent; (void)target; (void)mode; (void)id; (void)voiceonly;
 }
+
 
 /*
 ==================
@@ -2089,7 +2076,7 @@ void Cmd_GameCommand_f( gentity_t *ent ) {
 	if ( (unsigned)player >= MAX_CLIENTS ) {
 		return;
 	}
-	if ( (unsigned) order > ARRAY_LEN( gc_orders ) ) {
+	if ( (unsigned) order >= ARRAY_LEN( gc_orders ) ) {
 		return;
 	}
 	G_Say( ent, &g_entities[player], SAY_TELL, gc_orders[order] );
@@ -2106,198 +2093,6 @@ void Cmd_Where_f( gentity_t *ent ) {
 	trap_SendServerCommand( ent-g_entities, va("print \"%s\n\"", vtos( ent->s.origin ) ) );
 }
 
-static const char *voteCommands[] = {
-	"map_restart",
-	"map",
-	"rotate",
-	"nextmap",
-	"kick",
-	"clientkick",
-	"g_gametype",
-	"g_unlagged",
-	"g_warmup",
-	"timelimit",
-	"fraglimit",
-	"capturelimit"
-};
-
-
-/*
-==================
-ValidVoteCommand
-
-Input string can be modified by overwriting gametype number instead of text value, for example
-==================
-*/
-static qboolean ValidVoteCommand( int clientNum, char *command ) 
-{
-	char buf[ MAX_CVAR_VALUE_STRING ];
-	char *base;
-	char *s;
-	int	i;
-
-	if ( strchr( command, ';' ) || strchr( command, '\n' ) || strchr( command, '\r' ) )
-	{
-		trap_SendServerCommand( clientNum, "print \"Invalid vote command.\n\"" );
-		return qfalse;
-	}
-
-	base = command;
-	
-	s = buf; // extract command name
-	while ( *command != '\0' && *command != ' ' ) {
-		*s = *command; s++; command++;
-	}
-	*s = '\0';
-	// point cmd on first argument
-	while ( *command == ' ' || *command == '\t' )
-		command++;
-
-	for ( i = 0; i < ARRAY_LEN( voteCommands ); i++ ) {
-		if ( !Q_stricmp( buf, voteCommands[i] ) ) {
-			break;
-		}
-	}
-
-	if ( i == ARRAY_LEN( voteCommands ) ) {
-		trap_SendServerCommand( clientNum, "print \"Invalid vote command.\nVote commands are: \n"
-			" g_gametype <n|ffa|duel|tdm|ctf>\n"
-			" map_restart, map <mapname>, rotate [round], nextmap\n"
-			" kick <player>, clientkick <clientnum>\n"
-			" g_unlagged <0|1>, g_warmup <-1|0|seconds>\n"
-			" timelimit <time>, fraglimit <frags>, capturelimit <captures>.\n\"" );
-		return qfalse;
-	}
-
-	if ( Q_stricmp( buf, "g_gametype" ) == 0 )
-	{
-		if ( !Q_stricmp( command, "ffa" ) ) i = GT_FFA;
-		else if ( !Q_stricmp( command, "duel" ) ) i = GT_TOURNAMENT;
-		else if ( !Q_stricmp( command, "tdm" ) ) i = GT_TEAM;
-		else if ( !Q_stricmp( command, "ctf" ) ) i = GT_CTF;
-		else 
-		{
-			i = atoi( command );
-			if( i < GT_FFA || i >= GT_MAX_GAME_TYPE ) {
-				trap_SendServerCommand( clientNum, va( "print \"Invalid gametype %i.\n\"", i ) );
-				return qfalse;
-			}
-			return qfalse;
-		}
-
-		// handle string values
-		BG_sprintf( base, "g_gametype %i", i );
-
-		return qtrue;
-	}
-
-	if ( Q_stricmp( buf, "map" ) == 0 ) {
-		if ( !G_MapExist( command ) ) {
-			trap_SendServerCommand( clientNum, va( "print \"No such map on server: %s.\n\"", command ) );
-			return qfalse;
-		} 
-		return qtrue;
-	}
-
-	if ( Q_stricmp( buf, "nextmap" ) == 0 ) {
-		strcpy( base, "rotate" );
-	}
-
-	return qtrue;
-}
-
-
-/*
-==================
-Cmd_CallVote_f
-==================
-*/
-void Cmd_CallVote_f( gentity_t *ent ) {
-	int		i, n;
-	char	arg[MAX_STRING_TOKENS], *argn[4];
-	char	cmd[MAX_STRING_TOKENS], *s;
-
-	if ( !g_allowVote.integer ) {
-		trap_SendServerCommand( ent-g_entities, "print \"Voting not allowed here.\n\"" );
-		return;
-	}
-
-	if ( level.voteTime ) {
-		trap_SendServerCommand( ent-g_entities, "print \"A vote is already in progress.\n\"" );
-		return;
-	}
-
-	// if there is still a vote to be executed
-	if ( level.voteExecuteTime || level.restarted ) {
-		trap_SendServerCommand( ent-g_entities, "print \"Previous vote command is waiting execution^1.^7\n\"" );
-		return;
-	}
-
-	if ( ent->client->pers.voteCount >= MAX_VOTE_COUNT ) {
-		trap_SendServerCommand( ent-g_entities, "print \"You have called the maximum number of votes.\n\"" );
-		return;
-	}
-	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR ) {
-		trap_SendServerCommand( ent-g_entities, "print \"Not allowed to call a vote as spectator.\n\"" );
-		return;
-	}
-
-	// build command buffer
-	arg[ 0 ] = '\0'; s = arg;
-	for ( i = 1; i < trap_Argc(); i++ ) {
-		if ( arg[ 0 ] )
-			s = Q_stradd( s, " " );
-		trap_Argv( i, cmd, sizeof( cmd ) );
-		s = Q_stradd( s, cmd );
-	}
-
-	// split by ';' seperators
-	n = Com_Split( arg, argn, ARRAY_LEN( argn ), ';' );
-	if ( n == 0 || *argn[0] == '\0' ) 
-		return; // empty callvote command?
-
-	// validate all split commands
-	for ( i = 0; i < n; i++ ) {
-		// make sure it is a valid command to vote on
-		if ( !ValidVoteCommand( ent - g_entities, argn[i] ) )
-			return;
-	}
-
-	// rebuild command buffer
-	cmd[0] = '\0';
-	for ( s = cmd, i = 0; i < n; i++ ) {
-		if ( cmd[0] )
-			s = Q_stradd( s, ";" );
-		s = Q_stradd( s, argn[ i ] );
-	}
-
-	Com_sprintf( level.voteString, sizeof( level.voteString ), cmd );
-	Com_sprintf( level.voteDisplayString, sizeof( level.voteDisplayString ), "%s", level.voteString );
-
-	trap_SendServerCommand( -1, va( "print \"%s called a vote(%s).\n\"", ent->client->pers.netname, cmd ) );
-
-	// start the voting, the caller automatically votes yes
-	level.voteTime = level.time;
-	level.voteYes = 1;
-	level.voteNo = 0;
-
-	for ( i = 0 ; i < level.maxclients ; i++ ) {
-		level.clients[i].ps.eFlags &= ~EF_VOTED;
-		level.clients[i].pers.voted = 0;
-	}
-
-	ent->client->ps.eFlags |= EF_VOTED;
-	ent->client->pers.voted = 1;
-
-	ent->client->pers.voteCount++;
-
-	trap_SetConfigstring( CS_VOTE_TIME, va("%i", level.voteTime ) );
-	trap_SetConfigstring( CS_VOTE_STRING, level.voteDisplayString );	
-	trap_SetConfigstring( CS_VOTE_YES, va("%i", level.voteYes ) );
-	trap_SetConfigstring( CS_VOTE_NO, va("%i", level.voteNo ) );	
-}
-
-
 /*
 ==================
 Cmd_Forfeit_f
@@ -2313,6 +2108,10 @@ static const char *const gametypeNames[GT_MAX_GAME_TYPE] = {
 	"One Flag CTF", "Overload", "Harvester", "Freeze Tag", "Domination", "Attack and Defend",
 	"Red Rover"
 };
+
+const char *G_GametypeName( int mode ) {
+	return mode >= 0 && mode < GT_MAX_GAME_TYPE ? gametypeNames[mode] : "Unknown";
+}
 
 static void Cmd_Forfeit_f( gentity_t *ent ) {
 	gclient_t	*client = ent->client;
@@ -2431,62 +2230,10 @@ Cmd_Vote_f
 ==================
 */
 static void Cmd_Vote_f( gentity_t *ent ) {
-	char		msg[64];
-
 	if ( level.intermissiontime ) {
 		G_MapVote( ent );
-		return;
-	}
-
-	if ( !level.voteTime ) {
-		trap_SendServerCommand( ent-g_entities, "print \"No vote in progress.\n\"" );
-		return;
-	}
-
-	if ( ent->client->pers.voted != 0 ) {
-		trap_SendServerCommand( ent-g_entities, "print \"Vote already cast.\n\"" );
-		return;
-	}
-
-	if ( ent->client->sess.sessionTeam == TEAM_SPECTATOR ) {
-		trap_SendServerCommand( ent-g_entities, "print \"Not allowed to vote as spectator.\n\"" );
-		return;
-	}
-
-	trap_SendServerCommand( ent-g_entities, "print \"Vote cast.\n\"" );
-
-	ent->client->ps.eFlags |= EF_VOTED;
-
-	trap_Argv( 1, msg, sizeof( msg ) );
-
-	if ( msg[0] == 'y' || msg[0] == 'Y' || msg[0] == '1' ) {
-		level.voteYes++;
-		ent->client->pers.voted = 1;
-		trap_SetConfigstring( CS_VOTE_YES, va( "%i", level.voteYes ) );
 	} else {
-		level.voteNo++;
-		ent->client->pers.voted = -1;
-		trap_SetConfigstring( CS_VOTE_NO, va( "%i", level.voteNo ) );	
-	}
-
-	// a majority will be determined in CheckVote, which will also account
-	// for players entering or leaving
-}
-
-
-void G_RevertVote( gclient_t *client ) {
-	if ( level.voteTime ) {
-		if ( client->pers.voted == 1 ) {
-			level.voteYes--;
-			client->pers.voted = 0;
-			client->ps.eFlags &= ~EF_VOTED;
-			trap_SetConfigstring( CS_VOTE_YES, va( "%i", level.voteYes ) );
-		} else if ( client->pers.voted == -1 ) {
-			level.voteNo--;
-			client->pers.voted = 0;
-			client->ps.eFlags &= ~EF_VOTED;
-			trap_SetConfigstring( CS_VOTE_NO, va( "%i", level.voteNo ) );
-		}
+		G_CastVote( ent );
 	}
 }
 
@@ -2549,271 +2296,6 @@ static void Cmd_Stats_f( gentity_t *ent ) {
 
 /*
 =================
-G_MatchCommandAllowed
-
-Retail qagamex86 0x10061090: whether a match command may run now.  At the
-intermission it needs MATCHCMD_INTERMISSION and during the warmup
-MATCHCMD_WARMUP; during a match it needs MATCHCMD_MATCH, and a round-based
-mode refuses it while counting down to a round.
-=================
-*/
-#define	MATCHCMD_WARMUP			1
-#define	MATCHCMD_MATCH			2
-#define	MATCHCMD_INTERMISSION	4
-
-static qboolean G_MatchCommandAllowed( gentity_t *ent, int flags ) {
-	const char	*refusal = NULL;
-
-	if ( level.intermissiontime ) {
-		if ( !( flags & MATCHCMD_INTERMISSION ) ) {
-			refusal = "print \"This command can not be used during intermission\n\"";
-		}
-	} else if ( level.warmupTime ) {
-		if ( !( flags & MATCHCMD_WARMUP ) ) {
-			refusal = "print \"This command can not be used during warmup\n\"";
-		}
-	} else if ( !( flags & MATCHCMD_MATCH ) ) {
-		refusal = "print \"This command can not be used while a match is in progress\n\"";
-	} else if ( G_IsRoundBasedGametype( g_gametype.integer ) && G_RoundCountingDown() ) {
-		refusal = "print \"This command can not be used during a round countdown\n\"";
-	}
-
-	if ( refusal ) {
-		trap_SendServerCommand( ent - g_entities, refusal );
-		return qfalse;
-	}
-	return qtrue;
-}
-
-
-/*
-=================
-G_StartTimeout
-
-Retail qagamex86 0x10061db0: the match stops for the given seconds, or
-until a time in when there are none (a pause), and everyone is told who
-called it.
-=================
-*/
-static void G_StartTimeout( gentity_t *ent, int seconds ) {
-	if ( !G_MatchCommandAllowed( ent, MATCHCMD_MATCH ) ) {
-		return;
-	}
-
-	level.timeoutStartTime = level.time;
-	level.timeoutEndTime = seconds ? level.time + seconds * 1000 : 0;
-	level.timeoutCaller = ent - g_entities;
-	level.timeoutByServer = qfalse;
-	trap_SetConfigstring( CS_TIMEOUT_START_TIME, va( "%i", level.timeoutStartTime ) );
-	trap_SetConfigstring( CS_TIMEOUT_END_TIME, va( "%i", level.timeoutEndTime ) );
-	if ( seconds ) {
-		trap_SendServerCommand( -1, va( "pcp \"%s has called timeout (%ds)\n\"", ent->client->pers.netname, seconds ) );
-	} else {
-		trap_SendServerCommand( -1, va( "pcp \"%s has paused the match\n\"", ent->client->pers.netname ) );
-	}
-}
-
-
-/*
-=================
-Cmd_Timeout_f
-
-Retail qagamex86 0x100621c0: a player in the game stops the match for
-g_timeoutLen seconds.  g_timeoutCount limits the calls, per team in the
-team modes (the counts left go out in configstrings) and per player
-otherwise.  The call is counted before the match state is checked, as in
-retail.
-=================
-*/
-static void Cmd_Timeout_f( gentity_t *ent ) {
-	gclient_t	*client = ent->client;
-	const int	team = client->sess.sessionTeam;
-
-	if ( team == TEAM_SPECTATOR || level.timeoutStartTime ) {
-		return;
-	}
-	if ( !g_timeoutCount.integer ) {
-		trap_SendServerCommand( ent - g_entities, "print \"Timeouts are not enabled on this server.\n\"" );
-		return;
-	}
-
-	if ( g_gametype.integer >= GT_TEAM ) {
-		if ( team != TEAM_RED && team != TEAM_BLUE ) {
-			return;
-		}
-		if ( level.timeoutsUsed[team - TEAM_RED] >= g_timeoutCount.integer ) {
-			trap_SendServerCommand( ent - g_entities, "print \"Your team has no timeouts left to call\n\"" );
-			return;
-		}
-		level.timeoutsUsed[team - TEAM_RED]++;
-		trap_SetConfigstring( CS_RED_TIMEOUTS_LEFT, va( "%d", g_timeoutCount.integer - level.timeoutsUsed[0] ) );
-		trap_SetConfigstring( CS_BLUE_TIMEOUTS_LEFT, va( "%d", g_timeoutCount.integer - level.timeoutsUsed[1] ) );
-	} else {
-		if ( client->pers.timeoutsUsed >= g_timeoutCount.integer ) {
-			trap_SendServerCommand( ent - g_entities, "print \"You have no timeouts left to call\n\"" );
-			return;
-		}
-		client->pers.timeoutsUsed++;
-	}
-
-	G_StartTimeout( ent, g_timeoutLen.integer );
-}
-
-
-/*
-=================
-Cmd_Timein_f
-
-Retail qagamex86 0x10062330: the player who called the timeout, or a
-moderator, ends it five seconds from now; with less than that left, or
-for a timeout the server called, nothing happens.  G_CheckTimein restarts
-the match when the time comes.
-=================
-*/
-static void Cmd_Timein_f( gentity_t *ent ) {
-	if ( !level.timeoutStartTime ) {
-		return;
-	}
-	if ( level.timeoutEndTime && level.timeoutEndTime < level.time + 5000 ) {
-		return;
-	}
-	if ( level.timeoutByServer
-		|| ( ent->client != &level.clients[level.timeoutCaller] && ent->client->pers.privileges < 1 ) ) {
-		trap_SendServerCommand( ent - g_entities, "print \"You did not call the current timeout\n\"" );
-		return;
-	}
-
-	level.timeoutEndTime = level.time + 5000;
-	trap_SetConfigstring( CS_TIMEOUT_END_TIME, va( "%i", level.timeoutEndTime ) );
-	trap_SendServerCommand( -1, va( "pcp \"%s has called timein\n\"", ent->client->pers.netname ) );
-}
-
-
-/*
-=================
-Cmd_Players_f
-
-Retail qagamex86 0x10060ee0: every connected player's slot, Steam id,
-privilege (moderator M, administrator A) and name.
-=================
-*/
-static void Cmd_Players_f( gentity_t *ent ) {
-	static const char	privilegeMarks[] = " MA*";
-	gclient_t			*cl;
-	int					i;
-
-	for ( i = 0; i < level.maxclients; i++ ) {
-		cl = &level.clients[i];
-		if ( !g_entities[i].inuse || cl->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-		// retail prints the id with %llu, which the game's formatter lacks
-		trap_SendServerCommand( ent - g_entities, va( "print \"%2d %s %c %s\n\"", i, G_SteamIdString( trap_GetSteamId64( i ) ),
-			privilegeMarks[cl->pers.privileges & 3], cl->pers.netname ) );
-	}
-}
-
-
-/*
-=================
-G_AdminCommand
-
-Retail qagamex86 0x10062e20 looks every client command up in this table
-(0x10080750) before the others.  A player below a command's privilege (1
-moderator, 2 administrator) is told so; retail's rcon entry has no
-handler and falls through.  FnQL-game grants no privileges yet (access
-lists, milestone 5), so of the privileged commands only the refusal is
-implemented.  (Retail also runs the table from the server console,
-ConsoleCommand 0x10066ef2.)
-=================
-*/
-typedef struct {
-	int			privilege;
-	const char	*name;
-	void		(*handler)( gentity_t *ent );
-	qboolean	retailHandler;		// rcon has none and falls through
-	const char	*help;
-} adminCommand_t;
-
-static void Cmd_AdminHelp_f( gentity_t *ent );
-
-static const adminCommand_t adminCommands[] = {
-	{ 0, "?", Cmd_AdminHelp_f, qtrue, "" },
-	{ 0, "players", Cmd_Players_f, qtrue, "^3 show currently connected players and their status" },
-	{ 0, "timeout", Cmd_Timeout_f, qtrue, "^3 call a time out, temporarily pausing the game" },
-	{ 0, "timein", Cmd_Timein_f, qtrue, "^3 call a time in, unpausing the game" },
-	{ 1, "allready", NULL, qtrue, "^3 force all players to 'ready' and start the match" },
-	{ 1, "pause", NULL, qtrue, "^3 pause the current match indefinitely" },
-	{ 1, "unpause", NULL, qtrue, "^3 unpause the current match" },
-	{ 1, "lock", NULL, qtrue, " [team]^3 stops players from joining the team" },
-	{ 1, "unlock", NULL, qtrue, " [team]^3 allows players to join the team" },
-	{ 1, "put", NULL, qtrue, " <playerid> <team>^3 move a player to a team, use (R/B/S) or (F/S)" },
-	{ 1, "mute", NULL, qtrue, " <playerid>^3 temporarily mutes a player on the server" },
-	{ 1, "unmute", NULL, qtrue, " <playerid>^3 restores a muted player's ability to chat" },
-	{ 1, "tempban", NULL, qtrue, " <playerid>^3 temporarily kicks a player from the server for the match" },
-	{ 1, "ban", NULL, qtrue, " <playerid>^3 permenantly bans a player from the server" },
-	{ 1, "listaccess", NULL, qtrue, " <page>^3 lists the accounts with access " },
-	{ 1, "unban", NULL, qtrue, " <account>^3 removes a player from the banlist" },
-	{ 1, "opsay", NULL, qtrue, " <message> ^3send a message to everyone on the server" },
-	{ 2, "addadmin", NULL, qtrue, " <playerid>^3 give a player admin privileges" },
-	{ 2, "addmod", NULL, qtrue, " <playerid>^3 give a player moderator privileges" },
-	{ 2, "demote", NULL, qtrue, " <playerid>^3 remove a player's privileges" },
-	{ 1, "abort", NULL, qtrue, "^3 abandon the current game and go back to warmup" },
-	{ 1, "addscore", NULL, qtrue, " <playerid> <score>^3 add points to a player's score" },
-	{ 1, "addteamscore", NULL, qtrue, " <team> <score>^3 add points to a team's score, use (R/B)" },
-	{ 1, "setmatchtime", NULL, qtrue, " <time> ^3set match time in seconds" },
-	{ 2, "rcon", NULL, qfalse, " <command> ^3run command on server" },
-};
-
-
-/*
-=================
-Cmd_AdminHelp_f
-
-Retail qagamex86 0x10062d60 ("?"): the commands the player may use, with
-their help.
-=================
-*/
-static void Cmd_AdminHelp_f( gentity_t *ent ) {
-	int		i;
-
-	for ( i = 0; i < ARRAY_LEN( adminCommands ); i++ ) {
-		if ( ent->client->pers.privileges >= adminCommands[i].privilege ) {
-			trap_SendServerCommand( ent - g_entities, va( "print \"%s%s\n\"", adminCommands[i].name, adminCommands[i].help ) );
-		}
-	}
-}
-
-
-static qboolean G_AdminCommand( gentity_t *ent, const char *cmd ) {
-	const adminCommand_t	*command;
-	int						i;
-
-	for ( i = 0; i < ARRAY_LEN( adminCommands ); i++ ) {
-		command = &adminCommands[i];
-		if ( Q_stricmp( cmd, command->name ) ) {
-			continue;
-		}
-		if ( !command->retailHandler ) {
-			return qfalse;
-		}
-		if ( ent->client->pers.privileges < command->privilege ) {
-			trap_SendServerCommand( ent - g_entities,
-				"print \"You do not have the privileges required to use this command\n\"" );
-			return qtrue;
-		}
-		if ( !command->handler ) {
-			return qfalse;	// a privileged command FnQL-game does not have yet
-		}
-		command->handler( ent );
-		return qtrue;
-	}
-	return qfalse;
-}
-
-
-/*
-=================
 ClientCommand
 =================
 */
@@ -2851,6 +2333,10 @@ void ClientCommand( int clientNum ) {
 	}
 	if (Q_stricmp (cmd, "tell") == 0) {
 		Cmd_Tell_f ( ent );
+		return;
+	}
+	if (Q_stricmp(cmd, "botSay") == 0) {
+		Cmd_BotSay_f(ent);
 		return;
 	}
 #ifdef MISSIONPACK
@@ -2928,6 +2414,14 @@ void ClientCommand( int clientNum ) {
 		Cmd_Noclip_f (ent);
 	else if (Q_stricmp (cmd, "kill") == 0)
 		Cmd_Kill_f (ent);
+	else if (Q_stricmp (cmd, "dropflag") == 0)
+		G_DropItemCommand( ent, DROP_FLAG );
+	else if (Q_stricmp (cmd, "droppowerup") == 0)
+		G_DropItemCommand( ent, DROP_POWERUP );
+	else if (Q_stricmp (cmd, "droprune") == 0)
+		G_DropItemCommand( ent, DROP_RUNE );
+	else if (Q_stricmp (cmd, "dropweapon") == 0)
+		G_DropItemCommand( ent, DROP_WEAPON );
 	else if (Q_stricmp (cmd, "teamtask") == 0)
 		Cmd_TeamTask_f (ent);
 	else if (Q_stricmp (cmd, "levelshot") == 0)
@@ -2940,6 +2434,12 @@ void ClientCommand( int clientNum ) {
 		Cmd_FollowCycle_f (ent, -1);
 	else if (Q_stricmp (cmd, "team") == 0)
 		Cmd_Team_f (ent);
+	else if (Q_stricmp(cmd, "spec") == 0)
+		Cmd_Spec_f(ent);
+	else if (Q_stricmp(cmd, "racepoint") == 0)
+		Cmd_RacePoint_f(ent);
+	else if (Q_stricmp(cmd, "raceinit") == 0)
+		G_ResetRace(ent->client);
 	else if (Q_stricmp (cmd, "forfeit") == 0)
 		Cmd_Forfeit_f (ent);
 	else if (Q_stricmp (cmd, "specresp") == 0)	// the retail cgame asks for the item timers

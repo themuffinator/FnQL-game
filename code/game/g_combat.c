@@ -34,7 +34,7 @@ and latest scorers.  Red rover's own tally arrives with milestone 6.
 ============
 */
 void AddScore( gentity_t *ent, vec3_t origin, int score ) {
-	if ( !ent->client || level.warmupTime || level.intermissionQueued || level.intermissiontime ) {
+	if ( !ent->client || level.shuffling || level.warmupTime || level.intermissionQueued || level.intermissiontime ) {
 		return;
 	}
 	if ( bot_gauntletOnly.integer && !( ent->r.svFlags & SVF_BOT ) ) {
@@ -48,6 +48,15 @@ void AddScore( gentity_t *ent, vec3_t origin, int score ) {
 	}
 	Q_strncpyz( level.lastScorer, ent->client->pers.netname, sizeof( level.lastScorer ) );
 
+	if ( g_gametype.integer == GT_RED_ROVER ) {
+		ent->client->roundScore += score;
+		if ( !g_rrAllowNegativeScores.integer && ent->client->ps.persistant[PERS_SCORE] + score < 0 ) {
+			if ( ent->client->ps.persistant[PERS_SCORE] > 0 ) ScorePlum(ent, origin, -ent->client->ps.persistant[PERS_SCORE]);
+			ent->client->ps.persistant[PERS_SCORE] = 0;
+			CalculateRanks();
+			return;
+		}
+	}
 	// show score plum
 	ScorePlum(ent, origin, score);
 	//
@@ -147,77 +156,38 @@ TossClientCubes
 */
 extern gentity_t	*neutralObelisk;
 
+// Retail 0x10046970: one team skull at the neutral generator, carried
+// enemy skulls at the player's origin. Preserve upper bits and random order.
 void TossClientCubes( gentity_t *self ) {
-	gitem_t		*item;
-	gentity_t	*drop;
-	vec3_t		velocity;
-	vec3_t		angles;
-	vec3_t		origin;
-
-	self->client->ps.generic1 = 0;
-
-	// this should never happen but we should never
-	// get the server to crash due to skull being spawned in
-	if (!G_EntitiesFree()) {
-		return;
-	}
-
-	if( self->client->sess.sessionTeam == TEAM_RED ) {
-		item = BG_FindItem( "Red Skull" );
-	}
-	else {
-		item = BG_FindItem( "Blue Skull" );
-	}
-
-	angles[YAW] = (float)(level.time % 360);
-	angles[PITCH] = 0;	// always forward
-	angles[ROLL] = 0;
-
-	AngleVectors( angles, velocity, NULL, NULL );
-	VectorScale( velocity, 150, velocity );
-	velocity[2] += 200 + crandom() * 50;
-
-	if( neutralObelisk ) {
-		VectorCopy( neutralObelisk->s.pos.trBase, origin );
+	int carried = self->client->ps.generic1 & 63;
+	int team = self->client->sess.sessionTeam, i;
+	vec3_t origin = { 0, 0, 0 };
+	self->client->ps.generic1 &= 0xc0;
+	if ( neutralObelisk && neutralObelisk->inuse ) {
+		VectorCopy(neutralObelisk->s.pos.trBase, origin);
 		origin[2] += 44;
-	} else {
-		VectorClear( origin ) ;
 	}
-
-	drop = LaunchItem( item, origin, velocity );
-
-	drop->nextthink = level.time + g_cubeTimeout.integer * 1000;
-	drop->think = G_FreeEntity;
-	drop->spawnflags = self->client->sess.sessionTeam;
+	if ( !g_dropSkulls.integer ) carried = 0;
+	for ( i = 0; i <= carried && G_EntitiesFree(); ++i ) {
+		int skullTeam = i ? OtherTeam(team) : team;
+		gitem_t *item = BG_FindItem(skullTeam == TEAM_RED ? "Red Skull" : "Blue Skull");
+		float yaw = (float)((double)(i ? rand() % 360 : level.time % 360) * 0.01745329238474369);
+		vec3_t velocity;
+		gentity_t *drop;
+		long long deadline;
+		if ( !item ) break;
+		velocity[0] = (float)((double)(float)cos(yaw) * 150.0);
+		velocity[1] = (float)((double)(float)sin(yaw) * 150.0);
+		velocity[2] = (float)(G_CRandom() * 50.0 + 130.0);
+		drop = LaunchItem(item, i ? self->s.pos.trBase : origin, velocity);
+		deadline = (long long)level.time + (long long)g_cubeTimeout.integer * 1000;
+		drop->nextthink = deadline > INT_MAX ? INT_MAX : deadline < 1 ? 1 : (int)deadline;
+		drop->think = G_FreeEntity;
+		drop->spawnflags = skullTeam;
+	}
 }
 
 
-/*
-=================
-TossClientPersistantPowerups
-=================
-*/
-void TossClientPersistantPowerups( gentity_t *ent ) {
-	gentity_t	*powerup;
-
-	if( !ent->client ) {
-		return;
-	}
-
-	if( !ent->client->persistantPowerup ) {
-		return;
-	}
-
-	powerup = ent->client->persistantPowerup;
-
-	powerup->r.svFlags &= ~SVF_NOCLIENT;
-	powerup->s.eFlags &= ~EF_NODRAW;
-	powerup->r.contents = CONTENTS_TRIGGER;
-	trap_LinkEntity( powerup );
-
-	ent->client->ps.stats[STAT_PERSISTANT_POWERUP] = 0;
-	ent->client->persistantPowerup = NULL;
-}
 #endif
 
 
@@ -263,7 +233,7 @@ void GibEntity( gentity_t *self ) {
 	self->s.eType = ET_INVISIBLE;
 	self->r.contents = 0;
 
-	// freeze tag's thaw of a gibbed ice block arrives with milestone 6
+	// Frozen-shell removal and thaw/respawn events are owned by g_rounds.c.
 }
 
 /*
@@ -411,7 +381,7 @@ Retail qagamex86 0x10046550: count a Quake Live medal and announce it to
 everyone from the player's position.
 ==================
 */
-static void G_AwardMedal( gentity_t *ent, medal_t medal ) {
+void G_AwardMedal( gentity_t *ent, medal_t medal ) {
 	gclient_t	*client = ent->client;
 	gentity_t	*te;
 
@@ -483,8 +453,8 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 	vec3_t		end;
 
 	if ( !g_quadHog.integer ) {
-		// red rover's infected bonus and death penalty arrive with milestone 6
-		AddScore( attacker, self->r.currentOrigin, 1 );
+		AddScore( attacker, self->r.currentOrigin, g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer && client->sess.sessionTeam == TEAM_RED ? g_rrInfectedZombieFragBonus.integer : 1 );
+		if ( g_gametype.integer == GT_RED_ROVER && g_rrDeathScorePenalty.integer ) AddScore(self, self->r.currentOrigin, g_rrDeathScorePenalty.integer);
 	} else if ( g_quadHog.integer == 1 && g_gametype.integer == GT_FFA ) {
 		// quad hog: only kills by or of the quad holder score
 		if ( killer->ps.powerups[PW_QUAD] || client->ps.powerups[PW_QUAD] ) {
@@ -507,7 +477,7 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 		G_AwardMedal( attacker, MEDAL_FIRSTFRAG );
 	}
 
-	if ( meansOfDeath == MOD_GAUNTLET ) {
+	if ( meansOfDeath == MOD_GAUNTLET && !(g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer && killer->sess.sessionTeam == TEAM_RED) ) {
 		// play humiliation on the player and the target
 		G_AwardSprite( attacker, PERS_GAUNTLET_FRAG_COUNT, EF_AWARD_GAUNTLET );
 		client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_GAUNTLETREWARD;
@@ -595,8 +565,8 @@ static void G_ReturnCarriedFlag( gclient_t *client ) {
 player_die
 
 Retail qagamex86 0x10047200.  Freeze tag's freezing, red rover's
-infection, team-kill complaints and the round checks of the round-based
-modes arrive with milestone 6.
+infection and round checks dispatch to the mode controller. Team-kill
+complaints remain a separate compatibility task.
 ==================
 */
 void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int meansOfDeath ) {
@@ -645,7 +615,8 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		self->activator->nextthink = level.time;
 	}
 #endif
-	client->ps.pm_type = PM_DEAD;
+	client->ps.pm_type = g_gametype.integer == GT_FREEZE && meansOfDeath != MOD_SWITCHTEAM ? PM_FREEZE : PM_DEAD;
+	if ( client->ps.pm_type == PM_FREEZE ) client->thawRemaining = g_freezeThawTime.integer;
 
 	if ( attacker ) {
 		killer = attacker->s.number;
@@ -682,12 +653,30 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		killer, self->s.number, meansOfDeath, killerName,
 		client->pers.netname, obit );
 
+	// Retail 0x10059d40: flag/skull carriers use objective announcements;
+	// other enemy powerup carriers announce the highest-priority powerup.
+	if ( attacker && attacker->client && attacker != self && !OnSameTeam(attacker, self)
+		&& !client->ps.powerups[PW_REDFLAG] && !client->ps.powerups[PW_BLUEFLAG]
+		&& !client->ps.powerups[PW_NEUTRALFLAG]
+		&& (g_gametype.integer != GT_HARVESTER || !(client->ps.generic1 & 63)) ) {
+		const char *powerup = client->ps.powerups[PW_QUAD] ? "Quad Damage"
+			: client->ps.powerups[PW_BATTLESUIT] ? "Battle Suit"
+			: client->ps.powerups[PW_REGEN] ? "Regeneration"
+			: client->ps.powerups[PW_HASTE] ? "Haste"
+			: client->ps.powerups[PW_INVIS] ? "Invisibility" : NULL;
+		qboolean objective = g_gametype.integer >= GT_CTF && g_gametype.integer <= GT_DOMINATION && g_gametype.integer != GT_FREEZE;
+		if ( g_gametype.integer == GT_ATTACK_DEFEND ) objective = qtrue;
+		if ( powerup ) trap_SendServerCommand(-1, va("print \"%s%s killed the %s carrier!^7\n\"", attacker->client->pers.netname, objective ? "^7" : "^3", powerup));
+	}
+
 	// broadcast the death event to everyone
-	ent = G_TempEntity( self->r.currentOrigin, EV_OBITUARY );
-	ent->s.eventParm = meansOfDeath;
-	ent->s.otherEntityNum = self->s.number;
-	ent->s.otherEntityNum2 = killer;
-	ent->r.svFlags = SVF_BROADCAST;	// send to everyone
+	if ( !level.shuffling ) {
+		ent = G_TempEntity( self->r.currentOrigin, EV_OBITUARY );
+		ent->s.eventParm = meansOfDeath;
+		ent->s.otherEntityNum = self->s.number;
+		ent->s.otherEntityNum2 = killer;
+		ent->r.svFlags = SVF_BROADCAST;	// send to everyone
+	}
 
 	self->enemy = attacker;
 
@@ -774,8 +763,10 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	self->s.weapon = WP_NONE;
 	self->s.powerups = 0;
 	self->s.loopSound = 0;
-	self->r.contents = CONTENTS_CORPSE;
-	self->r.maxs[2] = -8;
+	if ( client->ps.pm_type != PM_FREEZE ) {
+		self->r.contents = CONTENTS_CORPSE;
+		self->r.maxs[2] = -8;
+	}
 
 	// the body and the view face the killer
 	self->s.angles[PITCH] = 0;
@@ -792,7 +783,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 
 	// don't allow respawn until the death anim is done
 	// g_forcerespawn may force spawning at some later time
-	client->respawnTime = level.time + g_respawn_delay_min.integer;
+	if ( client->ps.pm_type != PM_FREEZE ) client->respawnTime = level.time + g_respawn_delay_min.integer;
 	if ( level.warmupTime > 0 ) {
 		switch ( g_gametype.integer ) {
 		case GT_CLAN_ARENA:
@@ -807,11 +798,11 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		}
 	}
 
-	if ( meansOfDeath == MOD_SUICIDE ) {
+	if ( meansOfDeath == MOD_SUICIDE && client->ps.pm_type != PM_FREEZE ) {
 		// a suicide waits g_allowKill longer, and always gibs
 		client->respawnTime += g_allowKill.integer;
 		GibEntity( self );
-	} else if ( self->health <= GIB_HEALTH ) {
+	} else if ( self->health <= GIB_HEALTH && client->ps.pm_type != PM_FREEZE ) {
 		GibEntity( self );
 		// three gibs, each within three seconds of the last
 		if ( attacker && attacker->client ) {
@@ -848,10 +839,13 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 			self->health = GIB_HEALTH+1;
 		}
 
+		if ( client->ps.pm_type != PM_FREEZE ) {
 		client->ps.legsAnim =
 			( ( client->ps.legsAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | anim;
 		client->ps.torsoAnim =
 			( ( client->ps.torsoAnim & ANIM_TOGGLEBIT ) ^ ANIM_TOGGLEBIT ) | anim;
+
+		}
 
 		// the body can still be gibbed
 		self->die = body_die;
@@ -863,6 +857,8 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 #endif
 	}
 
+	if ( client->ps.pm_type == PM_FREEZE ) G_FreezeDeath(self, meansOfDeath);
+	if ( G_IsRoundBasedGametype(g_gametype.integer) ) G_RoundDeath(self);
 	trap_LinkEntity (self);
 
 }
@@ -1314,7 +1310,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	if ( !dir ) {
 		dflags |= DAMAGE_NO_KNOCKBACK;
 	} else {
-		VectorNormalize( dir );
+		// Retail 0x10048d9d uses the same x87-precision normalization as
+		// Pmove; the legacy float dot product perturbs rocket-jump velocity.
+		PM_VectorNormalize( dir );
 	}
 
 	// knockback scales by weapon; rocket and plasma jumps have their own
@@ -1378,6 +1376,8 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			client->ps.pm_flags |= PMF_TIME_KNOCKBACK;
 		}
 	}
+
+	if ( g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer && attacker->client && attacker->client->sess.sessionTeam == TEAM_RED && mod == MOD_GAUNTLET ) damage = 666;
 
 	// check for completely getting out of the damage
 	if ( !( dflags & DAMAGE_NO_PROTECTION ) ) {
@@ -1463,6 +1463,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	// save some from armor
 	asave = G_ArmorSave( targ, damage, dflags );
 	take = damage - asave;
+	if ( !(dflags & DAMAGE_NO_PROTECTION) && (g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_RED_ROVER || g_gametype.integer == GT_ATTACK_DEFEND) && !G_RoundDamage( attacker, targ, &take, &asave ) ) return;
 
 	// dmflags can spare a player their own health or armor
 	if ( g_gametype.integer != GT_CLAN_ARENA && g_gametype.integer != GT_ATTACK_DEFEND && g_dmflags.integer && targ == attacker ) {
@@ -1477,6 +1478,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	// a frozen player takes no damage
 	if ( client && client->ps.powerups[PW_FROZEN] ) {
 		take = 0;
+		// Retail 0x10049659: environmental damage eventually clears an ice
+		// block; falling/telefrag/crush do so immediately.
+		if ( mod == MOD_FALLING || mod == MOD_TELEFRAG || mod == MOD_CRUSH
+			|| ((mod == MOD_SLIME || mod == MOD_LAVA || mod == MOD_SUICIDE || mod == MOD_TRIGGER_HURT)
+				&& (long long)level.time > (long long)client->freezeTime + g_freezeEnvironmentalRespawnDelay.integer) ) G_FreezeRemove(targ);
 	}
 
 	if ( g_debugDamage.integer ) {
@@ -1507,6 +1513,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		client->lasthurt_mod = mod;
 		client->prevhurt_time = client->lasthurt_time;
 		client->lasthurt_time = level.time;
+		client->regenDamageTime = level.time;
+		if ( g_regenHealth.integer ) client->healthRegenActive = qtrue;
+		if ( g_regenArmor.integer ) client->armorRegenActive = qtrue;
 	}
 
 	// See if it's the player hurting the emeny flag carrier
@@ -1562,6 +1571,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 
 		G_StatsDamage( targ, attacker, mod, damage );
+		// Retail 0x1004999f counts self/friendly damage for AD's perfect
+		// round award too; the public enemy-damage statistic does not.
+		if ( client && g_gametype.integer == GT_ATTACK_DEFEND && damage ) client->adDamaged = qtrue;
 
 		// the attacker's killing blows
 		if ( targ->health > 0 && targ->health - take <= 0 && client && attacker->client && attacker != targ ) {
@@ -1611,6 +1623,8 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			}
 			targ->enemy = attacker;
 			targ->die( targ, inflictor, attacker, take, mod );
+			if ( g_gametype.integer == GT_FREEZE && client && g_freezeProtectedSpawnTime.integer > 0
+				&& (long long)level.time < (long long)client->respawnTime + g_freezeProtectedSpawnTime.integer ) G_FreezeRemove(targ);
 		}
 	}
 }

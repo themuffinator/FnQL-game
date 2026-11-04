@@ -1,0 +1,24 @@
+// Hand-authored fixture: default pushes add no sound; bounce pushes register
+// jumppad.wav, including when the default push was spawned first.
+{
+"classname" "worldspawn"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-400 320 250"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-260 320 40"
+}
+{
+"classname" "target_push"
+"origin" "-400 320 40"
+"angle" "0"
+}
+{
+"classname" "target_push"
+"origin" "-400 -320 40"
+"angle" "180"
+"spawnflags" "1"
+}

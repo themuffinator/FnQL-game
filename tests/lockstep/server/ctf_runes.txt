@@ -1,0 +1,22 @@
+# G3: spidercrossings, ctf, cheats, g_runes 1, 1800 frames.
+# Initial runes alternate between the two teams' spawn sets. Manual and
+# death drops relocate to newly selected sides; restart resets reservations.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha setviewpos 0 -3000 170 90
+clientcmd 22 bravo setviewpos 0 3000 170 270
+clientcmd 30 alpha give Scout
+clientcmd 32 bravo give Guard
+clientcmd 40 alpha droprune
+clientcmd 42 alpha setviewpos 240 -2900 170 0
+clientcmd 80 bravo kill
+at 120 bravo buttons=attack
+at 122 bravo buttons=0
+clientcmd 150 bravo setviewpos 240 2900 170 0
+clientcmd 1400 alpha score
+cmd 1500 map_restart 0

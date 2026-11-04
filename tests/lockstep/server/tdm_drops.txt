@@ -1,0 +1,69 @@
+# G3: manual item transfers on campgrounds (--cheats --factory tdm
+# --frames 1800). Refusals, weapon ammo and switching, timed powerups,
+# the ten-second lifetime of unclaimed drops, and near-expiry drops.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client spectator name Spectator
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+
+clientcmd 10 alpha dropflag
+clientcmd 12 alpha droprune
+cmd 14 g_dropCmds 0
+clientcmd 16 alpha dropweapon
+clientcmd 18 alpha droppowerup
+clientcmd 20 alpha dropflag
+cmd 22 g_dropCmds 7
+clientcmd 24 spectator dropweapon
+clientcmd 26 spectator droppowerup
+clientcmd 28 alpha dropweapon
+
+# Give two weapons; dropping the rail selects the next lower owned weapon.
+# Each command's selected weapon is kept in the scripted usercmd too.
+clientcmd 40 alpha setviewpos -260 320 40 0
+clientcmd 42 alpha give Rocket Launcher
+clientcmd 44 alpha give Railgun
+at 46 alpha weapon=7
+clientcmd 70 alpha dropweapon
+at 70 alpha weapon=5
+clientcmd 72 alpha setviewpos -400 320 40 180
+clientcmd 90 bravo setviewpos -196 320 40 0
+clientcmd 110 alpha dropweapon
+at 110 alpha weapon=2
+
+# Decaying quad waits three seconds before its new owner picks it up.
+clientcmd 140 alpha setviewpos -260 320 40 0
+clientcmd 142 bravo setviewpos -700 320 40 0
+clientcmd 144 alpha give Quad Damage
+clientcmd 146 alpha give Battle Suit
+clientcmd 150 alpha droppowerup
+clientcmd 152 alpha setviewpos -400 -320 40 0
+clientcmd 270 bravo setviewpos -196 320 40 0
+
+# Nondecaying powerups keep their duration; an unclaimed one disappears.
+cmd 300 g_droppedPowerupsDecay 0
+clientcmd 300 bravo setviewpos -700 320 40 0
+clientcmd 302 alpha setviewpos -260 320 40 0
+clientcmd 304 alpha give Haste
+clientcmd 306 alpha droppowerup
+clientcmd 308 alpha setviewpos -400 -320 40 0
+clientcmd 400 bravo setviewpos -196 320 40 0
+clientcmd 418 alpha setviewpos -260 320 40 0
+clientcmd 420 alpha give Regeneration
+clientcmd 422 alpha droppowerup
+clientcmd 424 alpha setviewpos -400 -320 40 0
+clientcmd 424 bravo setviewpos -700 320 40 0
+
+# This quad has less than one second left when dropped: it must disappear
+# at its original expiry instead of granting a fresh ten-second lifetime.
+cmd 498 g_droppedPowerupsDecay 1
+clientcmd 500 alpha give Quad Damage
+clientcmd 1660 alpha setviewpos -260 320 40 0
+clientcmd 1675 alpha droppowerup
+clientcmd 1676 alpha setviewpos -400 -320 40 0
+
+clientcmd 750 alpha score
+clientcmd 752 bravo score

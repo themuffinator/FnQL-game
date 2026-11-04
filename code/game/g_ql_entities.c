@@ -76,34 +76,6 @@ void SP_target_cvar( gentity_t *ent ) {
 	ent->use = Use_Target_Cvar;
 }
 
-/*QUAKED team_dom_point (0 .5 .8) (-16 -16 -16) (16 16 16)
-Domination control point.  Removed in every other gametype.
-"identifier"	point number
-*/
-void SP_team_dom_point( gentity_t *ent ) {
-	if ( g_gametype.integer != GT_DOMINATION ) {
-		G_FreeEntity( ent );
-		return;
-	}
-	// Domination control points arrive with the round-based and special
-	// modes (docs/PLAN.md milestone 6).
-	G_Printf( "team_dom_point: Domination is not implemented yet\n" );
-	G_FreeEntity( ent );
-}
-
-/*QUAKED race_point (0 .5 .8) (-16 -16 -16) (16 16 16) initial
-Race checkpoint.  Removed in every other gametype.
-*/
-void SP_race_point( gentity_t *ent ) {
-	if ( g_gametype.integer != GT_RACE ) {
-		G_FreeEntity( ent );
-		return;
-	}
-	// Race checkpoints arrive with milestone 6.
-	G_Printf( "race_point: Race is not implemented yet\n" );
-	G_FreeEntity( ent );
-}
-
 // Steam achievement ids for target_achievement "id" 1..7 (retail table at
 // qagamex86 0x1008d7cc).
 static const int targetAchievementIds[] = { 0, 2, 3, 4, 5, 6, 7, 8 };
@@ -167,11 +139,11 @@ void SP_target_remove_keys( gentity_t *ent ) {
 }
 
 /*QUAKED trigger_capturezone (.5 .5 .5) ?
-Flag capture area for maps without flag stands.
+Flag capture area. "team" is red or blue; "count" is the capture score.
+The corresponding flag entity must also exist in the map.
 */
 void SP_trigger_capturezone( gentity_t *ent ) {
 	InitTrigger( ent );
-	// The capture touch handler arrives with the flag modes in milestone 5;
-	// no stock map uses this entity.
+	ent->touch = Team_TouchCaptureZone;
 	trap_LinkEntity( ent );
 }

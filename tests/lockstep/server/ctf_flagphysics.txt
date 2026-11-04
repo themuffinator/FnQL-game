@@ -1,0 +1,22 @@
+# G3: --cheats --map ironworks --factory ctf --frames 1000.
+# Run both with g_flagPhysics 1 and with its default 0. Alpha drops the
+# blue flag over the blue base's jump pad, then into its teleporter. Each
+# drop expires before the next pickup. No user input devices are involved.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+
+clientcmd 20 alpha setviewpos 384 224 40 0
+clientcmd 30 alpha setviewpos 1312 248 60 0
+clientcmd 32 alpha dropflag
+clientcmd 34 alpha setviewpos 384 224 40 0
+
+clientcmd 500 alpha setviewpos 384 224 40 0
+clientcmd 510 alpha setviewpos 2176 -832 40 0
+clientcmd 512 alpha dropflag
+clientcmd 514 alpha setviewpos 384 224 40 0
+clientcmd 960 alpha score

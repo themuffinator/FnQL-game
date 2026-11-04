@@ -1,0 +1,4 @@
+# Compare stock-map startup with spectators, including fallback view height.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo

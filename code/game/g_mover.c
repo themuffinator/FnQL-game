@@ -969,7 +969,10 @@ void SP_func_door (gentity_t *ent) {
 	abs_movedir[1] = fabs(ent->movedir[1]);
 	abs_movedir[2] = fabs(ent->movedir[2]);
 	VectorSubtract( ent->r.maxs, ent->r.mins, size );
-	distance = DotProduct( abs_movedir, size ) - lip;
+	// Retail 0x1005fbe5-0x1005fbf5 stores only after subtracting the lip.
+	// Rounding the dot product first loses the small transverse component
+	// of a 360-degree door (Brimstone Abbey) and changes its wire velocity.
+	distance = (float)(PM_Dot3( abs_movedir, size ) - lip);
 	VectorMA( ent->pos1, distance, ent->movedir, ent->pos2 );
 
 	// if "start_open", reverse position 1 and 2

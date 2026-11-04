@@ -762,6 +762,12 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     (home / "baseq3" / "lockstep").mkdir(parents=True)
     script_qpath = f"lockstep/{scenario.name}"
     shutil.copy2(scenario, home / "baseq3" / "lockstep" / scenario.name)
+    if args.factories:
+        # Hand-authored factory definitions exercise the host registry without
+        # copying retail data or touching the user's installed definitions.
+        scripts_dir = home / "baseq3" / "scripts"
+        scripts_dir.mkdir()
+        shutil.copy2(args.factories, scripts_dir / "lockstep.factories")
     if provider == "fnql":
         shutil.copy2(args.module, home / "baseq3" / MODULE_NAME)
     command = [
@@ -782,6 +788,13 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     ]
     for name, value in args.set:
         command += ["+set", name, value]
+    if args.entities:
+        # Hand-authored entity fixtures use the installed BSP's geometry.
+        # Copy independently into each disposable home; never edit the pak.
+        entity_dir = home / "baseq3" / "lockstep-entities"
+        entity_dir.mkdir()
+        shutil.copy2(args.entities, entity_dir / f"{args.map}.ent")
+        command += ["+set", "sv_altEntDir", "lockstep-entities"]
     # --cheats starts the map with devmap, so a scenario may use cheat commands
     # such as setviewpos to put a player where the test needs it
     map_command = "devmap" if args.cheats else "map"
@@ -833,6 +846,10 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     fatal = [line for line in log.splitlines() if any(marker in line for marker in LOG_ERRORS)]
     if fatal and not result.error:
         result.error = "engine error in the log: " + next((l for l in fatal if "ERROR" in l), fatal[0])
+    if args.entities and f"Loaded entity override lockstep-entities/{args.map}.ent (" not in log:
+        result.error = result.error or "engine did not load the requested entity fixture"
+    if args.factories and "loaded factories from scripts/lockstep.factories, total " not in log:
+        result.error = result.error or "engine did not load the requested factory fixture"
     record_path = home / "lockstep.rec"
     if not record_path.is_file():
         result.error = result.error or "no recording was written"
@@ -850,6 +867,20 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
                                         f"{END_REASONS.get(rec.end[1], rec.end[1])}, wanted {args.frames}")
     if not result.error and (rec.provider != provider or (provider == "fnql") != ("VM_LoadDll(qagame): FnQL-game " in log)):
         result.error = f"vm_gameProvider {provider} did not host the expected module (recorded {rec.provider!r})"
+    # Differential agreement alone is insufficient if both runs refused the
+    # requested transition. Check the published factory at explicit frames.
+    expected_factories = dict(args.expect_factory)
+    serverinfo = {}
+    for frame in rec.frames:
+        for index, value in frame.configstrings:
+            if index == 0:
+                serverinfo = parse_info(value) or {}
+        if frame.number in expected_factories:
+            expected = expected_factories[frame.number]
+            actual = serverinfo.get("g_factory")
+            if actual != expected:
+                result.error = result.error or (f"frame {frame.number}: g_factory {actual!r}, expected {expected!r}")
+                break
     return result
 
 
@@ -926,6 +957,12 @@ def main() -> int:
                         help="scenario script (FnQL docs/fnql/SERVER_LOCKSTEP.md grammar)")
     parser.add_argument("--map", default="campgrounds")
     parser.add_argument("--factory", default="ffa")
+    parser.add_argument("--factories", type=Path,
+                        help="hand-authored factory fixture, mounted as scripts/lockstep.factories")
+    parser.add_argument("--expect-factory", nargs=2, action="append", default=[], metavar=("FRAME", "ID"),
+                        help="require g_factory at this recorded frame in both runs (repeatable)")
+    parser.add_argument("--entities", type=Path,
+                        help="hand-authored .ent fixture, mounted through sv_altEntDir")
     parser.add_argument("--cheats", action="store_true",
                         help="start the map with devmap (sv_cheats 1) in both runs")
     parser.add_argument("--seed", type=int, default=1, help="sv_lockstepSeed for both runs")
@@ -975,6 +1012,16 @@ def main() -> int:
         return HARNESS_ERROR
     args.engine = Path(args.engine).resolve()
     args.scenario = args.scenario.resolve()
+    if args.factories:
+        args.factories = args.factories.resolve()
+        if not args.factories.is_file():
+            print("--factories needs an existing file", file=sys.stderr)
+            return HARNESS_ERROR
+    if args.entities:
+        args.entities = args.entities.resolve()
+        if not args.entities.is_file() or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", args.map):
+            print("--entities needs an existing file and a short, plain --map name", file=sys.stderr)
+            return HARNESS_ERROR
     if not args.scenario.is_file():
         print(f"scenario not found: {args.scenario}", file=sys.stderr)
         return HARNESS_ERROR
@@ -983,6 +1030,15 @@ def main() -> int:
         return HARNESS_ERROR
     if args.frames <= 0:
         print("--frames must be positive", file=sys.stderr)
+        return HARNESS_ERROR
+    try:
+        args.expect_factory = [(int(frame), name) for frame, name in args.expect_factory]
+        if any(frame < 0 or frame >= args.frames for frame, _ in args.expect_factory):
+            raise ValueError
+        if len(dict(args.expect_factory)) != len(args.expect_factory):
+            raise ValueError
+    except ValueError:
+        print("--expect-factory needs unique integer frames within --frames", file=sys.stderr)
         return HARNESS_ERROR
     if not (0 <= args.seed <= 0xFFFFFFFF):
         print("--seed must be an unsigned 32-bit integer", file=sys.stderr)

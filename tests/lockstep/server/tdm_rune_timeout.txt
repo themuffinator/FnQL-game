@@ -1,0 +1,33 @@
+# G3: --cheats --factory tdm --set g_runes 1 --frames 1800.
+# Scout armor drain, Armor Regen and dropped-rune relocation pause during
+# timeout. Rune commands are refused until play resumes; team changes drop
+# the held rune through the ordinary death path.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+at 0 charlie weapon=2
+cmd 12 g_timeoutCount 2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 26 charlie readyup
+clientcmd 990 alpha setviewpos -260 320 40 0
+clientcmd 992 bravo setviewpos -700 320 40 0
+clientcmd 994 charlie setviewpos -400 -320 40 270
+clientcmd 996 alpha give Scout
+clientcmd 998 alpha give armor
+clientcmd 1000 bravo give Armor Regen
+clientcmd 1002 charlie give Guard
+clientcmd 1004 charlie droprune
+clientcmd 1006 charlie setviewpos 120 -320 40 0
+clientcmd 1016 alpha timeout
+clientcmd 1040 alpha droprune
+clientcmd 1042 bravo droprune
+clientcmd 1100 alpha timein
+clientcmd 1400 bravo team s
+clientcmd 1450 alpha score

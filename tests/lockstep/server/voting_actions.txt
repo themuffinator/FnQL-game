@@ -1,0 +1,34 @@
+# Scalar and toggle actions, validation, and restarts.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 10 alpha callvote teamsize 1
+clientcmd 12 alpha callvote teamsize 65
+clientcmd 14 alpha callvote teamsize 4
+clientcmd 16 bravo vote yes
+clientcmd 150 alpha callvote loadouts invalid
+clientcmd 152 alpha callvote loadouts on
+clientcmd 154 bravo vote yes
+clientcmd 290 alpha callvote loadouts off
+clientcmd 292 bravo vote yes
+clientcmd 430 alpha callvote timers bad
+clientcmd 432 alpha callvote timers off
+clientcmd 434 bravo vote yes
+clientcmd 570 alpha callvote timers on
+clientcmd 572 bravo vote yes
+clientcmd 710 alpha callvote random 1
+clientcmd 712 alpha callvote random 101
+clientcmd 714 alpha callvote random bad
+clientcmd 716 alpha callvote cointoss bad
+clientcmd 718 alpha callvote shuffle
+clientcmd 720 alpha callvote clientkick 63
+clientcmd 722 alpha callvote kick missing
+clientcmd 724 alpha callvote nextmap
+clientcmd 726 bravo vote no
+clientcmd 730 alpha callvote ammo bad
+clientcmd 732 alpha callvote ammo global
+clientcmd 734 bravo vote yes
+clientcmd 900 alpha callvote map_restart
+clientcmd 902 bravo vote yes

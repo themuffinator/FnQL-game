@@ -1,0 +1,55 @@
+# G3: campgrounds, tdm, cheats, g_runes 1, 1500 frames.
+# Damage's 1.5 multiplier, Guard protection, Armor Regen absorption and
+# recovery, Scout rocket-jump immunity, and Quad overriding Damage.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+clientcmd 24 alpha give Railgun
+clientcmd 26 alpha give Damage
+clientcmd 28 bravo give Guard
+clientcmd 30 bravo give health
+at 40 alpha weapon=7
+at 60 alpha buttons=attack
+at 62 alpha buttons=0
+clientcmd 90 alpha pstats
+clientcmd 100 bravo droprune
+clientcmd 102 bravo give health
+clientcmd 104 bravo give Armor Regen
+clientcmd 106 bravo give armor
+at 130 alpha buttons=attack
+at 132 alpha buttons=0
+
+# Restoring armor starts again after damage takes it below the soft cap.
+at 210 alpha buttons=attack
+at 212 alpha buttons=0
+clientcmd 220 bravo give health
+clientcmd 320 alpha pstats
+clientcmd 330 bravo score
+
+clientcmd 400 alpha droprune
+clientcmd 402 alpha give Scout
+clientcmd 404 alpha give Rocket Launcher
+clientcmd 406 alpha setviewpos -260 320 40 0
+at 410 alpha weapon=5 pitch=89
+at 430 alpha buttons=attack
+at 432 alpha buttons=0
+at 470 alpha pitch=0
+clientcmd 500 alpha droprune
+clientcmd 502 alpha give Damage
+clientcmd 504 alpha give Quad Damage
+clientcmd 510 alpha setviewpos -260 320 40 180
+clientcmd 512 bravo setviewpos -700 320 40 0
+clientcmd 514 bravo give health
+at 520 alpha weapon=7
+at 550 alpha buttons=attack
+at 552 alpha buttons=0
+clientcmd 600 alpha pstats
+at 650 bravo buttons=attack
+at 652 bravo buttons=0
+clientcmd 680 bravo setviewpos -700 320 40 0

@@ -417,7 +417,7 @@ G_SpawnGametypeMask
 Parses a whitespace-separated gametype token list.
 ===================
 */
-static int G_SpawnGametypeMask( const char *list ) {
+int G_SpawnGametypeMask( const char *list ) {
 	const char *p = list;
 	const char *token;
 	int mask = 0;

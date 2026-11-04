@@ -1048,8 +1048,11 @@ BG_FindItemForPowerup
 gitem_t	*BG_FindItemForPowerup( powerup_t pw ) {
 	int		i;
 
-	// Persistant powerups carry persistantPowerup_t tags, which overlap the
-	// powerup_t range in Quake Live, so only powerup and flag items qualify.
+	// Retail 0x1002cb69 maps the rune powerup slots to separate PP_* tags.
+	if ( pw >= PW_SCOUT && pw <= PW_ARMORREGEN ) {
+		return BG_FindItemForPersistantPowerup( pw - PW_SCOUT + PP_SCOUT );
+	}
+	// PP_* values overlap the flag/powerup tags, so filter the remaining scan.
 	for ( i = 0 ; i < bg_numItems ; i++ ) {
 		if ( (bg_itemlist[i].giType == IT_POWERUP || bg_itemlist[i].giType == IT_TEAM) &&
 			bg_itemlist[i].giTag == pw ) {
@@ -1396,7 +1399,9 @@ void BG_EvaluateTrajectory( const trajectory_t *tr, int atTime, vec3_t result ) 
 		break;
 	case TR_SINE:
 		deltaTime = (double)( atTime - tr->trTime ) / (double)tr->trDuration;
-		phase = sin( deltaTime * M_PI * 2 );
+		// Retail 0x1002d28f keeps the phase products on the x87 stack.
+		// Rounding them to float first makes riders drift on bobbing movers.
+		phase = sin( (double)deltaTime * (double)M_PI * 2.0 );
 		BG_TrajectoryPoint( tr, phase, result );
 		break;
 	case TR_LINEAR_STOP:
@@ -1448,7 +1453,7 @@ void BG_EvaluateTrajectoryDelta( const trajectory_t *tr, int atTime, vec3_t resu
 		break;
 	case TR_SINE:
 		deltaTime = (double)( atTime - tr->trTime ) / (double)tr->trDuration;	// retail 0x1002d419
-		phase = cos( deltaTime * M_PI * 2 );	// derivative of sin = cos
+		phase = cos( (double)deltaTime * (double)M_PI * 2.0 ); // retail 0x1002d419
 		phase *= 0.5;
 		VectorScale( tr->trDelta, phase, result );
 		break;

@@ -24,7 +24,7 @@ void G_WriteClientSessionData( gclient_t *client ) {
 	const char	*s;
 	const char	*var;
 
-	s = va("%i %i %i %i %i %i %i %i %i %i", 
+	s = va("%i %i %i %i %i %i %i %i %i %i %i %i",
 		client->sess.sessionTeam,
 		client->sess.spectatorTime,
 		client->sess.spectatorState,
@@ -34,7 +34,9 @@ void G_WriteClientSessionData( gclient_t *client ) {
 		client->sess.teamLeader,
 		client->sess.loadoutWeapon,
 		client->sess.spectateOnly,
-		client->sess.queuePosition
+		client->sess.queuePosition,
+		client->sess.muted,
+		client->pers.privileges
 		);
 
 	var = va( "session%i", client - level.clients );
@@ -53,14 +55,14 @@ Called on a reconnect
 void G_ReadClientSessionData( gclient_t *client ) {
 	char	s[MAX_STRING_CHARS];
 	const char	*var;
-	int teamLeader;
-	int spectatorState;
-	int sessionTeam;
+	int teamLeader = client->sess.teamLeader;
+	int spectatorState = client->sess.spectatorState;
+	int sessionTeam = client->sess.sessionTeam;
 
 	var = va( "session%i", client - level.clients );
 	trap_Cvar_VariableStringBuffer( var, s, sizeof(s) );
 
-	Q_sscanf( s, "%i %i %i %i %i %i %i %i %i %i",
+	Q_sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i",
 		&sessionTeam,
 		&client->sess.spectatorTime,
 		&spectatorState,
@@ -70,7 +72,9 @@ void G_ReadClientSessionData( gclient_t *client ) {
 		&teamLeader,
 		&client->sess.loadoutWeapon,
 		&client->sess.spectateOnly,
-		&client->sess.queuePosition
+		&client->sess.queuePosition,
+		&client->sess.muted,
+		&client->pers.privileges
 		);
 
 	client->sess.sessionTeam = (team_t)sessionTeam;
@@ -167,19 +171,4 @@ void G_WriteSessionData( void ) {
 			G_WriteClientSessionData( &level.clients[i] );
 		}
 	}
-}
-
-
-/*
-================
-G_ClientPrivilege
-
-The admin tier retail reads from access.txt (qagamex86 0x10032460): 0 for
-a player.  The access list arrives with milestone 5; until then everyone
-is a player.
-================
-*/
-int G_ClientPrivilege( int clientNum ) {
-	(void)clientNum;
-	return 0;
 }

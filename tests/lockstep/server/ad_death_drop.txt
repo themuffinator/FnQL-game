@@ -1,0 +1,18 @@
+# AD death drops persist while another attacker keeps the turn alive.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+cmd 20 allready
+clientcmd 1400 alpha setviewpos -260 320 40 0
+clientcmd 1402 bravo setviewpos -700 -320 40 0
+clientcmd 1404 charlie setviewpos 400 320 40 180
+clientcmd 1450 alpha setviewpos 0 320 40 180
+clientcmd 1460 alpha kill
+clientcmd 2800 charlie score
+clientcmd 2900 charlie setviewpos -100 320 40 0
+clientcmd 3000 charlie setviewpos -800 320 40 0
+clientcmd 3100 charlie score

@@ -1,0 +1,40 @@
+// Hand-authored test world; only brush *1 refers to installed campgrounds.
+// No BSP entity lump or retail assets are included in this fixture.
+{
+"classname" "worldspawn"
+"message" "FnQL-game capture zone gate"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-400 320 40"
+}
+{
+"classname" "team_CTF_redplayer"
+"origin" "-400 -320 40"
+}
+{
+"classname" "team_CTF_redspawn"
+"origin" "-400 -320 40"
+}
+{
+"classname" "team_CTF_blueplayer"
+"origin" "120 -320 40"
+}
+{
+"classname" "team_CTF_bluespawn"
+"origin" "120 -320 40"
+}
+{
+"classname" "team_CTF_redflag"
+"origin" "-260 320 40"
+}
+{
+"classname" "team_CTF_blueflag"
+"origin" "-700 320 40"
+}
+{
+"classname" "trigger_capturezone"
+"model" "*1"
+"team" "blue"
+"count" "3"
+}

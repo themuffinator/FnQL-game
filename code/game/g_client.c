@@ -456,9 +456,27 @@ static gentity_t *G_SelectSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angl
 		}
 		teamClass = client->sess.sessionTeam == TEAM_RED ? TEAM_RED : TEAM_BLUE;
 		weightTeam = client->sess.sessionTeam == TEAM_RED ? TEAM_BLUE : TEAM_RED;
+		if ( g_gametype.integer == GT_DOMINATION ) weightTeam = client->sess.sessionTeam;
 	}
 
+	if ( g_gametype.integer == GT_DOMINATION ) {
+		spot = initial ? G_PickSpawnPoint(weightTeam, qtrue, teamClass, !level.trainingMap, origin, angles) : G_DominationSpawn(ent, origin, angles);
+		if ( !spot && initial ) spot = G_PickSpawnPoint(0, qfalse, teamClass, qtrue, origin, angles);
+		if ( !spot ) spot = G_PickSpawnPoint(0, qtrue, 0, qtrue, origin, angles);
+		if ( !spot ) spot = G_PickSpawnPoint(0, qfalse, 0, qtrue, origin, angles);
+		if ( !spot && client->deferredSpawns >= g_maxDeferredSpawns.integer ) spot = G_PickSpawnPoint(weightTeam, qfalse, 0, qfalse, origin, angles);
+		return spot;
+	}
 	spot = G_PickSpawnPoint( weightTeam, initial, teamClass, !level.trainingMap, origin, angles );
+	if ( g_gametype.integer == GT_ATTACK_DEFEND ) {
+		if ( !spot && client->deferredSpawns >= g_maxDeferredSpawns.integer ) spot = G_PickSpawnPoint(weightTeam, qfalse, 0, qfalse, origin, angles);
+		return spot;
+	}
+	// Retail 0x100398ee permits CA/FT to fall back to deathmatch starts;
+	// only flag modes and Attack & Defend require team-specific starts.
+	if ( !spot && ( g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_FREEZE ) ) {
+		spot = G_PickSpawnPoint( 0, qtrue, 0, qtrue, origin, angles );
+	}
 	if ( !spot ) {
 		// retail retries with the initial spots, then, past
 		// g_maxDeferredSpawns, takes any spot; it defers the spawn in between
@@ -474,6 +492,14 @@ static gentity_t *G_SelectSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angl
 		spot = G_PickSpawnPoint( 0, qfalse, 0, qfalse, origin, angles );
 	}
 	return spot;
+}
+
+// FindIntermissionPoint's fallback uses the same retail picker, without a
+// team, an initial-spawn restriction or distance enforcement (0x10054f4b).
+// Its origin includes the nine-unit spawn offset. Keep the legacy picker
+// available to its other callers.
+void G_SelectIntermissionSpawnPoint( vec3_t origin, vec3_t angles ) {
+	G_PickSpawnPoint( 0, qfalse, 0, qfalse, origin, angles );
 }
 
 
@@ -682,7 +708,8 @@ void respawn( gentity_t *ent ) {
 		CopyToBodyQue( ent );
 
 	ent->client->ps.pm_type = PM_NORMAL;
-	ClientSpawn( ent );
+	if ( g_gametype.integer == GT_CLAN_ARENA ) G_RoundSpawn( ent );
+	else ClientSpawn( ent );
 
 	// bots doesn't need to see any effects
 	if ( level.intermissiontime && ent->r.svFlags & SVF_BOT )
@@ -792,6 +819,11 @@ team_t PickTeam( int ignoreClientNum ) {
 	if ( level.teamScores[TEAM_BLUE] > level.teamScores[TEAM_RED] ) {
 		return TEAM_RED;
 	}
+	if ( level.teamScores[TEAM_RED] > level.teamScores[TEAM_BLUE] ) return TEAM_BLUE;
+	// Retail 1003a07a consumes a draw, but 1003a099 tests equality of
+	// 2*(rand&32767)/32767 with 1, not its sign. No integer draw can
+	// satisfy that equality, so an exact team/score tie joins blue.
+	(void)rand();
 	return TEAM_BLUE;
 }
 
@@ -952,9 +984,17 @@ if desired.
 returns qfalse in case of invalid userinfo
 ============
 */
+static int G_MaxHealthForUserinfo( const char *userinfo ) {
+	int health, handicap = atoi( Info_ValueForKey( userinfo, "handicap" ) );
+	if ( handicap < 1 || handicap > HEALTH_SOFT_LIMIT ) handicap = HEALTH_SOFT_LIMIT;
+	// Retail 0x1003a878: handicap is a percentage of factory starting health.
+	health = (int)( (double)handicap / 100.0 * g_startingHealth.integer );
+	return health < 1 || health > g_startingHealth.integer ? g_startingHealth.integer : health;
+}
+
 qboolean ClientUserinfoChanged( int clientNum ) {
 	gentity_t *ent;
-	int		teamTask, teamLeader, health;
+	int		teamTask, teamLeader;
 	char	*s;
 	char	model[MAX_QPATH];
 	char	headModel[MAX_QPATH];
@@ -1007,7 +1047,7 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	// set name
 	Q_strncpyz( oldname, client->pers.netname, sizeof( oldname ) );
 	s = Info_ValueForKey( userinfo, "name" );
-	BG_CleanName( s, client->pers.netname, sizeof( client->pers.netname ), "UnnamedPlayer" );
+	G_CleanPlayerName( s, client->pers.netname, sizeof( client->pers.netname ) );
 
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
 		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
@@ -1017,28 +1057,15 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 
 	if ( client->pers.connected == CON_CONNECTED ) {
 		if ( strcmp( oldname, client->pers.netname ) ) {
-			G_BroadcastServerCommand( -1, va("print \"%s" S_COLOR_WHITE " renamed to %s\n\"", oldname, client->pers.netname) );
+			// Retail 0x1003a7e1 emits one broadcast, including spectators.
+			trap_SendServerCommand( -1, va("print \"%s" S_COLOR_WHITE " renamed to %s\n\"", oldname, client->pers.netname) );
 		}
 	}
 
 	// set max health
-#ifdef MISSIONPACK
-	if (client->ps.powerups[PW_GUARD]) {
-		client->pers.maxHealth = HEALTH_SOFT_LIMIT*2;
-	} else {
-		health = atoi( Info_ValueForKey( userinfo, "handicap" ) );
-		client->pers.maxHealth = health;
-		if ( client->pers.maxHealth < 1 || client->pers.maxHealth > HEALTH_SOFT_LIMIT ) {
-			client->pers.maxHealth = HEALTH_SOFT_LIMIT;
-		}
-	}
-#else
-	health = atoi( Info_ValueForKey( userinfo, "handicap" ) );
-	client->pers.maxHealth = health;
-	if ( client->pers.maxHealth < 1 || client->pers.maxHealth > HEALTH_SOFT_LIMIT ) {
-		client->pers.maxHealth = HEALTH_SOFT_LIMIT;
-	}
-#endif
+	// Guard does not change this limit in QL. Confirmed by the rune G3
+	// userinfo probe: retail keeps STAT_MAX_HEALTH and the hc key at 100.
+	client->pers.maxHealth = G_MaxHealthForUserinfo( userinfo );
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
 
 #ifdef MISSIONPACK
@@ -1212,6 +1239,9 @@ const char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 		}
 	}
 
+	// Account policy is engine-owned identity, never a user-supplied steamid.
+	if ( !isBot && G_ClientPrivilege( clientNum ) < 0 ) return "You are banned from this server.";
+
 	// they can connect
 	ent->client = level.clients + clientNum;
 	client = ent->client;
@@ -1222,6 +1252,7 @@ const char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 	client->ps.clientNum = clientNum;
 	// retail ClientConnect records the SteamID right after clearing the client
 	client->pers.steamId = isBot ? 0 : trap_GetSteamId64( clientNum );
+	client->pers.privileges = isBot ? 0 : G_ClientPrivilege( clientNum );
 
 	if ( !ClientUserinfoChanged( clientNum ) ) {
 		return ban_reason;
@@ -1295,7 +1326,7 @@ count too, so a player moved to the spectators reports none), the kill and
 complaint records are cleared, and a duel bot always queues to play.  Race,
 clan arena, freeze tag, attack and defend and red rover place the client
 through their own round rules there (0x100634f0, 0x10038160, 0x1004bde0,
-0x100645a0); until milestone 6 they take the plain spawn.
+0x100645a0); the mode-specific wrappers retain those lifecycle rules.
 ============
 */
 void ClientBegin( int clientNum ) {
@@ -1336,7 +1367,10 @@ void ClientBegin( int clientNum ) {
 	client->lastKiller = -1;
 
 	// locate ent at a spawn point
-	ClientSpawn( ent );
+	if ( g_gametype.integer == GT_RACE ) G_BeginRace(ent);
+	if ( g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_FREEZE || g_gametype.integer == GT_ATTACK_DEFEND ) G_RoundSpawn(ent);
+	else if ( g_gametype.integer == GT_RED_ROVER ) G_RespawnForShuffle(ent);
+	else ClientSpawn( ent );
 
 	// a duel bot never waits as a spectator
 	if ( g_gametype.integer == GT_TOURNAMENT && ( ent->r.svFlags & SVF_BOT ) ) {
@@ -1549,6 +1583,7 @@ static void G_GiveSpawnLoadout( gentity_t *ent ) {
 				client->ps.stats[STAT_WEAPONS] |= 1 << w;
 				client->ps.ammo[w] = G_StartingAmmo( w );
 				client->ps.weapon = w;
+				RegisterItem( BG_FindItemForWeapon(w) );
 			}
 		}
 	}
@@ -1559,7 +1594,7 @@ static void G_GiveSpawnLoadout( gentity_t *ent ) {
 		}
 	}
 
-	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
+	if ( client->ps.pm_type != PM_SPECTATOR ) {
 		// health will count down towards max_health
 		health = g_startingHealth.integer + g_startingHealthBonus.integer;
 		if ( health <= 0 ) {
@@ -1570,7 +1605,7 @@ static void G_GiveSpawnLoadout( gentity_t *ent ) {
 		ent->health = ent->s.health = client->ps.stats[STAT_HEALTH] = health;
 	}
 
-	armor = g_startingArmor.integer;
+	armor = client->ps.pm_type == PM_SPECTATOR ? 0 : g_startingArmor.integer;
 	ent->s.armor = client->ps.stats[STAT_ARMOR] = armor;
 	if ( armor_tiered.integer && armor ) {
 		client->ps.stats[STAT_ARMOR_TIER] = armor >= 150 ? 2 : ( armor >= 100 ? 1 : 0 );
@@ -1593,6 +1628,50 @@ static void G_GiveSpawnLoadout( gentity_t *ent ) {
 			client->ps.ammo[w] = g_infiniteAmmo.integer ? -1 : bg_weaponMaxAmmo[w];
 		}
 	}
+}
+
+
+/* Retail shuffle 1006a47f: even a player keeping its team gets a fresh
+ * spawn and the selected starting weapon; round countdown gates firing. */
+void G_RespawnForShuffle( gentity_t *ent ) {
+	ClientSpawn(ent);
+	G_SelectSpawnWeapon(ent);
+	if ( G_RoundCountingDown() && (g_gametype.integer != GT_FREEZE || g_freezeRoundDelay.integer) ) ent->client->ps.pm_flags |= PMF_ATTACK_LOCKOUT;
+}
+
+void G_ResetFreezeLoadout( gentity_t *ent ) {
+	gclient_t *cl = ent->client;
+	int health = ent->health, armor = cl->ps.stats[STAT_ARMOR], tier = cl->ps.stats[STAT_ARMOR_TIER];
+	int weapons = cl->ps.stats[STAT_WEAPONS], weapon = cl->ps.weapon, ammo[MAX_WEAPONS];
+	int weaponTime = cl->ps.weaponTime, weaponState = cl->ps.weaponstate;
+	memcpy(ammo, cl->ps.ammo, sizeof(ammo));
+	if ( cl->ps.pm_type == PM_FREEZE ) return;
+	cl->ps.stats[STAT_WEAPONS] = 0;
+	memset(cl->ps.ammo, 0, sizeof(cl->ps.ammo));
+	G_GiveSpawnLoadout(ent);
+	cl->ps.weaponTime = weaponTime;
+	cl->ps.weaponstate = weaponState;
+	if ( !g_freezeResetHealthOnRound.integer ) ent->s.health = ent->health = cl->ps.stats[STAT_HEALTH] = health;
+	if ( !g_freezeResetArmorOnRound.integer ) ent->s.armor = cl->ps.stats[STAT_ARMOR] = armor;
+	if ( !armor_tiered.integer ) cl->ps.stats[STAT_ARMOR_TIER] = tier;
+	if ( !g_freezeResetWeaponsOnRound.integer ) {
+		cl->ps.stats[STAT_WEAPONS] = weapons;
+		memcpy(cl->ps.ammo, ammo, sizeof(ammo));
+		cl->ps.weapon = weapon;
+	} else {
+		if ( !(cl->ps.stats[STAT_WEAPONS] & (1 << WP_GRAPPLING_HOOK)) ) cl->ps.ammo[WP_GRAPPLING_HOOK] = 0;
+		G_SelectSpawnWeapon(ent);
+	}
+}
+
+void G_RoundSpawn( gentity_t *ent ) {
+	// Retail CA join/respawn dispatcher 0x10038160. Eliminated players
+	// retain their team while waiting as spectators for the next round.
+	if ( level.roundState >= 3 && !level.roundRespawning ) ent->client->ps.pm_type = PM_SPECTATOR;
+	ClientSpawn( ent );
+	if ( level.roundState < 3 || g_gametype.integer == GT_FREEZE ) G_SelectSpawnWeapon( ent );
+	if ( G_RoundCountingDown() && (g_gametype.integer != GT_FREEZE || g_freezeRoundDelay.integer) ) ent->client->ps.pm_flags |= PMF_ATTACK_LOCKOUT;
+	if ( level.roundState >= 3 && ent->client->sess.sessionTeam != TEAM_SPECTATOR ) G_FollowNextOrStop(ent);
 }
 
 
@@ -1623,15 +1702,23 @@ void ClientSpawn(gentity_t *ent) {
 	int		savedMedals[MEDAL_NUM_MEDALS];
 	int		savedKilledBy[MAX_CLIENTS];
 	int		eventSequence;
+	int savedRoundScore;
+	int savedRaceSplits[64];
 	char	userinfo[MAX_INFO_STRING];
 	qboolean isSpectator;
+	qboolean attackFreeze;
 
 	index = ent - g_entities;
 	client = ent->client;
+	attackFreeze = g_gametype.integer == GT_ATTACK_DEFEND && client->ps.pm_type == PM_FREEZE;
 
-	trap_UnlinkEntity( ent );
+	// Retail 1003bc30 retains the old link through KillBox. A Red Rover
+	// shuffle can pick the same spot and apply its zero-damage self contact.
+	if ( !(level.shuffling && g_gametype.integer == GT_RED_ROVER) && g_gametype.integer != GT_ATTACK_DEFEND ) trap_UnlinkEntity( ent );
 
-	isSpectator = client->sess.sessionTeam == TEAM_SPECTATOR;
+	isSpectator = client->sess.sessionTeam == TEAM_SPECTATOR
+		|| ( (g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_FREEZE || g_gametype.integer == GT_ATTACK_DEFEND) && client->ps.pm_type == PM_SPECTATOR
+			&& level.roundState >= 3 && !level.roundRespawning );
 	// find a spawn point
 	// do it before setting health back up, so farthest
 	// ranging doesn't count this client
@@ -1674,6 +1761,7 @@ void ClientSpawn(gentity_t *ent) {
 
 	// clear everything but the persistant data
 
+	memcpy(savedRaceSplits, client->raceBestSplits, sizeof(savedRaceSplits));
 	saved = client->pers;
 	savedSess = client->sess;
 	savedPing = client->ps.ping;
@@ -1686,6 +1774,7 @@ void ClientSpawn(gentity_t *ent) {
 		persistant[i] = client->ps.persistant[i];
 	}
 	eventSequence = client->ps.eventSequence;
+	savedRoundScore = client->roundScore;
 	// retail (qagamex86 0x1003bdcc) also keeps the match stats, medals and
 	// revenge counts
 	savedStats = client->stats;
@@ -1695,6 +1784,7 @@ void ClientSpawn(gentity_t *ent) {
 	Com_Memset (client, 0, sizeof(*client));
 
 	client->pers = saved;
+	if ( g_gametype.integer == GT_RACE ) memcpy(client->raceBestSplits, savedRaceSplits, sizeof(savedRaceSplits));
 	client->sess = savedSess;
 	client->ps.ping = savedPing;
 //	client->areabits = savedAreaBits;
@@ -1712,6 +1802,7 @@ void ClientSpawn(gentity_t *ent) {
 		client->ps.persistant[i] = persistant[i];
 	}
 	client->ps.eventSequence = eventSequence;
+	client->roundScore = savedRoundScore;
 	// increment the spawncount so the client will detect the respawn;
 	// retail does not count a spectator's spawn
 	if ( client->sess.sessionTeam != TEAM_SPECTATOR ) {
@@ -1723,10 +1814,7 @@ void ClientSpawn(gentity_t *ent) {
 
 	trap_GetUserinfo( index, userinfo, sizeof(userinfo) );
 	// set max health
-	client->pers.maxHealth = atoi( Info_ValueForKey( userinfo, "handicap" ) );
-	if ( client->pers.maxHealth < 1 || client->pers.maxHealth > HEALTH_SOFT_LIMIT ) {
-		client->pers.maxHealth = HEALTH_SOFT_LIMIT;
-	}
+	if ( !(g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer && client->sess.sessionTeam == TEAM_RED) ) client->pers.maxHealth = G_MaxHealthForUserinfo( userinfo );
 	client->ps.stats[STAT_MAX_HEALTH] = client->pers.maxHealth;
 	client->ps.eFlags = flags;
 
@@ -1742,10 +1830,12 @@ void ClientSpawn(gentity_t *ent) {
 		client->ps.pm_type = PM_SPECTATOR;
 	} else {
 		ent->takedamage = qtrue;
+		if ( attackFreeze ) client->ps.pm_type = PM_FREEZE;
 		ent->r.contents = CONTENTS_BODY;
 		ent->clipmask = MASK_PLAYERSOLID;
 	}
 	ent->die = player_die;
+	if ( g_spawnArmor.integer && g_gametype.integer != GT_CLAN_ARENA ) client->ps.powerups[PW_SPAWNARMOR] = level.time / 1000 * 1000 + g_spawnArmor.integer;
 	ent->waterlevel = 0;
 	ent->watertype = 0;
 	ent->flags = 0;
@@ -1755,7 +1845,18 @@ void ClientSpawn(gentity_t *ent) {
 
 	client->ps.clientNum = index;
 
+	client->ps.weapon = WP_MACHINEGUN;
+	if ( g_gametype.integer == GT_RED_ROVER && g_rrInfected.integer && client->sess.sessionTeam == TEAM_RED ) client->ps.pm_flags |= PMF_INFECTED | PMF_AIR_CONTROL | PMF_DOUBLE_JUMP;
 	G_GiveSpawnLoadout( ent );
+	if ( g_gametype.integer == GT_RED_ROVER && (client->ps.pm_flags & PMF_INFECTED) ) {
+		client->ps.stats[STAT_WEAPONS] = 1 << WP_GAUNTLET;
+		if ( !level.warmupTime ) {
+			for ( i = WP_MACHINEGUN; i < WP_NUM_WEAPONS; ++i ) if ( i != WP_GRAPPLING_HOOK ) client->ps.ammo[i] = 0;
+		}
+		client->pers.maxHealth = g_startingHealth.integer + g_rrInfectedZombieHealthBonus.integer;
+		ent->health = client->pers.maxHealth;
+		client->ps.weapon = WP_GAUNTLET;
+	}
 
 	G_SetOrigin( ent, spawn_origin );
 	VectorCopy( spawn_origin, client->ps.origin );
@@ -1797,8 +1898,8 @@ void ClientSpawn(gentity_t *ent) {
 	if ( !isSpectator )
 		G_KillBox( ent );
 
-	// force the base weapon up
-	client->ps.weapon = WP_MACHINEGUN;
+	// Keep the kit's selected weapon (retail 0x1003b4f9); instagib skips
+	// the later best-starting-weapon selection entirely.
 	client->ps.weaponstate = WEAPON_READY;
 
 	// don't allow full run speed for a bit
@@ -1808,6 +1909,10 @@ void ClientSpawn(gentity_t *ent) {
 	client->respawnTime = level.time;
 	client->inactivityTime = level.time + g_inactivity.integer * 1000;
 	client->latched_buttons = 0;
+	// Retail 0x1003c319 arms factory regeneration on spawn as well as damage.
+	client->healthRegenActive = g_regenHealth.integer != 0;
+	client->armorRegenActive = g_regenArmor.integer != 0;
+	client->regenDamageTime = level.time;
 
 	// set default animations
 	client->ps.torsoAnim = TORSO_STAND;
@@ -1833,12 +1938,15 @@ void ClientSpawn(gentity_t *ent) {
 
 	// run a client frame to drop exactly to the floor,
 	// initialize animations and other things
+	if ( g_gametype.integer == GT_ATTACK_DEFEND && (level.warmupTime > 0 || level.roundState == 1) ) client->ps.pm_flags |= PMF_ATTACK_LOCKOUT;
 	client->ps.commandTime = level.time - 100;
 	client->pers.cmd.serverTime = level.time;
 	ClientThink( ent-g_entities );
 
-	BG_PlayerStateToEntityState( &client->ps, &ent->s, qtrue );
-	VectorCopy( client->ps.origin, ent->r.currentOrigin );
+	if ( client->ps.pm_type != PM_SPECTATOR ) {
+		BG_PlayerStateToEntityState( &client->ps, &ent->s, qtrue );
+		VectorCopy( client->ps.origin, ent->r.currentOrigin );
+	}
 
 	// a spectator that was following picks its player up again on its next
 	// think (retail qagamex86 0x1003c675)
@@ -1881,7 +1989,6 @@ server system housekeeping.
 */
 void ClientDisconnect( int clientNum ) {
 	gentity_t	*ent;
-	gentity_t	*tent;
 	int			i;
 
 	// cleanup if we are kicking a bot that
@@ -1908,14 +2015,16 @@ void ClientDisconnect( int clientNum ) {
 	// send effect if they were completely connected
 	if ( ent->client->pers.connected == CON_CONNECTED 
 		&& ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
-		tent = G_TempEntity( ent->client->ps.origin, EV_PLAYER_TELEPORT_OUT );
-		tent->s.clientNum = ent->s.clientNum;
+		// Retail 0x1003c9ef leaves this event's clientNum at its zero default.
+		G_TempEntity( ent->client->ps.origin, EV_PLAYER_TELEPORT_OUT );
 
 		// They don't get to take powerups with them!
 		// Especially important for stuff like CTF flags
 		TossClientItems( ent );
 #ifdef MISSIONPACK
-		TossClientPersistantPowerups( ent );
+		// Retail 0x1003c9f7 uses only TossClientItems for rune drops.
+		// Relinking the old pickup here bypasses g_dropPowerups and can
+		// expose an entity already freed by the give command.
 		if( g_gametype.integer == GT_HARVESTER ) {
 			TossClientCubes( ent );
 		}

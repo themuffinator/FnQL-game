@@ -1,0 +1,16 @@
+# G3: --cheats --map spacectf --factory ctf --set g_runes 1 --frames 1000.
+# Throw a rune into Space CTF's void: its no-drop volume relocates the
+# item before the manual drop's ten-second timer can expire.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha give Scout
+clientcmd 22 alpha setviewpos 0 0 -1000 0
+clientcmd 23 alpha droprune
+at 120 alpha buttons=attack
+at 122 alpha buttons=0
+clientcmd 800 alpha score

@@ -1,0 +1,51 @@
+# G3: --cheats --factory tdm --set g_runes 1 --frames 2200.
+# All four rune states, one-rune ownership, Scout/Haste priority and armor
+# decay, Guard userinfo, Armor Regen without ammo regeneration, manual and
+# death drops, cross-player pickup, ten/30-second relocation, map restart.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client delta name Delta
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+clientcmd 4 delta team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+at 0 charlie weapon=2
+at 0 delta weapon=2
+clientcmd 15 alpha setviewpos -260 320 40 0
+clientcmd 16 bravo setviewpos -700 320 40 0
+clientcmd 17 charlie setviewpos -400 -320 40 270
+clientcmd 18 delta setviewpos 120 -320 40 0
+clientcmd 30 alpha give Scout
+clientcmd 32 alpha give armor
+clientcmd 34 bravo give Guard
+clientcmd 35 charlie give Armor Shard
+clientcmd 36 charlie give Armor Regen
+clientcmd 38 delta give Damage
+clientcmd 50 alpha give Guard
+clientcmd 70 alpha give Haste
+userinfo 90 bravo handicap 100
+at 120 charlie buttons=attack
+at 400 charlie buttons=0
+
+# The new owner takes a manual drop; dropping it again lets it relocate.
+clientcmd 200 alpha droprune
+clientcmd 202 alpha setviewpos -400 320 40 180
+clientcmd 220 bravo droprune
+clientcmd 222 bravo setviewpos -196 320 40 0
+clientcmd 280 bravo droprune
+clientcmd 282 bravo setviewpos -700 320 40 0
+
+# Death must toss a rune that can relocate after thirty seconds.
+clientcmd 450 delta kill
+at 490 delta buttons=attack
+at 494 delta buttons=0
+clientcmd 520 delta setviewpos 120 -320 40 0
+clientcmd 700 charlie droprune
+clientcmd 702 charlie setviewpos -400 320 40 0
+clientcmd 1700 alpha score
+clientcmd 1702 charlie score
+cmd 1900 map_restart 0

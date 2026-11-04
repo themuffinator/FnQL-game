@@ -1,0 +1,9 @@
+{
+  "id": "fnql_test_duel",
+  "title": "FnQL factory integration test",
+  "basegt": "duel",
+  "cvars": {
+    "g_speed": 333,
+    "g_gravity": 777
+  }
+}

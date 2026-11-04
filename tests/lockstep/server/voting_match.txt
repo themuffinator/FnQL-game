@@ -1,0 +1,31 @@
+# A pending vote expires at countdown. Midmatch policy and electorate changes.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+cmd 5 g_warmupDelay 0
+clientcmd 10 alpha callvote timelimit 10
+clientcmd 20 alpha readyup
+clientcmd 22 bravo readyup
+clientcmd 24 charlie readyup
+clientcmd 26 alpha callvote timelimit 15
+cmd 28 g_allowVoteMidGame 1
+clientcmd 30 alpha callvote timelimit 15
+clientcmd 32 bravo vote yes
+clientcmd 990 alpha callvote loadouts on
+clientcmd 992 alpha callvote ammo weap
+clientcmd 994 alpha callvote timers off
+clientcmd 996 alpha callvote shuffle
+cmd 1000 g_allowVoteMidGame 0
+clientcmd 1002 alpha callvote timelimit 15
+cmd 1004 g_allowVoteMidGame 1
+clientcmd 1006 alpha callvote timelimit 15
+clientcmd 1008 bravo vote yes
+clientcmd 1140 alpha callvote timelimit 20
+clientcmd 1142 charlie team s
+clientcmd 1144 charlie vote yes
+clientcmd 1280 alpha callvote fraglimit 25
+clientcmd 1282 bravo disconnect

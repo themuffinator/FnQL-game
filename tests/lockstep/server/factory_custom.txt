@@ -1,0 +1,26 @@
+# A host-provided factory outside the stock catalog. Start with duel and
+# --factories tests/lockstep/factories/custom.factories. The accepted vote
+# loads its movement settings; a map-only command and restart retain them.
+# Returning to stock duel restores the pre-factory settings.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 10 alpha callvote map campgrounds fnql_test_duel
+clientcmd 12 bravo vote yes
+at 200 alpha forward=127
+at 240 alpha forward=0
+cmd 300 map campgrounds
+clientcmd 305 alpha team f
+clientcmd 306 bravo team f
+at 320 alpha forward=127
+at 360 alpha forward=0
+cmd 400 map_restart 0
+at 420 alpha forward=127
+at 460 alpha forward=0
+cmd 500 map campgrounds duel
+clientcmd 505 alpha team f
+clientcmd 506 bravo team f
+at 520 alpha forward=127
+at 560 alpha forward=0

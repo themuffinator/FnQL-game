@@ -221,6 +221,49 @@ static void LS_RetailPmove( void *pm ) {
 	}
 }
 
+// The trajectory routines both take time in EAX, trajectory in ESI and
+// output in EDI (retail 0x1002d210 / 0x1002d3e0). Test sine movers beyond
+// one cycle: early float rounding changes where they push their riders.
+static qboolean LS_CheckSineTrajectories( void ) {
+	const int durations[] = { 4000, 3000, 731 };
+	trajectory_t trajectory;
+	vec3_t retail, ours;
+	int derivative, duration, atTime, checks = 0, mismatches = 0;
+	memset( &trajectory, 0, sizeof(trajectory) );
+	trajectory.trType = TR_SINE;
+	trajectory.trTime = 173;
+	VectorSet( trajectory.trBase, 10.25f, -17.75f, 32 );
+	VectorSet( trajectory.trDelta, -11.5f, 63.25f, 4 );
+	for ( derivative = 0; derivative < 2; derivative++ ) {
+		void *entry = LS_RetailAddress( derivative ? 0x1002d3e0u : 0x1002d210u );
+		for ( duration = 0; duration < ARRAY_LEN(durations); duration++ ) {
+			trajectory.trDuration = durations[duration];
+			for ( atTime = -1000; atTime <= 20000; atTime += 37 ) {
+				__asm {
+					mov eax, atTime
+					lea esi, trajectory
+					lea edi, retail
+					call entry
+				}
+				if ( derivative ) {
+					BG_EvaluateTrajectoryDelta( &trajectory, atTime, ours );
+				} else {
+					BG_EvaluateTrajectory( &trajectory, atTime, ours );
+				}
+				checks++;
+				if ( memcmp(retail, ours, sizeof(vec3_t)) ) {
+					if ( mismatches++ < 3 ) {
+						printf( "sine trajectory mismatch: derivative %d, duration %d, time %d\n",
+							derivative, trajectory.trDuration, atTime );
+					}
+				}
+			}
+		}
+	}
+	printf( "sine trajectories: %d of %d evaluations divergent\n", mismatches, checks );
+	return mismatches == 0;
+}
+
 // writes the retail settings globals the way the cvar filler would
 static void LS_ApplyRetailSettings( const char *info ) {
 	int i;
@@ -970,6 +1013,9 @@ int main( int argc, char **argv ) {
 	}
 	if ( !LS_LoadRetail( argv[1], argv[2] ) ) {
 		return 2;
+	}
+	if ( !LS_CheckSineTrajectories() ) {
+		failed++;
 	}
 	LW_Init();
 	for ( i = 1; i < bg_numItems; i++ ) {

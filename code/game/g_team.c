@@ -27,6 +27,7 @@ void Team_InitGame( void ) {
 
 	switch( g_gametype.integer ) {
 	case GT_CTF:
+	case GT_ATTACK_DEFEND:
 		teamgame.redStatus = -1; // Invalid to force update
 		Team_SetFlagStatus( TEAM_RED, FLAG_ATBASE );
 		teamgame.blueStatus = -1; // Invalid to force update
@@ -216,7 +217,7 @@ static void Team_SetFlagStatus( team_t team, flagStatus_t status ) {
 	if ( modified ) {
 		char st[4];
 
-		if ( g_gametype.integer == GT_CTF ) {
+		if ( g_gametype.integer == GT_CTF || g_gametype.integer == GT_ATTACK_DEFEND ) {
 			st[0] = ctfFlagStatusRemap[teamgame.redStatus];
 			st[1] = ctfFlagStatusRemap[teamgame.blueStatus];
 			st[2] = '\0';
@@ -301,10 +302,9 @@ scores one bonus, the first that applies of
   - fragging someone while within 1000 units of the attacker's flag
     carrier, either of them in the carrier's PVS (2).
 
-Domination's control-point defense (0x1004b980) arrives with the mode
-(milestone 6).  In attack and defend only the defending team scores base
-defense (0x10068ecf, 0x10036440); outside a live round, which is all
-FnQL-game has until milestone 6, that is nobody.
+Domination delegates control-point defense to its point registry
+(0x1004b980). In Attack & Defend only the current defending team scores
+base defense (0x10068ecf, 0x10036440); outside a live round nobody does.
 ================
 */
 void Team_FragBonuses( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker ) {
@@ -337,6 +337,7 @@ void Team_FragBonuses( gentity_t *targ, gentity_t *inflictor, gentity_t *attacke
 	}
 
 	if ( g_gametype.integer == GT_DOMINATION ) {
+		G_DominationDefense(attacker, targ);
 		return;
 	}
 
@@ -454,7 +455,7 @@ void Team_FragBonuses( gentity_t *targ, gentity_t *inflictor, gentity_t *attacke
 	if ( VectorLength( v ) < CTF_TARGET_PROTECT_RADIUS
 		&& trap_InPVS( flag->r.currentOrigin, targ->r.currentOrigin )
 		&& attacker->client->sess.sessionTeam != targ->client->sess.sessionTeam ) {
-		if ( g_gametype.integer == GT_ATTACK_DEFEND ) {
+		if ( g_gametype.integer == GT_ATTACK_DEFEND && attacker->client->sess.sessionTeam != OtherTeam(G_AttackingTeam()) ) {
 			return;
 		}
 		attacker->client->pers.teamState.basedefense++;
@@ -547,7 +548,7 @@ static gentity_t *Team_ResetFlag( team_t team ) {
 
 
 void Team_ResetFlags( void ) {
-	if( g_gametype.integer == GT_CTF ) {
+	if( g_gametype.integer == GT_CTF || g_gametype.integer == GT_ATTACK_DEFEND ) {
 		Team_ResetFlag( TEAM_RED );
 		Team_ResetFlag( TEAM_BLUE );
 	}
@@ -737,6 +738,9 @@ Flags are unique in that if they are dropped, the base flag must be respawned wh
 */
 void Team_DroppedFlagThink(gentity_t *ent) {
 	int		team = TEAM_FREE;
+	// Retail 0x10069780: AD drops remain until pickup or the turn reset,
+	// including manual drops whose shared command schedules this callback.
+	if ( g_gametype.integer == GT_ATTACK_DEFEND ) return;
 
 	if( ent->item->giTag == PW_REDFLAG ) {
 		team = TEAM_RED;
@@ -775,7 +779,8 @@ static void G_AwardCapture( gentity_t *ent, int persistant, int award ) {
 	client->rewardTime = level.time + REWARD_SPRITE_TIME;
 }
 
-static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team ) {
+static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team,
+	gentity_t *droppedFlag, int points ) {
 	gclient_t	*cl = other->client;
 	gentity_t	*player;
 	float		seconds;
@@ -803,7 +808,8 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team ) {
 
 	// the flag is at home base.  if the player has the enemy
 	// flag, he's just won!
-	if ( !cl->ps.powerups[enemyFlag] ) {
+	if ( !cl->ps.powerups[enemyFlag]
+		&& !( g_gametype.integer == GT_1FCTF && droppedFlag && droppedFlag->target_ent ) ) {
 		return 0;
 	}
 
@@ -824,7 +830,7 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team ) {
 	teamgame.last_capture_team = team;
 
 	// Increase the team's score
-	AddTeamScore( cl->sess.sessionTeam, 1 );
+	AddTeamScore( cl->sess.sessionTeam, points );
 	Team_ForceGesture( cl->sess.sessionTeam );	// retail qagamex86 0x10067e80
 	G_AwardCapture( other, PERS_CAPTURES, EF_AWARD_CAP );
 	AddScore( other, ent->r.currentOrigin, CTF_CAPTURE_BONUS );
@@ -859,11 +865,54 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team ) {
 	if ( g_gametype.integer == GT_1FCTF ) {
 		Team_ResetFlag( TEAM_FREE );
 	} else {
+		if ( g_gametype.integer == GT_ATTACK_DEFEND ) level.adCaptured = qtrue;
 		Team_ResetFlag( TEAM_RED );
 		Team_ResetFlag( TEAM_BLUE );
 	}
 
 	return 0; // Do not respawn this automatically
+}
+
+// Retail qagamex86 0x1006bda0: an opposing capture zone uses its flag stand
+// for the capture and its count for the team score. A thrown team item can
+// credit its owner; the capture rules still decide whether it can score.
+void Team_TouchCaptureZone( gentity_t *zone, gentity_t *other, trace_t *trace ) {
+	gentity_t *player = other, *droppedFlag = NULL, *stand;
+	team_t zoneTeam, playerTeam;
+	(void)trace;
+
+	if ( !zone->team || !other ) {
+		return;
+	}
+	if ( !strcmp( zone->team, "red" ) ) {
+		zoneTeam = TEAM_RED;
+	} else if ( !strcmp( zone->team, "blue" ) ) {
+		zoneTeam = TEAM_BLUE;
+	} else {
+		return;
+	}
+	if ( !other->client ) {
+		if ( ( g_gametype.integer != GT_CTF && g_gametype.integer != GT_1FCTF )
+			|| !other->item || other->item->giType != IT_TEAM ) {
+			return;
+		}
+		player = other->target_ent;
+		droppedFlag = other;
+	}
+	// Malformed map touches and orphaned drops must not dereference a missing
+	// client. Only an active team member can receive capture credit.
+	if ( !player || !player->inuse || !player->client
+		|| player->client->pers.connected != CON_CONNECTED ) {
+		return;
+	}
+	playerTeam = player->client->sess.sessionTeam;
+	if ( ( playerTeam != TEAM_RED && playerTeam != TEAM_BLUE ) || playerTeam == zoneTeam ) {
+		return;
+	}
+	stand = G_Find( NULL, FOFS(classname), zoneTeam == TEAM_RED ? "team_CTF_redflag" : "team_CTF_blueflag" );
+	if ( stand ) {
+		Team_TouchOurFlag( stand, player, playerTeam, droppedFlag, zone->count );
+	}
 }
 
 
@@ -907,6 +956,11 @@ static int Team_TouchEnemyFlag( gentity_t *ent, gentity_t *other, team_t team ) 
 	}
 	cl->pers.teamState.flagsince = level.time;
 	Team_TakeFlagSound( other, ent, team );
+	// Retail 0x1006a008: the first base touch scores once per attack turn.
+	if ( g_gametype.integer == GT_ATTACK_DEFEND && !ent->s.modelindex2 && !level.adTouched ) {
+		AddTeamScore(cl->sess.sessionTeam, g_adTouchScoreBonus.integer);
+		level.adTouched = qtrue;
+	}
 
 	return -1; // Do not respawn this automatically, but do delete it if it was FL_DROPPED
 }
@@ -924,10 +978,13 @@ int Pickup_Team( gentity_t *ent, gentity_t *other ) {
 	}
 
 	if( g_gametype.integer == GT_HARVESTER ) {
-		// the only team items that can be picked up in harvester are the cubes
-		if( ent->spawnflags != cl->sess.sessionTeam ) {
+		// Retail 0x1006a0c6: six carry bits, capped at 62; the upper bits
+		// carry unrelated state. Both friendly and enemy skulls are removed.
+		if( ent->spawnflags != cl->sess.sessionTeam && (cl->ps.generic1 & 63) < 62 ) {
 			cl->ps.generic1 += 1;
 		}
+		if ( cl->pers.predictItemPickup ) G_AddPredictableEvent(other, EV_ITEM_PICKUP, ent->s.modelindex);
+		else G_AddEvent(other, EV_ITEM_PICKUP, ent->s.modelindex);
 		G_FreeEntity( ent );
 		return 0;
 	}
@@ -954,14 +1011,15 @@ int Pickup_Team( gentity_t *ent, gentity_t *other ) {
 			return Team_TouchEnemyFlag( ent, other, cl->sess.sessionTeam );
 		}
 		if( team != cl->sess.sessionTeam) {
-			return Team_TouchOurFlag( ent, other, cl->sess.sessionTeam );
+			return Team_TouchOurFlag( ent, other, cl->sess.sessionTeam, NULL, 1 );
 		}
 		return 0;
 	}
 #endif
 	// GT_CTF
+	if ( g_gametype.integer == GT_ATTACK_DEFEND && cl->sess.sessionTeam != G_AttackingTeam() ) return 0;
 	if( team == cl->sess.sessionTeam) {
-		return Team_TouchOurFlag( ent, other, team );
+		return Team_TouchOurFlag( ent, other, team, NULL, g_gametype.integer == GT_ATTACK_DEFEND ? g_adCaptureScoreBonus.integer : 1 );
 	}
 	return Team_TouchEnemyFlag( ent, other, team );
 }
@@ -1258,7 +1316,7 @@ static void ObeliskRegen( gentity_t *self ) {
 		self->health = g_obeliskHealth.integer;
 	}
 
-	self->activator->s.modelindex2 = self->health * 0xff / g_obeliskHealth.integer;
+	self->activator->s.modelindex2 = g_obeliskHealth.integer > 0 ? (int)((long long)self->health * 0xff / g_obeliskHealth.integer) : 0;
 	self->activator->s.frame = 0;
 }
 
@@ -1292,14 +1350,15 @@ static void ObeliskDie( gentity_t *self, gentity_t *inflictor, gentity_t *attack
 
 	G_AddEvent( self->activator, EV_OBELISKEXPLODE, 0 );
 
-	AddScore(attacker, self->r.currentOrigin, CTF_CAPTURE_BONUS);
-
 	// add the sprite over the player's head
-	attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP );
-	attacker->client->ps.eFlags |= EF_AWARD_CAP;
-	attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
-	attacker->client->ps.persistant[PERS_CAPTURES]++;
-	attacker->client->stats.captures++;	// retail qagamex86 0x1006a7cb
+	if ( attacker && attacker->client ) {
+		AddScore(attacker, self->r.currentOrigin, CTF_CAPTURE_BONUS);
+		attacker->client->ps.eFlags &= ~(EF_AWARD_IMPRESSIVE | EF_AWARD_EXCELLENT | EF_AWARD_GAUNTLET | EF_AWARD_ASSIST | EF_AWARD_DEFEND | EF_AWARD_CAP );
+		attacker->client->ps.eFlags |= EF_AWARD_CAP;
+		attacker->client->rewardTime = level.time + REWARD_SPRITE_TIME;
+		attacker->client->ps.persistant[PERS_CAPTURES]++;
+		attacker->client->stats.captures++;	// retail qagamex86 0x1006a7cb
+	}
 
 	teamgame.redObeliskAttackedTime = 0;
 	teamgame.blueObeliskAttackedTime = 0;
@@ -1317,13 +1376,15 @@ static void ObeliskTouch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 		return;
 	}
 
-	tokens = other->client->ps.generic1;
+	tokens = other->client->ps.generic1 & 63;
 	if( tokens <= 0 ) {
 		return;
 	}
 
-	PrintMsg(NULL, "%s" S_COLOR_WHITE " brought in %i skull%s.\n",
-					other->client->pers.netname, tokens, tokens ? "s" : "" );
+	PrintMsg(NULL, "%s%s TEAM^3 CAPTURED %i skull%s!^7 (brought by %s)\n",
+		other->client->sess.sessionTeam == TEAM_RED ? "^1" : "^4",
+		other->client->sess.sessionTeam == TEAM_RED ? "RED" : "BLUE",
+		tokens, tokens == 1 ? "" : "s", other->client->pers.netname);
 
 	AddTeamScore( other->client->sess.sessionTeam, tokens );
 	Team_ForceGesture(other->client->sess.sessionTeam);
@@ -1337,7 +1398,7 @@ static void ObeliskTouch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 	other->client->ps.persistant[PERS_CAPTURES] += tokens;
 	other->client->stats.captures += tokens;	// retail qagamex86 0x1006a933
 
-	other->client->ps.generic1 = 0;
+	other->client->ps.generic1 &= 0xc0;
 	CalculateRanks();
 
 	Team_CaptureFlagSound( self, self->spawnflags, other );
@@ -1348,7 +1409,7 @@ static void ObeliskPain( gentity_t *self, gentity_t *attacker, int damage ) {
 	if (actualDamage <= 0) {
 		actualDamage = 1;
 	}
-	self->activator->s.modelindex2 = self->health * 0xff / g_obeliskHealth.integer;
+	self->activator->s.modelindex2 = g_obeliskHealth.integer > 0 ? (int)((long long)self->health * 0xff / g_obeliskHealth.integer) : 0;
 	if (!self->activator->s.frame) {
 		G_AddEvent(self, EV_OBELISKPAIN, 0);
 	}

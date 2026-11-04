@@ -1,0 +1,25 @@
+# Shuffle and teamsize actions, plus a passed clientkick and ballot removal.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client delta name Delta
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+clientcmd 4 delta team b
+clientcmd 10 alpha callvote shuffle extra
+clientcmd 12 alpha callvote teamsize 1
+clientcmd 14 alpha callvote teamsize 64
+clientcmd 16 alpha callvote teamsize 4
+clientcmd 18 bravo vote yes
+clientcmd 20 charlie vote yes
+clientcmd 150 alpha callvote shuffle
+clientcmd 152 bravo vote yes
+clientcmd 154 charlie vote yes
+clientcmd 300 alpha callvote clientkick 3
+clientcmd 302 bravo vote yes
+clientcmd 304 charlie vote yes
+clientcmd 450 alpha callvote fraglimit 30
+clientcmd 452 bravo vote no
+clientcmd 454 charlie disconnect

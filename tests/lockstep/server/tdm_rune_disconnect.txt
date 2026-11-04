@@ -1,0 +1,25 @@
+# G3: --cheats --factory tdm --set g_runes 1 --frames 1500.
+# Repeat with g_dropPowerups 0 to cover disabled death/disconnect drops.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 3 charlie team r
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+at 0 charlie weapon=2
+clientcmd 20 alpha setviewpos -260 320 40 0
+clientcmd 22 bravo setviewpos -700 320 40 0
+clientcmd 24 charlie setviewpos -400 -320 40 270
+clientcmd 30 alpha give Scout
+clientcmd 32 bravo give Guard
+clientcmd 34 charlie give Armor Regen
+clientcmd 60 alpha disconnect
+clientcmd 62 bravo team s
+clientcmd 64 charlie kill
+at 110 charlie buttons=attack
+at 112 charlie buttons=0
+clientcmd 130 charlie setviewpos 120 -320 40 0
+clientcmd 1400 charlie score

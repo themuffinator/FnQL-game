@@ -59,8 +59,13 @@ static void G_AnnouncePickup( gentity_t *other, gentity_t *ent, qboolean everyon
 	int			i, enemy;
 	gentity_t	*listener;
 
+	// The entire announcement is gated on a map pickup, not just its side
+	// label (retail 0x1004dcbc). Transfers must not announce another spawn.
+	if ( !other->client || ( ent->flags & FL_DROPPED_ITEM ) ) {
+		return;
+	}
 	side = S_COLOR_WHITE;
-	if ( other->client && !( ent->flags & FL_DROPPED_ITEM ) && G_IsFlagMode() ) {
+	if ( G_IsFlagMode() ) {
 		vec3_t toRed, toBlue;
 
 		VectorSubtract( level.redFlagBase, ent->s.origin, toRed );
@@ -145,6 +150,14 @@ int Pickup_Powerup( gentity_t *ent, gentity_t *other ) {
 	int			i;
 
 	quantity = ent->count ? ent->count : ent->item->quantity;
+	// Retail 0x1004dfe0: only manually dropped, decay-marked powerups lose
+	// whole seconds on the ground. Death drops retain their existing rules.
+	if ( ent->flags & FL_POWERUP_DECAY ) {
+		quantity -= ( level.time - ent->s.time ) / 1000;
+		if ( quantity < 0 ) {
+			quantity = 0;
+		}
+	}
 
 	if ( !client->ps.powerups[PW_BATTLESUIT] && tag == PW_BATTLESUIT ) {
 		client->ps.stats[STAT_BATTLESUIT_FRAG_COUNT] = 0;
@@ -258,6 +271,7 @@ int Pickup_PersistantPowerup( gentity_t *ent, gentity_t *other ) {
 	client->persistantPowerup = ent;
 	client->ps.stats[STAT_PERSISTANT_POWERUP] = ent->item->giTag;
 	client->ps.powerups[PW_SCOUT - PP_SCOUT + ent->item->giTag] = 0x7fffffff;
+	G_RunePickedUp( ent->item->giTag );
 
 	return -1;
 }
@@ -309,7 +323,8 @@ int Pickup_Holdable( gentity_t *ent, gentity_t *other ) {
 /*
 Retail Add_Ammo (qagamex86 0x1004dab0): an ammo pack adds its share to every
 weapon owned, and afterwards every weapon is held to the most it can carry
-(to its starting ammo in the round-based modes).  Infinite ammo adds nothing.
+(to its starting ammo in Domination). Infinite ammo adds nothing. Retail's
+second switch at 0x1004db61 uses normal caps in CA and Red Rover as well.
 */
 static void Add_Ammo( gentity_t *ent, int weapon, int count )
 {
@@ -334,8 +349,7 @@ static void Add_Ammo( gentity_t *ent, int weapon, int count )
 		}
 	}
 
-	startingLimit = g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_DOMINATION
-		|| g_gametype.integer == GT_RED_ROVER;
+	startingLimit = g_gametype.integer == GT_DOMINATION;
 	for ( w = WP_MACHINEGUN; w < WP_NUM_WEAPONS; w++ ) {
 		limit = startingLimit ? G_StartingAmmo( w ) : bg_weaponMaxAmmo[w];
 		if ( ps->ammo[w] > limit ) {
@@ -539,11 +553,11 @@ G_SendItemTimer
 
 Retail qagamex86 0x1004eac0: tell one spectator when a timed item comes
 back, which item and, on flag maps, which half it is on (3 for the only
-one of its kind).  live is set for changes as they happen, clear for the
-catch-up when spectating starts.
+one of its kind). Both updates and spectator catch-up pass zero for the
+event's groundEntityNum marker (0x1004f4a3, 0x10050b9f, 0x1004ede7).
 ===============
 */
-static void G_SendItemTimer( int clientNum, gentity_t *ent, qboolean live ) {
+static void G_SendItemTimer( int clientNum, gentity_t *ent ) {
 	gclient_t	*client = &level.clients[clientNum];
 	gentity_t	*te;
 	vec3_t		toRed, toBlue;
@@ -564,7 +578,7 @@ static void G_SendItemTimer( int clientNum, gentity_t *ent, qboolean live ) {
 	te->s.modelindex2 = ent->team != NULL;
 	te->r.svFlags |= SVF_SINGLECLIENT | SVF_BROADCAST;
 	te->r.singleClient = g_entities[clientNum].s.number;
-	te->s.groundEntityNum = live;
+	te->s.groundEntityNum = 0;
 
 	if ( g_gametype.integer != GT_CTF ) {
 		return;
@@ -601,7 +615,7 @@ static void G_BroadcastItemTimer( gentity_t *ent ) {
 		return;
 	}
 	for ( i = 0; i < level.maxclients; i++ ) {
-		G_SendItemTimer( i, ent, qtrue );
+		G_SendItemTimer( i, ent );
 	}
 }
 
@@ -624,7 +638,7 @@ void G_SendItemTimers( int clientNum ) {
 	for ( i = level.maxclients; i < level.num_entities; i++ ) {
 		ent = &g_entities[i];
 		if ( ent->inuse && G_ItemHasTimer( ent->item ) ) {
-			G_SendItemTimer( clientNum, ent, qfalse );
+			G_SendItemTimer( clientNum, ent );
 		}
 	}
 }
@@ -790,7 +804,7 @@ void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace) {
 			armor_tiered.integer, g_weaponRespawn.integer ) ) {
 		return;
 	}
-	// the round-based modes' own countdown arrives with milestone 6
+	// The pre-match countdown suppresses map pickups.
 	if ( level.warmupTime > 0 ) {
 		return;
 	}
@@ -851,6 +865,8 @@ void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace) {
 	}
 
 	// powerup pickups are global broadcasts
+	// Retail 0x1004f21a emits a carrier locator even for a subsequent item.
+	if ( G_IsQuadHog() && client->ps.powerups[PW_QUAD] ) G_QuadHogPing( other );
 	if ( ent->item->giType == IT_POWERUP || ent->item->giType == IT_TEAM ) {
 		gentity_t	*te;
 
@@ -969,10 +985,13 @@ gentity_t *LaunchItem( gitem_t *item, vec3_t origin, vec3_t velocity ) {
 		dropped->nextthink = level.time + 30000;
 		Team_CheckDroppedItem( dropped );
 	} else if ( g_gametype.integer == GT_ATTACK_DEFEND && item->giType == IT_TEAM ) {
-		// attack and defend's dropped flag rules arrive with milestone 6
+		// Retail 0x1004f6b7: keep the dropped flag until the turn resets.
 		dropped->think = Team_DroppedFlagThink;
-		dropped->nextthink = level.time + 30000;
+		dropped->nextthink = 0;
 		Team_CheckDroppedItem( dropped );
+	} else if ( item->giType == IT_PERSISTANT_POWERUP ) {
+		dropped->think = G_RespawnRune; // retail 0x1004f6ce
+		dropped->nextthink = level.time + 30000;
 	} else { // auto-remove after 30 seconds
 		dropped->think = G_FreeEntity;
 		dropped->nextthink = level.time + 30000;
@@ -1001,6 +1020,9 @@ gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle ) {
 	velocity[1] = (float)( (double)(float)sin( yaw ) * 150.0 );
 	velocity[2] = (float)( G_CRandom() * 50.0 + 200.0 );
 
+	if ( G_IsQuadHog() && item->giType == IT_POWERUP && item->giTag == PW_QUAD ) {
+		return G_LaunchQuadHog( item, ent->s.pos.trBase, velocity );
+	}
 	return LaunchItem( item, ent->s.pos.trBase, velocity );
 }
 
@@ -1220,7 +1242,16 @@ ClearRegisteredItems
 ==============
 */
 void ClearRegisteredItems( void ) {
+	int rune;
 	memset( itemRegistered, 0, sizeof( itemRegistered ) );
+	// Retail 0x100500ba registers the dynamic objective before CS_ITEMS.
+	if ( G_IsQuadHog() ) RegisterItem( BG_FindItemForPowerup( PW_QUAD ) );
+	// Retail 0x1005011f precaches all four runes before dynamic spawning.
+	if ( g_runes.integer || trap_Cvar_VariableValue( "com_build" ) != 0.0f ) {
+		for ( rune = PP_SCOUT; rune <= PP_ARMORREGEN; rune++ ) {
+			RegisterItem( BG_FindItemForPersistantPowerup( rune ) );
+		}
+	}
 
 	// retail registers the base weapons when a player spawns, after
 	// CS_ITEMS is written (G_GiveSpawnLoadout)
@@ -1299,6 +1330,16 @@ be on an entity that hasn't spawned yet.
 ============
 */
 static qboolean G_ItemAllowed( const gitem_t *item ) {
+	// Retail 0x1005084d keeps only flag objectives under instagib. Arena,
+	// race, domination and red rover suppress ordinary map pickups too
+	// (0x100508ad). Dynamic drops have their own creation path.
+	if ( g_instaGib.integer ) {
+		return item->giType == IT_TEAM && item->giTag >= PW_REDFLAG && item->giTag <= PW_NEUTRALFLAG;
+	}
+	if ( g_gametype.integer == GT_RACE || g_gametype.integer == GT_CLAN_ARENA
+		|| g_gametype.integer == GT_DOMINATION || g_gametype.integer == GT_RED_ROVER ) {
+		return qfalse;
+	}
 	switch ( item->giType ) {
 	case IT_WEAPON:
 		return g_spawnItemWeapons.integer != 0;
@@ -1330,15 +1371,21 @@ Retail G_SpawnItem (qagamex86 0x100507e0): the g_spawnItem* switches, the
 ammo pack choice and disable_<classname> decide whether the item spawns;
 only spawned items are registered.
 */
-void G_SpawnItem( gentity_t *ent, gitem_t *item ) {
+static void G_SpawnItemInternal( gentity_t *ent, gitem_t *item, qboolean force ) {
+	char *gametypes;
+	qboolean registerItem = qtrue;
+	// Retail 0x10050801: an explicit Race inclusion overrides the normal
+	// pickup suppression, including disable_<item> and the factory switches.
+	if ( !force && g_gametype.integer == GT_RACE && G_SpawnString( "gametype", "", &gametypes )
+		&& ( G_SpawnGametypeMask( gametypes ) & ( 1 << ( GT_RACE + 1 ) ) ) ) force = qtrue;
 
-	if ( !G_ItemAllowed( item ) || G_ItemDisabled( item ) ) {
+	if ( !force && ( !G_ItemAllowed( item ) || G_ItemDisabled( item ) ) ) {
 		ent->tag = TAG_DONTSPAWN;
 		return;
 	}
 
 	// retail (qagamex86 0x100509b7) publishes where each team flag stands
-	if ( item->giType == IT_TEAM && !ent->s.modelindex2 && ( item->giTag == PW_REDFLAG || item->giTag == PW_BLUEFLAG ) ) {
+	if ( !force && item->giType == IT_TEAM && !ent->s.modelindex2 && ( item->giTag == PW_REDFLAG || item->giTag == PW_BLUEFLAG ) ) {
 		trap_SetConfigstring( item->giTag == PW_REDFLAG ? CS_RED_FLAG_ORIGIN : CS_BLUE_FLAG_ORIGIN,
 			va( "\\x\\%f\\y\\%f\\z\\%f", ent->s.origin[0], ent->s.origin[1], ent->s.origin[2] ) );
 	}
@@ -1348,13 +1395,18 @@ void G_SpawnItem( gentity_t *ent, gitem_t *item ) {
 
 	if ( g_ammoPackHack.integer && item->giType == IT_AMMO ) {
 		if ( item->giTag == WP_NUM_WEAPONS ) {
-			ent->tag = TAG_DONTSPAWN;	// retail drops the map's own packs here
-			return;
+			if ( !force ) {
+				ent->tag = TAG_DONTSPAWN;
+				return;
+			}
+			// Retail 0x10050ab7 still assigns the item for forced giving,
+			// without registering an already-pack-shaped ammo item again.
+			registerItem = qfalse;
 		}
 		item = BG_FindItem( "Ammo Pack" );
 	}
 
-	RegisterItem( item );
+	if ( registerItem ) RegisterItem( item );
 
 	ent->item = item;
 	// some movers spawn on the second frame, so delay item spawns two
@@ -1375,6 +1427,18 @@ void G_SpawnItem( gentity_t *ent, gitem_t *item ) {
 		ent->s.generic1 = ent->spawnflags;
 	}
 #endif
+	// Retail 0x10050ba1 also reports dynamically spawned timed items before
+	// FinishSpawningItem; spectators must see both this and the later pickup.
+	G_BroadcastItemTimer( ent );
+}
+
+void G_SpawnItem( gentity_t *ent, gitem_t *item ) {
+	G_SpawnItemInternal( ent, item, qfalse );
+}
+
+void G_SpawnItemForced( gentity_t *ent, gitem_t *item ) {
+	// Retail 0x1003bbf3 passes force=1 to 0x100507e0 for the give cheat.
+	G_SpawnItemInternal( ent, item, qtrue );
 }
 
 
@@ -1428,8 +1492,8 @@ G_RunItem
 
 Retail qagamex86 0x10050de0: the item thinks first, then falls or slides
 and bounces.  An item that comes to rest in a nodrop volume is removed; a
-team flag goes home.  (Retail moves a persistant powerup to another spot
-there, qagamex86 0x1004da10; FnQL-game has none in play yet.)
+team flag goes home. A persistent rune relocates to another eligible spawn
+point instead (retail qagamex86 0x1004da10).
 ================
 */
 void G_RunItem( gentity_t *ent ) {
@@ -1482,6 +1546,8 @@ void G_RunItem( gentity_t *ent ) {
 	if ( contents & CONTENTS_NODROP ) {
 		if (ent->item && ent->item->giType == IT_TEAM) {
 			Team_FreeEntity(ent);
+		} else if ( ent->item && ent->item->giType == IT_PERSISTANT_POWERUP ) {
+			G_RespawnRune( ent ); // retail 0x10050f27
 		} else {
 			G_FreeEntity( ent );
 		}
