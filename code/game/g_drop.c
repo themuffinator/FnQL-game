@@ -90,6 +90,57 @@ static gentity_t *G_ManualDropItem( gentity_t *owner, gitem_t *item, vec3_t orig
 	return drop;
 }
 
+// The carried flag leaves as a bouncing manual drop (retail 0x10051582):
+// the neutral flag first, then red, then blue.
+static void G_DropCarriedFlag( gentity_t *ent, vec3_t origin, vec3_t velocity ) {
+	playerState_t *ps = &ent->client->ps;
+	gentity_t *drop;
+	gitem_t *item;
+	const int tag = ps->powerups[PW_NEUTRALFLAG] ? PW_NEUTRALFLAG
+		: ps->powerups[PW_REDFLAG] ? PW_REDFLAG : PW_BLUEFLAG;
+
+	if ( !ps->powerups[tag] || !( item = BG_FindItemForPowerup( tag ) ) ) {
+		return;
+	}
+	drop = G_ManualDropItem( ent, item, origin, velocity );
+	drop->physicsObject = qtrue;
+	drop->physicsBounce = g_flagBounce.value;
+	drop->target_ent = ent;
+	if ( g_flagPhysics.integer ) {
+		drop->frameThink = G_RunFlagPhysics;
+	}
+	ps->powerups[tag] = 0;
+}
+
+/*
+G_TackleFlag
+
+Retail G_Damage 0x1004983a with g_tackleFlag: the gauntleted carrier's flag
+goes through the shared flag-drop helper 0x100513b0 with an origin 64 units
+above the victim and a straight-up velocity of g_tackleFlag.  Like a manual
+drop it needs a playing, movable victim and a clear flag-sized path.
+*/
+void G_TackleFlag( gentity_t *targ ) {
+	vec3_t mins = { -ITEM_RADIUS, -ITEM_RADIUS, -ITEM_RADIUS };
+	vec3_t maxs = { ITEM_RADIUS, ITEM_RADIUS, 35 };
+	vec3_t origin, velocity;
+	trace_t trace;
+	playerState_t *ps;
+
+	if ( !targ->client || targ->client->ps.pm_type == PM_SPECTATOR || ( targ->client->ps.pm_flags & PMF_NO_MOVE ) ) {
+		return;
+	}
+	ps = &targ->client->ps;
+	VectorCopy( ps->origin, origin );
+	origin[2] = (float)( (double)ps->origin[2] + 64.0 );
+	VectorSet( velocity, 0, 0, (float)g_tackleFlag.integer );
+	trap_Trace( &trace, ps->origin, mins, maxs, origin, ENTITYNUM_NONE, CONTENTS_SOLID );
+	if ( trace.fraction != 1.0f ) {
+		return;
+	}
+	G_DropCarriedFlag( targ, origin, velocity );
+}
+
 void G_DropItemCommand( gentity_t *ent, dropKind_t kind ) {
 	playerState_t *ps;
 	gitem_t *item;
@@ -132,19 +183,7 @@ void G_DropItemCommand( gentity_t *ent, dropKind_t kind ) {
 		return;
 	}
 	if ( kind == DROP_FLAG ) {
-		tag = ps->powerups[PW_NEUTRALFLAG] ? PW_NEUTRALFLAG
-			: ps->powerups[PW_REDFLAG] ? PW_REDFLAG : PW_BLUEFLAG;
-		if ( !ps->powerups[tag] || !( item = BG_FindItemForPowerup( tag ) ) ) {
-			return;
-		}
-		drop = G_ManualDropItem( ent, item, origin, velocity );
-		drop->physicsObject = qtrue;
-		drop->physicsBounce = g_flagBounce.value;
-		drop->target_ent = ent;
-		if ( g_flagPhysics.integer ) {
-			drop->frameThink = G_RunFlagPhysics;
-		}
-		ps->powerups[tag] = 0;
+		G_DropCarriedFlag( ent, origin, velocity );
 		return;
 	}
 	for ( tag = PW_REDFLAG; tag < PW_NUM_POWERUPS; tag++ ) {

@@ -1,0 +1,22 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory tdm --frames 120
+# [--set g_teamSpecSayEnable 0]): spectator chat in a team mode (retail
+# qagamex86 0x100413c3).  With g_teamSpecSayEnable 0 a spectator's team
+# chat and tells reach only spectators; its public chat still reaches
+# everyone, and the players' chat is unaffected.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client carol name Carol
+client dave name Dave
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+
+clientcmd 20 carol say_team spectator team chat
+clientcmd 30 carol tell 0 spectator tell to a player
+clientcmd 40 carol tell 3 spectator tell to a spectator
+clientcmd 50 carol say spectator public chat
+clientcmd 60 alpha say_team red team chat
+clientcmd 70 bravo tell 2 player tell to a spectator

@@ -461,7 +461,11 @@ static int QDECL ShuffleCompare( const void *a, const void *b ) {
 void G_ShuffleTeams( void ) {
 	int slots[MAX_CLIENTS], count = 0, i, moved = 0;
 	team_t team = (rand() & 1) ? TEAM_BLUE : TEAM_RED;
-	if ( level.numNonSpectatorClients < g_shuffle_minplayers.integer && g_gametype.integer != GT_RED_ROVER ) {
+	// Retail 0x1006a323 disarms the automatic shuffle on every attempt, and
+	// counts the connected players (level +0x54) against the minimum.
+	level.autoShuffleArmed = qfalse;
+	level.autoShuffleTime = 0;
+	if ( level.numPlayingClients < g_shuffle_minplayers.integer && g_gametype.integer != GT_RED_ROVER ) {
 		trap_SendServerCommand(-1, "print \"Unable to shuffle: Not enough players.\n\"");
 		return;
 	}

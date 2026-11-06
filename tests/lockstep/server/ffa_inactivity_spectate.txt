@@ -1,0 +1,27 @@
+# Gate G3 scenario (scripts/server_lockstep.py --frames 400 --set
+# g_inactivity 4 --set g_inactivityWarning 1 --set g_dropInactive 0): an
+# idle player is moved to the spectators instead of dropped (retail
+# qagamex86 0x10033fd0), follows the next player at once (FollowCycle,
+# 0x10041130), and is never counted again while spectating.  The warning
+# reads "1 second" in the singular.  Only one player turns spectator:
+# retail stamps spectator order with the CRT wall clock (0x100404ed), so
+# two of them would sort by real time rather than by the scenario.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+clientcmd 1 charlie team f
+
+at 0  alpha weapon=2
+at 0  bravo weapon=2
+at 0  charlie weapon=2
+at 10 bravo forward=127 dyaw=3
+at 10 charlie right=127 dyaw=-2
+at 60 bravo forward=0 right=127
+at 90 bravo right=0 buttons=attack
+at 95 bravo buttons=0 forward=-127

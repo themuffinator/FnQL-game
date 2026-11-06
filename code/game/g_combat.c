@@ -784,7 +784,8 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 
 	// don't allow respawn until the death anim is done
 	// g_forcerespawn may force spawning at some later time
-	if ( client->ps.pm_type != PM_FREEZE ) client->respawnTime = level.time + g_respawn_delay_min.integer;
+	// (retail 0x10048289: g_suddenDeathRespawn's overtime delay when enabled)
+	if ( client->ps.pm_type != PM_FREEZE ) client->respawnTime = level.time + G_DeathRespawnDelay();
 	if ( level.warmupTime > 0 ) {
 		switch ( g_gametype.integer ) {
 		case GT_CLAN_ARENA:
@@ -1558,6 +1559,12 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 
 	// do the damage
 	if ( take || asave ) {
+		// Retail 0x1004983a: with g_tackleFlag, a gauntlet hit knocks the
+		// victim's flag loose, tossed up at g_tackleFlag units a second.
+		if ( g_tackleFlag.integer && mod == MOD_GAUNTLET && client ) {
+			G_TackleFlag( targ );
+		}
+
 		if ( g_damagePlums.integer && client && attacker->client && attacker != targ && targ->health > 0 ) {
 			if ( mod == MOD_SHOTGUN ) {
 				// one plum per blast, sent by the shotgun pattern
@@ -1602,13 +1609,19 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 
 			if ( attacker->health < limit ) {
 				const int overkill = targ->health < 0 ? -targ->health : 0;
+				const int leeched = (int)( (float)( take - overkill ) * g_vampiricDamage.value );
 
-				attacker->health += (int)( (float)( take - overkill ) * g_vampiricDamage.value );
+				attacker->health += leeched;
 				if ( attacker->health > limit ) {
 					attacker->health = limit;
 				}
 				attacker->client->ps.stats[STAT_HEALTH] = attacker->health;
 				attacker->s.health = attacker->health;
+				if ( g_debugVampiricDamage.integer ) {
+					// retail 0x10049b80: the victim's number and health
+					G_Printf( "%i: client:%i health:%i damage:%i leeched:%i\n",
+						level.time, targ->s.number, targ->health, take, leeched );
+				}
 			}
 		}
 
@@ -1660,6 +1673,20 @@ explosions and melee attacks.  Retail (qagamex86 0x10049d80) probes the
 centre of the target's bounds and four points 15 units off it horizontally.
 ============
 */
+// Retail 0x10049d20: with g_enableDebugTrace, a blocked CanDamage probe that
+// stopped on a spectating player is announced to everyone.
+static void CanDamageDebugTrace( const trace_t *tr ) {
+	const gclient_t *client;
+
+	if ( !g_enableDebugTrace.integer || tr->entityNum < 0 || tr->entityNum >= MAX_GENTITIES ) {
+		return;
+	}
+	client = g_entities[tr->entityNum].client;
+	if ( client && client->ps.pm_type == PM_SPECTATOR ) {
+		trap_SendServerCommand( -1, "print \"A spectator has been shot!\n\"" );
+	}
+}
+
 qboolean CanDamage( gentity_t *targ, vec3_t origin ) {
 	static const float	probes[4][2] = { { 15, 15 }, { 15, -15 }, { -15, 15 }, { -15, -15 } };
 	vec3_t	dest;
@@ -1675,6 +1702,7 @@ qboolean CanDamage( gentity_t *targ, vec3_t origin ) {
 	if ( tr.fraction == 1.0 || tr.entityNum == targ->s.number ) {
 		return qtrue;
 	}
+	CanDamageDebugTrace( &tr );
 
 	// this should probably check in the plane of projection,
 	// rather than in world coordinate, and also include Z
@@ -1686,6 +1714,7 @@ qboolean CanDamage( gentity_t *targ, vec3_t origin ) {
 		if ( tr.fraction == 1.0 ) {
 			return qtrue;
 		}
+		CanDamageDebugTrace( &tr );
 	}
 
 	return qfalse;

@@ -21,7 +21,7 @@ gentity_t g_entities[MAX_GENTITIES];
 vec3_t vec3_origin;
 vmCvar_t g_gametype, g_dropCmds, g_runes, g_instaGib, g_droppedPowerupsDecay;
 vmCvar_t g_throwFlagVelocity, g_throwFlagForwardMult, g_flagBounce;
-vmCvar_t g_flagPhysics;
+vmCvar_t g_flagPhysics, g_tackleFlag;
 static gclient_t client;
 static gentity_t drops[16];
 static gitem_t items[4] = {
@@ -205,6 +205,22 @@ int main( void ) {
 	Reset(); g_gametype.integer = GT_CTF; g_flagPhysics.integer = 1;
 	client.ps.powerups[PW_BLUEFLAG] = 0x7fffffff; Drop( DROP_FLAG );
 	CHECK( dropCount == 1 && drops[0].frameThink == G_RunFlagPhysics );
+
+	// g_tackleFlag (retail 0x1004983a / 0x100513b0): the flag goes 64 units
+	// up with a straight-up toss, needs room and a movable, playing carrier,
+	// and leaves nothing behind without a flag.
+	Reset(); g_tackleFlag.integer = 600; VectorSet( client.ps.origin, 10, 20, 30 );
+	client.ps.powerups[PW_BLUEFLAG] = 0x7fffffff; G_TackleFlag( &g_entities[0] );
+	CHECK( traces == 1 && dropCount == 1 && drops[0].item == &items[2] && !client.ps.powerups[PW_BLUEFLAG] );
+	CHECK( drops[0].s.pos.trBase[0] == 10 && drops[0].s.pos.trBase[1] == 20 && drops[0].s.pos.trBase[2] == 94 );
+	CHECK( drops[0].s.pos.trDelta[0] == 0 && drops[0].s.pos.trDelta[1] == 0 && drops[0].s.pos.trDelta[2] == 600 );
+	CHECK( drops[0].physicsObject && drops[0].nextthink == level.time + 10000 && drops[0].target_ent == &g_entities[0] );
+	Reset(); g_tackleFlag.integer = 600; G_TackleFlag( &g_entities[0] ); CHECK( traces == 1 && !dropCount );
+	Reset(); g_tackleFlag.integer = 600; client.ps.powerups[PW_BLUEFLAG] = 0x7fffffff;
+	blocked = qtrue; G_TackleFlag( &g_entities[0] ); CHECK( !dropCount && client.ps.powerups[PW_BLUEFLAG] );
+	blocked = qfalse; traces = 0; client.ps.pm_flags = PMF_NO_MOVE; G_TackleFlag( &g_entities[0] ); CHECK( !traces && !dropCount );
+	client.ps.pm_flags = 0; client.ps.pm_type = PM_SPECTATOR; G_TackleFlag( &g_entities[0] ); CHECK( !traces && !dropCount );
+	g_entities[0].client = NULL; G_TackleFlag( &g_entities[0] ); CHECK( !traces );
 	puts("manual drop command policy and state transitions: OK");
 	return 0;
 }

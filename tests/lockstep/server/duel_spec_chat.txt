@@ -1,0 +1,23 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory duel --frames 700):
+# chat to the duelists (retail qagamex86 0x10041386).  A queued spectator's
+# chat reaches the duelists during the warmup and the countdown, and stops
+# reaching them once the match is under way; the duelists' own chat is
+# unaffected.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+
+clientcmd 10 charlie say warmup chat
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+clientcmd 60 charlie say countdown chat
+clientcmd 560 charlie say match chat
+clientcmd 570 alpha say duelist chat
+clientcmd 580 charlie say_team match team chat

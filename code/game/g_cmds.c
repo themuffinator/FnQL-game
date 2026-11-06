@@ -1242,6 +1242,63 @@ static qboolean AllowTeamSwitch( int clientNum, team_t newTeam ) {
 
 /*
 =================
+G_TeamJoinAllowed
+
+Retail qagamex86 0x10040999-0x10040b65, a team-mode join or switch.  The
+chosen team may not already hold teamsize players.  With
+g_teamForceBalance, teams more than one apart take no one on the larger
+side, and teams that are even refuse a switch from one to the other (it
+would leave them two apart).  The counts leave the requester out, then
+the balanced rule puts it back on its own team.
+=================
+*/
+static qboolean G_TeamJoinAllowed( gentity_t *ent, team_t team ) {
+	gclient_t *client = ent->client;
+	const int clientNum = ent - g_entities;
+	const team_t oldTeam = client->sess.sessionTeam;
+	const int ignore = oldTeam == TEAM_SPECTATOR ? -1 : clientNum;
+	int counts[TEAM_NUM_TEAMS] = { 0 };
+	qboolean balanced = qtrue;
+
+	counts[TEAM_BLUE] = TeamCount( ignore, TEAM_BLUE );
+	counts[TEAM_RED] = TeamCount( ignore, TEAM_RED );
+	if ( teamsize.integer > 0 && team != TEAM_SPECTATOR && counts[team] >= teamsize.integer ) {
+		trap_SendServerCommand( clientNum, va( "print \"^1Team is full. Team size is currently set to %d.^7\n\"",
+			teamsize.integer ) );
+		return qfalse;
+	}
+	// retail 0x10068100
+	if ( g_teamForceBalance.integer
+		&& ( counts[TEAM_RED] > counts[TEAM_BLUE] + 1 || counts[TEAM_BLUE] > counts[TEAM_RED] + 1 ) ) {
+		balanced = qfalse;
+	}
+
+	counts[TEAM_BLUE] = TeamCount( clientNum, TEAM_BLUE );
+	counts[TEAM_RED] = TeamCount( clientNum, TEAM_RED );
+	if ( !balanced ) {
+		if ( ( team == TEAM_RED && counts[TEAM_RED] > counts[TEAM_BLUE] )
+			|| ( team == TEAM_BLUE && counts[TEAM_BLUE] > counts[TEAM_RED] ) ) {
+			trap_SendServerCommand( client->ps.clientNum, va( "cp \"%s has too many players.\n\"",
+				team == TEAM_RED ? "Red Team" : "Blue Team" ) );
+			return qfalse;
+		}
+		return qtrue;
+	}
+	if ( (unsigned)oldTeam < TEAM_NUM_TEAMS ) {
+		counts[oldTeam]++;
+	}
+	if ( team != oldTeam && ( oldTeam == TEAM_RED || oldTeam == TEAM_BLUE )
+		&& ( team == TEAM_RED || team == TEAM_BLUE ) && counts[TEAM_RED] == counts[TEAM_BLUE] ) {
+		trap_SendServerCommand( client->ps.clientNum, va( "cp \"%s team has too many players.\n\"",
+			team == TEAM_RED ? "Red" : "Blue" ) );
+		return qfalse;
+	}
+	return qtrue;
+}
+
+
+/*
+=================
 G_SetSpectateOnly
 
 Retail qagamex86 0x10040759: in a duel, asking to spectate leaves the queue.
@@ -1259,130 +1316,21 @@ static void G_SetSpectateOnly( gclient_t *client ) {
 
 /*
 =================
-SetTeam
+G_ExecuteTeamChange
+
+Retail qagamex86 0x10040440: carry out a team change SetTeam has decided
+on (or one the game forces, such as the duel ready delay's): kill a
+playing client, leave or join the duel queue, reset the match statistics,
+take the new team and spectator state, and begin again.
 =================
 */
-static int SetTeamInternal( gentity_t *ent, const char *s, qboolean force ) {
-	team_t				team, oldTeam;
-	gclient_t			*client;
-	int					clientNum;
-	spectatorState_t	specState;
-	int					specClient;
+void G_ExecuteTeamChange( gentity_t *ent, team_t team, spectatorState_t specState, int specClient ) {
+	const int			clientNum = ent - g_entities;
+	gclient_t			*client = level.clients + clientNum;
+	const team_t		oldTeam = client->sess.sessionTeam;
 	int					teamLeader;
 	qboolean			checkTeamLeader = qfalse;
 	int					i;
-
-	//
-	// see what change is requested
-	//
-
-	clientNum = ent - g_entities;
-	client = level.clients + clientNum;
-
-	// early team override
-	if ( client->pers.connected == CON_CONNECTING && g_gametype.integer >= GT_TEAM ) {
-		if ( !Q_stricmp( s, "red" ) || !Q_stricmp( s, "r" ) ) {
-			team = TEAM_RED;
-		} else if ( !Q_stricmp( s, "blue" ) || !Q_stricmp( s, "b" ) ) {
-			team = TEAM_BLUE;
-		} else {
-			team = -1;
-		}
-		if ( team != -1 && (force || AllowTeamSwitch( clientNum, team )) ) {
-			client->sess.sessionTeam = team;
-			client->pers.teamState.state = TEAM_BEGIN;
-			G_WriteClientSessionData( client );
-			// count current clients and rank for scoreboard
-			CalculateRanks();
-		}
-		return -1; // bypass flood protection
-	}
-
-	// retail (qagamex86 0x10040715) starts a free spectator on client 0, so it
-	// hears client 0's deaths like a follower
-	specClient = 0;
-	specState = SPECTATOR_NOT;
-	if ( !Q_stricmp( s, "scoreboard" ) || !Q_stricmp( s, "score" )  ) {
-		team = TEAM_SPECTATOR;
-		specState = SPECTATOR_SCOREBOARD;
-	} else if ( !Q_stricmp( s, "follow1" ) ) {
-		team = TEAM_SPECTATOR;
-		G_SetSpectateOnly( client );
-		// retail (qagamex86 0x100407a5) follows only when someone plays
-		if ( level.numPlayingClients > 0 ) {
-			specState = SPECTATOR_FOLLOW;
-			specClient = -1;
-		} else {
-			specState = SPECTATOR_FREE;
-		}
-	} else if ( !Q_stricmp( s, "follow2" ) ) {
-		team = TEAM_SPECTATOR;
-		G_SetSpectateOnly( client );
-		if ( level.numPlayingClients > 1 ) {
-			specState = SPECTATOR_FOLLOW;
-			specClient = -2;
-		} else if ( level.numPlayingClients == 1 ) {
-			specState = SPECTATOR_FOLLOW;
-			specClient = -1;
-		} else {
-			specState = SPECTATOR_FREE;
-		}
-	} else if ( !Q_stricmp( s, "spectator" ) || !Q_stricmp( s, "s" ) ) {
-		team = TEAM_SPECTATOR;
-		specState = SPECTATOR_FREE;
-		G_SetSpectateOnly( client );
-	} else if ( g_gametype.integer == GT_RED_ROVER && !force ) {
-		team = g_rrInfected.integer ? G_RoverJoinTeam(clientNum) : PickTeam(clientNum);
-	} else if ( g_gametype.integer >= GT_TEAM ) {
-		// if running a team game, assign player to one of the teams
-		specState = SPECTATOR_NOT;
-		if ( !Q_stricmp( s, "red" ) || !Q_stricmp( s, "r" ) ) {
-			team = TEAM_RED;
-		} else if ( !Q_stricmp( s, "blue" ) || !Q_stricmp( s, "b" ) ) {
-			team = TEAM_BLUE;
-		} else {
-			// pick the team with the least number of players
-			team = PickTeam( clientNum );
-		}
-
-		if ( !force && !AllowTeamSwitch( clientNum, team ) ) {
-			return -1;
-		}
-
-	} else {
-		team = TEAM_FREE;
-		if ( g_gametype.integer == GT_TOURNAMENT ) {
-			// retail (qagamex86 0x10040bd1): asking to play joins the queue
-			client->sess.spectateOnly = 0;
-			trap_SendServerCommand( clientNum, "cp \"You are in the queue to play\n\"" );
-		}
-	}
-
-	// a duel takes only the next in line while it lacks players; everyone
-	// else asking waits as a spectator (retail qagamex86 0x10040c83)
-	if ( !force && g_gametype.integer == GT_TOURNAMENT ) {
-		if ( !( level.numNonSpectatorClients < 2 && G_NextInLine() == client )
-			&& ( team != client->sess.sessionTeam || team == TEAM_SPECTATOR ) ) {
-			team = TEAM_SPECTATOR;
-		}
-	} else if ( !force && g_maxGameClients.integer > 0 &&
-		level.numNonSpectatorClients >= g_maxGameClients.integer ) {
-		team = TEAM_SPECTATOR;
-	}
-
-	//
-	// decide if we will allow the change
-	//
-	// a request for the team already held changes nothing, but a spectator's
-	// request always respawns it (retail qagamex86 0x10040cbe)
-	oldTeam = client->sess.sessionTeam;
-	if ( team == oldTeam && team != TEAM_SPECTATOR ) {
-		return team;
-	}
-
-	//
-	// execute the team change
-	//
 
 	// Retail 0x10040489 tests the viewed player state (a round spectator
 	// may be following a living teammate), rather than the old entity health.
@@ -1461,7 +1409,142 @@ static int SetTeamInternal( gentity_t *ent, const char *s, qboolean force ) {
 
 	if ( level.shuffling && g_gametype.integer == GT_RED_ROVER ) G_RespawnForShuffle(ent);
 	else ClientBegin( clientNum );
+}
 
+
+/*
+=================
+SetTeam
+=================
+*/
+static int SetTeamInternal( gentity_t *ent, const char *s, qboolean force ) {
+	team_t				team, oldTeam;
+	gclient_t			*client;
+	int					clientNum;
+	spectatorState_t	specState;
+	int					specClient;
+	qboolean			checkLock = qfalse;
+
+	//
+	// see what change is requested
+	//
+
+	clientNum = ent - g_entities;
+	client = level.clients + clientNum;
+
+	// early team override
+	if ( client->pers.connected == CON_CONNECTING && g_gametype.integer >= GT_TEAM ) {
+		if ( !Q_stricmp( s, "red" ) || !Q_stricmp( s, "r" ) ) {
+			team = TEAM_RED;
+		} else if ( !Q_stricmp( s, "blue" ) || !Q_stricmp( s, "b" ) ) {
+			team = TEAM_BLUE;
+		} else {
+			team = -1;
+		}
+		if ( team != -1 && (force || AllowTeamSwitch( clientNum, team )) ) {
+			client->sess.sessionTeam = team;
+			client->pers.teamState.state = TEAM_BEGIN;
+			G_WriteClientSessionData( client );
+			// count current clients and rank for scoreboard
+			CalculateRanks();
+		}
+		return -1; // bypass flood protection
+	}
+
+	// retail (qagamex86 0x10040715) starts a free spectator on client 0, so it
+	// hears client 0's deaths like a follower
+	specClient = 0;
+	specState = SPECTATOR_NOT;
+	if ( !Q_stricmp( s, "scoreboard" ) || !Q_stricmp( s, "score" )  ) {
+		team = TEAM_SPECTATOR;
+		specState = SPECTATOR_SCOREBOARD;
+	} else if ( !Q_stricmp( s, "follow1" ) ) {
+		team = TEAM_SPECTATOR;
+		G_SetSpectateOnly( client );
+		// retail (qagamex86 0x100407a5) follows only when someone plays
+		if ( level.numPlayingClients > 0 ) {
+			specState = SPECTATOR_FOLLOW;
+			specClient = -1;
+		} else {
+			specState = SPECTATOR_FREE;
+		}
+	} else if ( !Q_stricmp( s, "follow2" ) ) {
+		team = TEAM_SPECTATOR;
+		G_SetSpectateOnly( client );
+		if ( level.numPlayingClients > 1 ) {
+			specState = SPECTATOR_FOLLOW;
+			specClient = -2;
+		} else if ( level.numPlayingClients == 1 ) {
+			specState = SPECTATOR_FOLLOW;
+			specClient = -1;
+		} else {
+			specState = SPECTATOR_FREE;
+		}
+	} else if ( !Q_stricmp( s, "spectator" ) || !Q_stricmp( s, "s" ) ) {
+		team = TEAM_SPECTATOR;
+		specState = SPECTATOR_FREE;
+		G_SetSpectateOnly( client );
+	} else if ( g_gametype.integer == GT_RED_ROVER && !force ) {
+		team = g_rrInfected.integer ? G_RoverJoinTeam(clientNum) : PickTeam(clientNum);
+	} else if ( g_gametype.integer >= GT_TEAM ) {
+		// if running a team game, assign player to one of the teams
+		specState = SPECTATOR_NOT;
+		// Retail 0x10040921: a colour can be chosen only while the match
+		// waits for players; once the countdown or the match is under way
+		// everyone is placed on the smaller team.  A forced move keeps it.
+		if ( !force && level.warmupTime >= 0 ) {
+			team = PickTeam( clientNum );
+		} else if ( !Q_stricmp( s, "red" ) || !Q_stricmp( s, "r" ) ) {
+			team = TEAM_RED;
+		} else if ( !Q_stricmp( s, "blue" ) || !Q_stricmp( s, "b" ) ) {
+			team = TEAM_BLUE;
+		} else {
+			// pick the team with the least number of players
+			team = PickTeam( clientNum );
+		}
+
+		if ( !force && !G_TeamJoinAllowed( ent, team ) ) {
+			return -1;
+		}
+		checkLock = !force;
+
+	} else {
+		team = TEAM_FREE;
+		if ( g_gametype.integer == GT_TOURNAMENT ) {
+			// retail (qagamex86 0x10040bd1): asking to play joins the queue
+			client->sess.spectateOnly = 0;
+			trap_SendServerCommand( clientNum, "cp \"You are in the queue to play\n\"" );
+		}
+	}
+
+	// a duel takes only the next in line while it lacks players; everyone
+	// else asking waits as a spectator (retail qagamex86 0x10040c83)
+	if ( !force && g_gametype.integer == GT_TOURNAMENT ) {
+		if ( !( level.numNonSpectatorClients < 2 && G_NextInLine() == client )
+			&& ( team != client->sess.sessionTeam || team == TEAM_SPECTATOR ) ) {
+			team = TEAM_SPECTATOR;
+		}
+	} else if ( !force && g_maxGameClients.integer > 0 &&
+		level.numNonSpectatorClients >= g_maxGameClients.integer ) {
+		team = TEAM_SPECTATOR;
+	}
+
+	//
+	// decide if we will allow the change
+	//
+	// a request for the team already held changes nothing, but a spectator's
+	// request always respawns it (retail qagamex86 0x10040cbe)
+	oldTeam = client->sess.sessionTeam;
+	if ( team == oldTeam && team != TEAM_SPECTATOR ) {
+		return team;
+	}
+	// retail 0x10040cc8 tests the team locks last
+	if ( checkLock && ( team == TEAM_RED || team == TEAM_BLUE ) && level.teamLocked[team] ) {
+		trap_SendServerCommand( clientNum, va( "print \"The %s team is locked!\n\"", TeamName( team ) ) );
+		return -1;
+	}
+
+	G_ExecuteTeamChange( ent, team, specState, specClient );
 	return team;
 }
 
@@ -1745,6 +1828,26 @@ void Cmd_FollowCycle_f( gentity_t *ent, int dir ) {
 
 /*
 ==================
+G_ChatTeammates
+
+Retail qagamex86 0x10067f30, the team test team chat uses: outside the team
+modes only spectators share a team (with each other).  The shared
+OnSameTeam keeps its own rules for every other caller.
+==================
+*/
+static qboolean G_ChatTeammates( const gentity_t *ent, const gentity_t *other ) {
+	if ( !ent->client || !other->client ) {
+		return qfalse;
+	}
+	if ( g_gametype.integer < GT_TEAM && ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
+		return qfalse;
+	}
+	return ent->client->sess.sessionTeam == other->client->sess.sessionTeam;
+}
+
+
+/*
+==================
 G_Say
 ==================
 */
@@ -1761,13 +1864,22 @@ static void G_SayTo( gentity_t *ent, gentity_t *other, int mode, int color, cons
 	if ( other->client->pers.connected != CON_CONNECTED ) {
 		return;
 	}
-	if ( mode == SAY_TEAM  && !OnSameTeam(ent, other) ) {
+	if ( mode == SAY_TEAM && !G_ChatTeammates( ent, other ) ) {
 		return;
 	}
-	// no chatting to players in tournements
-	if ( (g_gametype.integer == GT_TOURNAMENT )
+	// Retail 0x10041386: no chatting to the duelists from outside the duel,
+	// except in the warmup and at the intermission.
+	if ( g_gametype.integer == GT_TOURNAMENT
 		&& other->client->sess.sessionTeam == TEAM_FREE
-		&& ent->client->sess.sessionTeam != TEAM_FREE ) {
+		&& ent->client->sess.sessionTeam != TEAM_FREE
+		&& !level.warmupTime && !level.intermissionQueued && !level.intermissiontime ) {
+		return;
+	}
+	// Retail 0x100413c3: with g_teamSpecSayEnable 0, a spectator's team chat
+	// and tells in the team modes reach only other spectators.
+	if ( !g_teamSpecSayEnable.integer && g_gametype.integer >= GT_TEAM
+		&& ent->client->ps.pm_type == PM_SPECTATOR && other->client->ps.pm_type != PM_SPECTATOR
+		&& ( mode == SAY_TEAM || mode == SAY_TELL ) ) {
 		return;
 	}
 
@@ -1793,7 +1905,12 @@ static void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chat
 	char		text[MAX_SAY_TEXT];
 	char		location[64];
 
-	if ( g_gametype.integer < GT_TEAM && mode == SAY_TEAM ) {
+	// Retail 0x100417a5: speaking counts as activity for the inactivity timer.
+	ent->client->inactivityMsec = 0;
+
+	// Retail 0x10041880: outside the team modes team chat becomes public,
+	// except a spectator's, which stays among the spectators.
+	if ( g_gametype.integer < GT_TEAM && mode == SAY_TEAM && ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		mode = SAY_ALL;
 	}
 

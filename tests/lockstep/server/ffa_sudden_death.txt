@@ -1,0 +1,40 @@
+# Gate G3 scenario (scripts/server_lockstep.py --frames 3000 --set
+# g_doWarmup 0 --set g_warmup 0 --set g_suddenDeathRespawn 1 --set
+# g_suddenDeathRespawnTick 2 --set g_suddenDeathRespawnStart 1 --set
+# g_suddenDeathRespawnIncrement 2 --set g_suddenDeathRespawnMax 6):
+# the overtime respawn delay (retail
+# qagamex86 0x1005952f, 0x10048289).  Before the timelimit a death gets
+# g_respawn_delay_min; tied at the limit the match goes into overtime and
+# the delay steps 1, 3, 5 and stops at 6 seconds, each change
+# centerprinted.  Both players die together so the scores stay tied, and
+# hold attack to respawn as soon as they may.  The factory sets the time
+# limit and overtime at load, so the script sets them afterwards.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+cmd 2 timelimit 1
+cmd 2 g_overtime 120
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 600 alpha kill
+clientcmd 600 bravo kill
+at 610 alpha buttons=attack
+at 610 bravo buttons=attack
+at 900 alpha buttons=0
+at 900 bravo buttons=0
+clientcmd 2500 alpha kill
+clientcmd 2500 bravo kill
+at 2510 alpha buttons=attack
+at 2510 bravo buttons=attack
+at 2780 alpha buttons=0
+at 2780 bravo buttons=0
+clientcmd 2800 alpha kill
+clientcmd 2800 bravo kill
+at 2810 alpha buttons=attack
+at 2810 bravo buttons=attack

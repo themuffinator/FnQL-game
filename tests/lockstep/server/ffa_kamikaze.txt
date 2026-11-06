@@ -1,0 +1,22 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --frames 300
+# [--set g_kamiAttenuate 512 --set g_kamiMinRatio 0]): the kamikaze
+# earthquake (retail qagamex86 0x1006fc9f).  Alpha sets off a kamikaze;
+# the others shake in proportion to 1 - distance / g_kamiAttenuate,
+# floored at g_kamiMinRatio; with a zero floor a player out of range is
+# not shaken at all.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+clientcmd 1 charlie team f
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+at 0 charlie weapon=2
+clientcmd 10 alpha give kamikaze
+at 20 alpha buttons=use
+at 24 alpha buttons=0

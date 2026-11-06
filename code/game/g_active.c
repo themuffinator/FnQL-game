@@ -366,29 +366,80 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 =================
 ClientInactivityTimer
 
-Returns qfalse if the client is dropped
+Retail qagamex86 0x10033fd0.  Idle time is counted in command msec, not
+against the level clock: moving, attacking, speaking (G_Say), spectating
+or holding admin privilege (tier 2) starts it over, and it stands still
+during a timeout and, in the round modes, while the player is not in
+normal play.  After g_inactivity seconds the player is dropped, or with
+g_dropInactive 0 sent to the spectators to follow someone; the warning
+goes out g_inactivityWarning seconds before.  Returns qfalse if the
+player was dropped or moved.
+
+Retail multiplies the second counts in 32 bits; these limits are computed
+in 64 bits, which agrees for every count that does not overflow, and the
+counter saturates instead of wrapping after 24 idle days.
 =================
 */
-qboolean ClientInactivityTimer( gclient_t *client ) {
-	if ( ! g_inactivity.integer ) {
-		// give everyone some time, so if the operator sets g_inactivity during
-		// gameplay, everyone isn't kicked
-		client->inactivityTime = level.time + 60 * 1000;
+static qboolean ClientInactivityTimer( gentity_t *ent, int msec ) {
+	gclient_t *client = ent->client;
+	const usercmd_t *cmd = &client->pers.cmd;
+	const qboolean active = cmd->forwardmove || cmd->rightmove || cmd->upmove || ( cmd->buttons & BUTTON_ATTACK );
+
+	if ( !g_inactivity.integer || active || client->sess.sessionTeam == TEAM_SPECTATOR
+		|| client->pers.privileges >= 2 ) {
+		client->inactivityMsec = 0;
 		client->inactivityWarning = qfalse;
-	} else if ( client->pers.cmd.forwardmove || 
-		client->pers.cmd.rightmove || 
-		client->pers.cmd.upmove ||
-		(client->pers.cmd.buttons & BUTTON_ATTACK) ) {
-		client->inactivityTime = level.time + g_inactivity.integer * 1000;
-		client->inactivityWarning = qfalse;
-	} else if ( !client->pers.localClient ) {
-		if ( level.time > client->inactivityTime ) {
-			trap_DropClient( client - level.clients, "Dropped due to inactivity" );
-			return qfalse;
+	} else if ( ( !G_IsRoundBasedGametype( g_gametype.integer ) || client->ps.pm_type == PM_NORMAL )
+		&& !level.timeoutStartTime ) {
+		const long long limit = (long long)g_inactivity.integer * 1000;
+
+		client->inactivityMsec = msec > 0 && client->inactivityMsec > INT_MAX - msec
+			? INT_MAX : client->inactivityMsec + msec;
+		if ( !client->pers.localClient ) {
+			if ( client->inactivityMsec > limit ) {
+				if ( g_dropInactive.integer ) {
+					trap_DropClient( client - level.clients, "Dropped due to inactivity" );
+				} else {
+					SetTeam( ent, "spectator" );
+					G_FollowCycle( ent, 1 );
+				}
+				return qfalse;
+			}
+			if ( client->inactivityMsec > limit - (long long)g_inactivityWarning.integer * 1000
+				&& !client->inactivityWarning ) {
+				client->inactivityWarning = qtrue;
+				trap_SendServerCommand( client - level.clients, va( "cp \"%i second%s until dropped for inactivity!\n\"",
+					g_inactivityWarning.integer, g_inactivityWarning.integer == 1 ? "" : "s" ) );
+			}
 		}
-		if ( level.time > client->inactivityTime - 10000 && !client->inactivityWarning ) {
-			client->inactivityWarning = qtrue;
-			trap_SendServerCommand( client - level.clients, "cp \"Ten seconds until inactivity drop!\n\"" );
+	}
+	if ( g_debugInactivity.integer ) {
+		G_Printf( "client:%i inactivity:%i\n", (int)( ent - g_entities ), client->inactivityMsec );
+	}
+	return qtrue;
+}
+
+
+/*
+=================
+G_FloodCheck
+
+Retail qagamex86 0x100341e0: a client past g_floodprot_maxcount is dropped,
+and the count falls by one each g_floodprot_decay msec.  Observed in the
+retail module: nothing ever raises the count (gclient +0x338 is written
+only by this decay), so the drop cannot happen there either.  FnQL-game
+keeps the check as retail has it and invents no counting rule.
+=================
+*/
+static qboolean G_FloodCheck( gclient_t *client ) {
+	if ( g_floodprot_maxcount.integer && client->floodCount > g_floodprot_maxcount.integer ) {
+		trap_DropClient( client - level.clients, "Dropped for flooding the server" );
+		return qfalse;
+	}
+	if ( level.time - client->floodDecayTime > g_floodprot_decay.integer ) {
+		client->floodDecayTime = level.time;
+		if ( client->floodCount > 0 ) {
+			client->floodCount--;
 		}
 	}
 	return qtrue;
@@ -858,6 +909,13 @@ void ClientThink_real( gentity_t *ent ) {
 		return;
 	}
 
+	// Retail 0x10034df4: every human, spectators included, runs the
+	// inactivity timer and the flood check before anything else; bots skip
+	// both. Either may drop the client or move it to the spectators.
+	if ( !( ent->r.svFlags & SVF_BOT ) && ( !ClientInactivityTimer( ent, msec ) || !G_FloodCheck( client ) ) ) {
+		return;
+	}
+
 	// Retail 0x10034e20 consumes the previous pmove's selected primary
 	// weapon before this command is simulated. It becomes the next spawn's
 	// loadout, including choices made while dead or spectating.
@@ -869,11 +927,6 @@ void ClientThink_real( gentity_t *ent ) {
 			return;
 		}
 		SpectatorThink( ent, ucmd );
-		return;
-	}
-
-	// check for inactivity timer, but never drop the local client of a non-dedicated server
-	if ( !ClientInactivityTimer( client ) ) {
 		return;
 	}
 

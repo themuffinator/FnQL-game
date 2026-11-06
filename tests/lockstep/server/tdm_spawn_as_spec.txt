@@ -1,0 +1,14 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory tdm --frames 300
+# [--set g_teamSpawnAsSpec 1]): restoring sessions after a restart in the
+# warmup (retail qagamex86 0x10065a03).  With g_teamSpawnAsSpec the players
+# come back as spectators; without it they keep their teams.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 100 map_restart
+clientcmd 200 alpha team r

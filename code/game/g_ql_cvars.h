@@ -371,3 +371,56 @@ G_CVAR( g_regenHealthRate, "g_regenHealthRate", "100", CVAR_GAMERULE, 0, qtrue, 
 G_CVAR( g_regenArmor, "g_regenArmor", "0", CVAR_GAMERULE | CVAR_QL_FLAG_40000, 0, qtrue, qfalse )
 G_CVAR( g_regenArmorRate, "g_regenArmorRate", "100", CVAR_GAMERULE, 0, qtrue, qfalse )
 G_CVAR( g_regenArmorAfterHealth, "g_regenArmorAfterHealth", "0", CVAR_GAMERULE, 0, qtrue, qfalse )
+
+// Retail cvars behind the inactivity, flood, chat, sudden-death respawn,
+// automatic shuffle, ready-delay, tackle, kamikaze and debug rules
+// (docs/PLAN.md, "Remaining retail cvars").  gamedate, g_botSpawnList,
+// g_forceAtmosphericEffects and g_suddenDeathRespawnPrint are only
+// registered: retail qagamex86 reads them nowhere else.  gamedate is the
+// module's build date, as retail's is (and as G_InitGame prints).
+G_CVAR( gamedate, "gamedate", __DATE__, CVAR_ROM, 0, qfalse, qfalse )
+G_CVAR( g_botSpawnList, "g_botSpawnList", "", 0, 0, qfalse, qfalse )
+G_CVAR( g_debugInactivity, "g_debugInactivity", "0", 0, 0, qfalse, qfalse )
+G_CVAR( g_debugThawTime, "g_debugThawTime", "0", 0, 0, qfalse, qfalse )
+G_CVAR( g_debugVampiricDamage, "g_debugVampiricDamage", "0", 0, 0, qfalse, qfalse )
+G_CVAR( g_dropInactive, "g_dropInactive", "1", 0, 0, qtrue, qfalse )
+G_CVAR( g_enableDebugTrace, "g_enableDebugTrace", "0", 0, 0, qfalse, qfalse )
+G_CVAR( g_floodprot_decay, "g_floodprot_decay", "1000", 0, 0, qfalse, qfalse )
+G_CVAR( g_floodprot_maxcount, "g_floodprot_maxcount", "10", 0, 0, qfalse, qfalse )
+G_CVAR( g_forceAtmosphericEffects, "g_forceAtmosphericEffects", "", CVAR_GAMERULE, 0, qtrue, qfalse )
+G_CVAR( g_inactivityWarning, "g_inactivityWarning", "10", 0, 0, qtrue, qfalse )
+G_CVAR( g_kamiAttenuate, "g_kamiAttenuate", "2048", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_kamiMinRatio, "g_kamiMinRatio", "0.1", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_shuffle_automatic, "g_shuffle_automatic", "0", 0, 0, qfalse, qfalse )
+G_CVAR( g_shuffle_automatic_minplayers, "g_shuffle_automatic_minplayers", "6", 0, 0, qfalse, qfalse )
+G_CVAR( g_shuffle_timedelay, "g_shuffle_timedelay", "5000", 0, 0, qfalse, qfalse )
+G_CVAR( g_suddenDeathRespawn, "g_suddenDeathRespawn", "0", CVAR_GAMERULE, 0, qtrue, qfalse )
+G_CVAR( g_suddenDeathRespawnIncrement, "g_suddenDeathRespawnIncrement", "1", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_suddenDeathRespawnMax, "g_suddenDeathRespawnMax", "10", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_suddenDeathRespawnPrint, "g_suddenDeathRespawnPrint", "1", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_suddenDeathRespawnStart, "g_suddenDeathRespawnStart", "3", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_suddenDeathRespawnTick, "g_suddenDeathRespawnTick", "60", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( g_tackleFlag, "g_tackleFlag", "0", CVAR_GAMERULE, 0, qtrue, qfalse )
+G_CVAR( g_teamSpawnAsSpec, "g_teamSpawnAsSpec", "0", 0, 0, qtrue, qfalse )
+G_CVAR( g_teamSpecSayEnable, "g_teamSpecSayEnable", "1", 0, 0, qfalse, qfalse )
+G_CVAR( g_warmupReadyDelay, "g_warmupReadyDelay", "0", 0, 0, qfalse, qfalse )
+G_CVAR( g_warmupReadyDelayAction, "g_warmupReadyDelayAction", "1", 0, 0, qfalse, qfalse )
+
+// Retail bot AI settings (milestone M9).  Registered with retail's defaults
+// and flags so servers and factories see the same cvars; the retail bot
+// behaviour behind them is not rewritten yet.
+G_CVAR( bot_breakPoint, "bot_breakPoint", "0", 0, 0, qfalse, qfalse )
+G_CVAR( bot_debugVar, "bot_debugVar", "0", 0, 0, qfalse, qfalse )
+G_CVAR( bot_dynamicSkill, "bot_dynamicSkill", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_followDist, "bot_followDist", "250", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_followMe, "bot_followMe", "", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_gauntlet, "bot_gauntlet", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_hud, "bot_hud", "-1", CVAR_CHEAT, 0, qfalse, qfalse )
+G_CVAR( bot_instaGibAimSkill, "bot_instaGibAimSkill", "0.4", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_teamkill, "bot_teamkill", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_showAreaNumber, "bot_showAreaNumber", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_showAreas, "bot_showAreas", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_showAvoidSpots, "bot_showAvoidSpots", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_showPath, "bot_showPath", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_showTourPoints, "bot_showTourPoints", "0", CVAR_GAMERULE, 0, qfalse, qfalse )
+G_CVAR( bot_startingSkill, "bot_startingSkill", "1", CVAR_GAMERULE, 0, qfalse, qfalse )

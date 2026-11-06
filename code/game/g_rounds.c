@@ -533,6 +533,10 @@ void G_FreezeThink( gentity_t *ent, int msec ) {
 		}
 		oldSeconds = cl->thawRemaining / 1000;
 		cl->thawRemaining -= msec;
+		if ( helper && g_debugThawTime.integer ) {
+			// retail 0x1004d1d9 tells the helper what is left
+			trap_SendServerCommand( helper->client->ps.clientNum, va( "print \"Thaw time %i.\n\"", cl->thawRemaining ) );
+		}
 		if ( helper ) {
 			if ( !cl->thawing ) cl->thawClient = helper->s.number;
 			cl->thawing = qtrue;

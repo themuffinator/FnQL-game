@@ -1,0 +1,21 @@
+# Gate G3 scenario (scripts/server_lockstep.py --frames 120): team chat
+# outside the team modes (retail qagamex86 0x10041880, 0x10067f30).  A
+# player's say_team becomes public chat; a spectator's stays among the
+# spectators.  Tells and public chat are unchanged.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client carol name Carol
+client dave name Dave
+
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+
+clientcmd 20 alpha say_team player team chat
+clientcmd 30 carol say_team spectator team chat
+clientcmd 40 carol say spectator public chat
+clientcmd 50 dave tell 0 spectator tell
+clientcmd 60 dave say_team second spectator
+clientcmd 70 bravo tell 2 player tell

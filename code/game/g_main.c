@@ -639,6 +639,10 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	InitBodyQue();
 
 	ClearRegisteredItems();
+	// Retail 0x1004fd30, beside the item registry reset: a new map arms the
+	// automatic team shuffle.
+	level.autoShuffleTime = 0;
+	level.autoShuffleArmed = qtrue;
 
 	// parse the key/value pairs and spawn gentities
 	// Map entities are rebuilt on restart; never retain a generator from
@@ -2331,6 +2335,9 @@ qboolean G_ReadyToStart( void ) {
 				readyMask |= 1 << i;
 			}
 		}
+		// retail 0x10057890 keeps both counts for the duel ready delay
+		level.numReadyClients = ready;
+		level.numReadyHumans = readyHumans;
 		for ( i = 0; i < level.maxclients; i++ ) {
 			if ( level.clients[i].pers.connected == CON_CONNECTED ) {
 				level.clients[i].ps.stats[STAT_CLIENTS_READY] = readyMask;
@@ -2410,20 +2417,24 @@ static void G_CheckWarmup( void ) {
 		return;
 	}
 
-	if ( level.warmupTime != -1 ) {
-		G_SetWarmupTime( -1 );
-		G_LogPrintf( "Warmup:\n" );
-		// a cancelled countdown releases the attack lockout too (retail
-		// qagamex86 0x10058796)
-		for ( i = 0; i < level.maxclients; i++ ) {
-			if ( level.clients[i].pers.connected != CON_CONNECTED ) {
-				continue;
-			}
-			level.clients[i].ps.pm_flags &= ~PMF_ATTACK_LOCKOUT;
-			if ( level.clients[i].pers.readyToPlay ) {
-				level.clients[i].pers.readyToPlay = qfalse;
-				ClientUserinfoChanged( i );
-			}
+	// retail 0x10058713: still waiting, so the duel ready delay runs
+	if ( level.warmupTime == -1 ) {
+		G_CheckReadyDelay();
+		return;
+	}
+
+	G_SetWarmupTime( -1 );
+	G_LogPrintf( "Warmup:\n" );
+	// a cancelled countdown releases the attack lockout too (retail
+	// qagamex86 0x10058796)
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.clients[i].pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		level.clients[i].ps.pm_flags &= ~PMF_ATTACK_LOCKOUT;
+		if ( level.clients[i].pers.readyToPlay ) {
+			level.clients[i].pers.readyToPlay = qfalse;
+			ClientUserinfoChanged( i );
 		}
 	}
 }
@@ -2676,6 +2687,160 @@ void G_RunThink( gentity_t *ent ) {
 
 
 /*
+==================
+G_UpdateSuddenDeathRespawn
+
+Retail qagamex86 0x1005952f.  With g_suddenDeathRespawn, once a timed match
+runs into overtime the respawn delay is g_suddenDeathRespawnStart seconds,
+growing by g_suddenDeathRespawnIncrement every g_suddenDeathRespawnTick
+seconds up to g_suddenDeathRespawnMax, and every change is centerprinted.
+Before overtime it is g_respawn_delay_min; at the intermission it holds.
+Retail divides by a zero tick and overflows its 32-bit products; here a
+zero tick leaves the delay at its start and the products are 64-bit.
+==================
+*/
+void G_UpdateSuddenDeathRespawn( void ) {
+	long long overtime, seconds;
+
+	if ( !g_suddenDeathRespawn.integer || level.intermissiontime || level.intermissionQueued ) {
+		return;
+	}
+	overtime = (long long)level.time - (long long)g_timelimit.integer * 60000 - level.startTime;
+	if ( !g_timelimit.integer || level.warmupTime || overtime <= 0 ) {
+		level.suddenDeathRespawnDelay = g_respawn_delay_min.integer;
+		return;
+	}
+	seconds = g_suddenDeathRespawnStart.integer;
+	if ( g_suddenDeathRespawnTick.integer ) {
+		seconds += overtime / ( (long long)g_suddenDeathRespawnTick.integer * 1000 ) * g_suddenDeathRespawnIncrement.integer;
+	}
+	if ( seconds > g_suddenDeathRespawnMax.integer ) {
+		seconds = g_suddenDeathRespawnMax.integer;
+	}
+	seconds *= 1000;
+	level.suddenDeathRespawnDelay = seconds > INT_MAX ? INT_MAX : seconds < INT_MIN ? INT_MIN : (int)seconds;
+	if ( level.suddenDeathRespawnDelay != level.suddenDeathRespawnShown ) {
+		trap_SendServerCommand( -1, va( "cp \"%d second respawn delay\n\"", level.suddenDeathRespawnDelay / 1000 ) );
+	}
+	level.suddenDeathRespawnShown = level.suddenDeathRespawnDelay;
+}
+
+
+/*
+==================
+G_DeathRespawnDelay
+
+The respawn delay a death gets (retail player_die 0x10048289).
+==================
+*/
+int G_DeathRespawnDelay( void ) {
+	return g_suddenDeathRespawn.integer ? level.suddenDeathRespawnDelay : g_respawn_delay_min.integer;
+}
+
+
+/*
+==================
+G_CheckAutoShuffle
+
+Retail qagamex86 0x1005992b, team modes only.  g_shuffle_automatic arms at
+map start and while fewer than g_shuffle_automatic_minplayers play; once
+enough play, a g_shuffle_timedelay msec countdown starts, centerprinted
+each second while the match waits for players, and the teams are shuffled
+when it has passed.  The shuffle disarms it (G_ShuffleTeams).
+==================
+*/
+void G_CheckAutoShuffle( void ) {
+	long long deadline;
+
+	if ( g_gametype.integer < GT_TEAM || !g_shuffle_automatic.integer ) {
+		return;
+	}
+	if ( !level.autoShuffleTime ) {
+		if ( level.numPlayingClients < g_shuffle_automatic_minplayers.integer ) {
+			level.autoShuffleArmed = qtrue;
+			return;
+		}
+		if ( !level.autoShuffleArmed ) {
+			return;
+		}
+		level.autoShuffleTime = level.time;
+		if ( !level.autoShuffleTime ) {
+			return;
+		}
+	}
+	if ( level.warmupTime >= 0 ) {
+		return;
+	}
+	deadline = (long long)g_shuffle_timedelay.integer + level.autoShuffleTime;
+	if ( level.time < deadline ) {
+		const int seconds = (int)( ( deadline - level.time ) / 1000 );
+
+		if ( seconds != (int)( ( deadline - level.msec - level.time ) / 1000 ) ) {
+			trap_SendServerCommand( -1, va( "cp \"Auto-Shuffling Teams in %d seconds.\n\"", seconds ) );
+		}
+	} else if ( level.time > deadline ) {
+		G_ShuffleTeams();
+	}
+}
+
+
+/*
+==================
+G_CheckReadyDelay
+
+Retail qagamex86 0x10058580.  In a duel waiting to start, g_warmupReadyDelay
+gives the other player that many seconds once one of the two has readied
+up; CS_READY_UP carries the deadline.  When it passes,
+g_warmupReadyDelayAction 1 unreadies the ready player and benches the other
+as a spectate-only spectator, and 2 readies both.
+==================
+*/
+void G_CheckReadyDelay( void ) {
+	int i;
+
+	if ( g_gametype.integer != GT_TOURNAMENT || !g_warmupReadyDelay.integer ) {
+		return;
+	}
+	if ( level.numPlayingClients != 2 || level.numReadyHumans != 1 ) {
+		if ( level.readyDelayTime ) {
+			level.readyDelayTime = 0;
+			trap_SetConfigstring( CS_READY_UP, "0" );
+		}
+		return;
+	}
+	if ( !level.readyDelayTime ) {
+		level.readyDelayTime = level.time + g_warmupReadyDelay.integer * 1000;
+		trap_SetConfigstring( CS_READY_UP, va( "%i", level.readyDelayTime ) );
+		return;
+	}
+	if ( level.time <= level.readyDelayTime ) {
+		return;
+	}
+	for ( i = 0; i < level.maxclients; i++ ) {
+		gentity_t *ent = &g_entities[i];
+		gclient_t *cl = ent->client;
+
+		if ( !ent->inuse || !cl || cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != TEAM_FREE ) {
+			continue;
+		}
+		if ( g_warmupReadyDelayAction.integer == 1 ) {
+			if ( cl->pers.readyToPlay == 1 ) {
+				cl->pers.readyToPlay = 0;
+			} else {
+				G_ExecuteTeamChange( ent, TEAM_SPECTATOR, SPECTATOR_NOT, 0 );
+				cl->sess.spectateOnly = 1;
+			}
+			ClientUserinfoChanged( cl->ps.clientNum );
+		} else if ( g_warmupReadyDelayAction.integer == 2 ) {
+			cl->pers.readyToPlay = 1;
+		}
+	}
+	level.readyDelayTime = 0;
+	trap_SetConfigstring( CS_READY_UP, "0" );
+}
+
+
+/*
 ================
 G_RunFrame
 
@@ -2696,6 +2861,9 @@ static void G_RunFrame( int levelTime ) {
 	level.previousTime = level.time;
 	level.time = levelTime;
 	level.msec = level.time - level.previousTime;
+
+	// the overtime respawn delay (retail qagamex86 0x1005952f)
+	G_UpdateSuddenDeathRespawn();
 
 	// at the intermission a map voter's vote menu comes back 2.25 seconds
 	// after the vote (retail qagamex86 0x10059603)
@@ -2827,6 +2995,7 @@ static void G_RunFrame( int levelTime ) {
 
 	// update to team status?
 	CheckTeamStatus();
+	G_CheckAutoShuffle();
 	G_RunRounds();
 	G_RunDomination();
 	G_CheckQuadHog(); // retail 0x10059a0c, after entity simulation

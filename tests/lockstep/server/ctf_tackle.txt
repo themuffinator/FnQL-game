@@ -1,0 +1,24 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --map
+# spidercrossings --factory ctf --frames 400 --set g_tackleFlag 400): the
+# gauntlet tackle (retail qagamex86 0x1004983a, 0x100513b0).  Alpha takes
+# the blue flag and comes to rest; bravo, teleported in behind it, walks
+# up with the gauntlet and punches it, and the flag pops out 64 units
+# above alpha, tossed upward.  Later punches on the flagless player drop
+# nothing.  (setviewpos lands 20 units ahead with a 400 u/s shove, so the
+# two are placed apart and bravo closes in on foot.)
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=1
+clientcmd 20 alpha setviewpos 0 2752 170 0
+clientcmd 60 bravo setviewpos -100 2752 170 0
+at 100 bravo forward=127 buttons=attack
+at 160 bravo forward=0 buttons=0
+at 200 bravo forward=127 buttons=attack
+at 230 bravo forward=0 buttons=0
