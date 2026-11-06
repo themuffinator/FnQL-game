@@ -118,6 +118,11 @@ void G_ReadClientSessionData( gclient_t *client ) {
 	// out-of-range shift or ammo index when the next spawn consumes it.
 	if ( (unsigned)decoded.loadoutWeapon >= WP_NUM_WEAPONS ) decoded.loadoutWeapon = 0;
 invalid:
+	// Retail 0x10065a03: with g_teamSpawnAsSpec, a team-mode map that starts
+	// in its warmup brings everyone back as a spectator.
+	if ( g_teamSpawnAsSpec.integer && g_gametype.integer >= GT_TEAM && level.warmupTime ) {
+		decoded.sessionTeam = TEAM_SPECTATOR;
+	}
 	client->sess = decoded;
 }
 

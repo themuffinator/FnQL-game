@@ -697,6 +697,57 @@ if get_option('fnql-dedicated') != ''
   test('server-lockstep-differential-duel_commands', python,
     args: duel_commands_args + ['--module', qagame.full_path()],
     depends: qagame, suite: 'differential', timeout: 300, is_parallel: false)
+  # The remaining retail server rules (docs/PLAN.md, "Remaining retail
+  # cvars"): inactivity, spectator and duel chat, team joins, sudden-death
+  # respawn, automatic shuffle, the duel ready delay, g_teamSpawnAsSpec,
+  # the gauntlet tackle, the kamikaze earthquake and the thaw debug print.
+  # Each variant is [scenario, extra server_lockstep.py arguments...].
+  server_rules = {
+    'inactivity-drop': ['ffa_inactivity', '--frames', '400',
+      '--set', 'g_inactivity', '4', '--set', 'g_inactivityWarning', '2'],
+    'inactivity-spectate': ['ffa_inactivity_spectate', '--frames', '400', '--set', 'g_inactivity', '4',
+      '--set', 'g_inactivityWarning', '1', '--set', 'g_dropInactive', '0'],
+    'spec-chat-ffa': ['ffa_spec_chat', '--frames', '120'],
+    'spec-chat-tdm': ['tdm_spec_chat', '--factory', 'tdm', '--frames', '120'],
+    'spec-chat-tdm-disabled': ['tdm_spec_chat', '--factory', 'tdm', '--frames', '120',
+      '--set', 'g_teamSpecSayEnable', '0'],
+    'spec-chat-duel': ['duel_spec_chat', '--factory', 'duel', '--frames', '700'],
+    'team-join': ['tdm_team_join', '--factory', 'tdm', '--frames', '800', '--set', 'teamsize', '2'],
+    'sudden-death': ['ffa_sudden_death', '--frames', '3000', '--set', 'g_doWarmup', '0',
+      '--set', 'g_warmup', '0', '--set', 'g_suddenDeathRespawn', '1',
+      '--set', 'g_suddenDeathRespawnTick', '2', '--set', 'g_suddenDeathRespawnStart', '1',
+      '--set', 'g_suddenDeathRespawnIncrement', '2', '--set', 'g_suddenDeathRespawnMax', '6'],
+    'autoshuffle': ['tdm_autoshuffle', '--factory', 'tdm', '--frames', '800',
+      '--set', 'g_shuffle_automatic', '1', '--set', 'g_shuffle_automatic_minplayers', '3',
+      '--set', 'g_shuffle_timedelay', '2000'],
+    'ready-delay-bench': ['duel_ready_delay', '--factory', 'duel', '--frames', '500',
+      '--set', 'g_warmupReadyDelay', '3'],
+    'ready-delay-ready': ['duel_ready_delay', '--factory', 'duel', '--frames', '500',
+      '--set', 'g_warmupReadyDelay', '3', '--set', 'g_warmupReadyDelayAction', '2'],
+    'spawn-as-spec': ['tdm_spawn_as_spec', '--factory', 'tdm', '--frames', '300',
+      '--set', 'g_teamSpawnAsSpec', '1'],
+    'spawn-keep-team': ['tdm_spawn_as_spec', '--factory', 'tdm', '--frames', '300'],
+    'tackle': ['ctf_tackle', '--cheats', '--map', 'spidercrossings', '--factory', 'ctf',
+      '--frames', '400', '--set', 'g_tackleFlag', '400'],
+    'tackle-off': ['ctf_tackle', '--cheats', '--map', 'spidercrossings', '--factory', 'ctf',
+      '--frames', '400'],
+    'kamikaze': ['ffa_kamikaze', '--cheats', '--frames', '300'],
+    'kamikaze-attenuated': ['ffa_kamikaze', '--cheats', '--frames', '300',
+      '--set', 'g_kamiAttenuate', '512', '--set', 'g_kamiMinRatio', '0'],
+    'thaw-debug': ['round_thaw', '--cheats', '--factory', 'ft', '--frames', '1800',
+      '--set', 'g_debugThawTime', '1'],
+  }
+  foreach name, spec : server_rules
+    rule_args = server_lockstep_args + ['--scenario', files('tests/lockstep/server/' + spec[0] + '.txt')]
+    foreach index : range(1, spec.length())
+      rule_args += [spec[index]]
+    endforeach
+    test('server-rules-' + name + '-selfcheck', python, args: rule_args + ['--self-check'],
+      suite: 'server-rules', timeout: 300, is_parallel: false)
+    test('server-rules-' + name + '-differential', python,
+      args: rule_args + ['--module', qagame.full_path()], depends: qagame,
+      suite: 'server-rules', timeout: 300, is_parallel: false)
+  endforeach
   # Public voting: grammar, electorate, actions and match transitions.
   foreach scenario, spec : {'voting_rules': ['ffa', '1820'],
                            'voting_actions': ['ffa', '1080'],

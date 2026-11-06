@@ -1,0 +1,27 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory tdm --frames 800
+# --set g_shuffle_automatic 1 --set g_shuffle_automatic_minplayers 3
+# --set g_shuffle_timedelay 2000): the automatic team shuffle (retail
+# qagamex86 0x1005992b, 0x1006a2d0).  While the match waits for players,
+# the third player starts a two-second countdown, centerprinted each
+# second, and the teams are shuffled when it has passed.  The shuffle's
+# five-second switch lock refuses the first team change.  A fourth player
+# does not shuffle again, and an even switch is refused by the balance
+# rule; falling below the minimum rearms the shuffle, and the next join
+# runs it once more.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client dave name Dave
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team r
+clientcmd 40 charlie team b
+clientcmd 200 dave team b
+clientcmd 300 charlie team s
+clientcmd 330 bravo team r
+clientcmd 340 charlie team s
+clientcmd 360 bravo team s
+clientcmd 420 bravo team r

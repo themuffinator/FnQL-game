@@ -1302,27 +1302,53 @@ static void KamikazeDamage( gentity_t *self ) {
 	}
 	self->nextthink = level.time + 100;
 
-	// add earth quake effect
-	newangles[0] = crandom() * 2;
-	newangles[1] = crandom() * 2;
-	newangles[2] = 0;
+	// Earthquake, retail 0x1006fc9f: each player shakes in proportion to
+	// 1 - distance / g_kamiAttenuate, never less than g_kamiMinRatio, and a
+	// player at exactly zero is left alone.  Every shaken player draws its
+	// own view jolt (against the previous think's, kept in movedir); the
+	// last one drawn becomes the next think's reference.  Retail's random
+	// terms divide by 32767.0 in double precision.
+	VectorCopy( self->movedir, newangles );
 	for (i = 0; i < level.maxclients; i++)
 	{
+		playerState_t *ps;
+		vec3_t delta;
+		float distance, ratio, angleScale, pushScale;
+		int j;
+
 		ent = &g_entities[i];
 		if (!ent->inuse)
 			continue;
 		if (!ent->client)
 			continue;
 
-		if (ent->client->ps.groundEntityNum != ENTITYNUM_NONE) {
-			ent->client->ps.velocity[0] += crandom() * 120;
-			ent->client->ps.velocity[1] += crandom() * 120;
-			ent->client->ps.velocity[2] = 30 + random() * 25;
+		ps = &ent->client->ps;
+		VectorSubtract( ps->origin, self->s.pos.trBase, delta );
+		distance = (float)sqrt( (double)delta[0] * delta[0] + (double)delta[1] * delta[1] + (double)delta[2] * delta[2] );
+		ratio = (float)( 1.0 - (double)distance / g_kamiAttenuate.value );
+		if ( g_kamiMinRatio.value > ratio ) {
+			ratio = g_kamiMinRatio.value;
+		}
+		if ( ratio == 0.0f ) {
+			continue;
+		}
+		angleScale = ratio + ratio;
+		pushScale = (float)( ratio * 120.0 );
+		newangles[0] = (float)( ( ( rand() & 0x7fff ) / 32767.0 - 0.5 ) * 2.0 * angleScale );
+		newangles[1] = (float)( ( ( rand() & 0x7fff ) / 32767.0 - 0.5 ) * 2.0 * angleScale );
+		newangles[2] = 0;
+
+		if ( ps->groundEntityNum != ENTITYNUM_NONE ) {
+			const float lift = (float)( ratio * 25.0 );
+
+			ps->velocity[0] = (float)( ( ( rand() & 0x7fff ) / 32767.0 - 0.5 ) * 2.0 * pushScale + ps->velocity[0] );
+			ps->velocity[1] = (float)( ( ( rand() & 0x7fff ) / 32767.0 - 0.5 ) * 2.0 * pushScale + ps->velocity[1] );
+			ps->velocity[2] = (float)( ( rand() & 0x7fff ) / 32767.0 * lift + (float)( ratio * 30.0 ) );
 		}
 
-		ent->client->ps.delta_angles[0] += ANGLE2SHORT(newangles[0] - self->movedir[0]);
-		ent->client->ps.delta_angles[1] += ANGLE2SHORT(newangles[1] - self->movedir[1]);
-		ent->client->ps.delta_angles[2] += ANGLE2SHORT(newangles[2] - self->movedir[2]);
+		for ( j = 0; j < 3; j++ ) {
+			ps->delta_angles[j] += (int)( ( (double)newangles[j] - self->movedir[j] ) * 65536.0 / 360.0 ) & 0xffff;
+		}
 	}
 	VectorCopy(newangles, self->movedir);
 }

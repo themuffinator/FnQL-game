@@ -247,6 +247,31 @@ def main() -> int:
             retail_checked += 1
             if ours != retail_all[retail_name]:
                 failures.append(f"cvar {name}: ours {ours} != retail {retail_all[retail_name]}")
+    # every cvar retail registers is registered too, so server configs,
+    # factories and admins find each one.  gamedate is the module's own build
+    # date (__DATE__), as retail's is; only its flags are compared.
+    build_date = {}
+    for header in ("g_cvar.h", "g_ql_cvars.h"):
+        source = (GAME / header).read_text(encoding="latin-1")
+        for name, flags in re.findall(r'^G_CVAR\(\s*\w+,\s*"(\w+)",\s*__DATE__,\s*([^,]+),', source, re.M):
+            build_date[name] = sum(int(t, 0) if t.strip()[:1].isdigit() else flag_values[t.strip()]
+                                   for t in flags.split("|"))
+    for name, flags in build_date.items():
+        if name != "gamedate":
+            failures.append(f"cvar {name}: only gamedate may default to the build date")
+        elif flags != retail_all[name][1]:
+            failures.append(f"cvar {name}: flags {flags} != retail {retail_all[name][1]}")
+    # the bot code and g_main.c's identity table register a few more directly
+    elsewhere = set()
+    for path in sorted(GAME.glob("*.c")):
+        source = path.read_text(encoding="latin-1")
+        elsewhere.update(re.findall(r'trap_Cvar_Register\(\s*[^,]+,\s*"(\w+)"', source))
+        elsewhere.update(re.findall(r'^\s*\{\s*[^,{}"]+,\s*"(\w+)",', source, re.M))
+    known = {n.lower() for n in list(registered) + list(build_date) + list(elsewhere)}
+    for name in retail_all:
+        if name.lower() not in known:
+            failures.append(f"cvar {name} is registered by retail but not by FnQL-game")
+
     # serverinfo and systeminfo carry exactly retail's keys: everything retail
     # publishes there, and nothing it does not (the engine adds its own keys)
     info_mask = flag_values["CVAR_SERVERINFO"] | flag_values["CVAR_SYSTEMINFO"]

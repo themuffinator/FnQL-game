@@ -1041,6 +1041,84 @@ factory, stock-map, unit, ABI and contract tests pass with zero divergence.
 The previous stubs diverged 305 times on `ctf_match`. The FT thaw and
 `tdm_admin` scenarios record non-zero thaw-suppression and admin answers.
 
+Remaining retail cvars (2026-11-06): a table pass found 42 of retail's 393
+qagame cvars unregistered. All are now registered with retail's defaults,
+flags and change announcements, and G2 fails on any retail cvar missing
+again (`gamedate` carries the module's own build date, as retail's does).
+The rules behind them, rewritten from retail:
+
+- Inactivity (0x10033fd0, called at 0x10034df4 for every human before the
+  spectator step; bots skip it): idle command msec accumulate while
+  `g_inactivity` is set, unless the player moves, attacks, spectates or
+  holds admin privilege; a timeout or, in the round modes, a player out of
+  normal play pauses the count. Speaking restarts the count but not the
+  warning flag (0x100417a5). The warning reads "%i second%s until dropped
+  for inactivity!" `g_inactivityWarning` seconds before; `g_dropInactive
+  0` sends the player to the spectators to follow someone instead of
+  dropping it. `g_debugInactivity` prints the count.
+- Flood protection (0x100341e0): observed in the retail DLL, nothing ever
+  increments the counter at gclient +0x338 (a full disassembly scan finds
+  only the decay's writes), so its drop cannot happen. FnQL-game keeps the
+  check and its decay and invents no counting rule.
+- Chat (0x10041760, 0x10041330): team chat uses retail's team test
+  (0x10067f30), so outside the team modes a player's team chat becomes
+  public and a spectator's stays among the spectators. Duel spectators may
+  chat to the duelists during the warmup and the intermission.
+  `g_teamSpecSayEnable 0` keeps team-mode spectators' team chat and tells
+  among spectators.
+- Team joins (0x10040921-0x10040b65, 0x10068100): a colour can be chosen
+  only while the match waits for players; during the countdown and the
+  match the joiner goes to the smaller team. `teamsize` refuses a full
+  team. With `g_teamForceBalance`, teams two apart refuse the larger side,
+  and even teams refuse a switch between them; the locks are tested last.
+  The `tdm_autoshuffle` probe exposed this: the inherited Q3 rule let a
+  2-2 switch through. Forced moves (shuffle, admin `put`) are unchanged.
+- Sudden-death respawn (0x1005952f, 0x10048289): with
+  `g_suddenDeathRespawn`, overtime respawn delays start at
+  `g_suddenDeathRespawnStart` seconds and grow by `...Increment` every
+  `...Tick` seconds up to `...Max`, each change centerprinted.
+  `g_suddenDeathRespawnPrint` is registered but never read by retail.
+- Automatic shuffle (0x1005992b, 0x1004fd30, 0x1006a2d0): team modes only;
+  armed at map start and below `g_shuffle_automatic_minplayers`, it counts
+  `g_shuffle_timedelay` down while the match waits and then shuffles; any
+  shuffle disarms it. The shuffle's own minimum now counts connected
+  players, as retail's does.
+- Duel ready delay (0x10058580, counts from 0x10057890): once one of two
+  duelists has readied, `CS_READY_UP` carries a `g_warmupReadyDelay`
+  deadline; then action 1 unreadies the ready player and benches the other
+  as spectate-only through the team-change core (0x10040440, now
+  `G_ExecuteTeamChange`), and action 2 readies both.
+- `g_teamSpawnAsSpec` (0x10065a03): a team-mode map starting in its warmup
+  restores everyone as a spectator.
+- `g_tackleFlag` (0x1004983a, through the flag-drop helper 0x100513b0): a
+  damaging gauntlet hit knocks the victim's flag out 64 units above it,
+  tossed straight up at `g_tackleFlag`.
+- Kamikaze (0x1006fc9f): the earthquake scales per player by
+  `1 - distance / g_kamiAttenuate`, floored at `g_kamiMinRatio`, skips a
+  player at exactly zero and draws each player's jolt separately.
+- Debug output: `g_debugThawTime` (0x1004d1d9) tells the thawing helper
+  the time left, `g_debugVampiricDamage` (0x10049b80) logs each leech, and
+  `g_enableDebugTrace` (0x10049d20) announces a blocked splash probe that
+  stopped on a spectating player. `g_botSpawnList` and
+  `g_forceAtmosphericEffects` are registered only; retail reads them
+  nowhere else.
+
+The 15 missing `bot_*` cvars are registered for retail parity; the retail
+bot behaviour behind them remains milestone M9.
+
+The new `server-rules` suite has 18 strict pairs (retail-twice self-check
+and zero-divergence differential): both inactivity outcomes, FFA, TDM
+(with and without `g_teamSpecSayEnable`) and duel chat, team joins, sudden
+death, the shuffle, both ready-delay actions, spawn as spectator and its
+off control, the tackle and its off control, two kamikaze attenuations and
+the thaw print. Built from the previous commit, the module diverges on
+every one of them except the controls (spawn and tackle off, and TDM chat
+with the default `g_teamSpecSayEnable`, which already matched). Two scenarios deliberately keep
+a single fresh spectator or queued player: retail stamps spectator order
+with the CRT wall clock (`_time64`, 0x100404ed), which lockstep cannot pin,
+so two such players would order by real time. Unit gates cover the
+tackle (`game-drops`) and `g_teamSpawnAsSpec` (`game-session`).
+
 Exit: G3 per mode; G5 per mode.
 
 ### M7 — cgame

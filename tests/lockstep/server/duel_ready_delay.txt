@@ -1,0 +1,22 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory duel --frames 500
+# --set g_warmupReadyDelay 3 [--set g_warmupReadyDelayAction 2]): the duel
+# ready delay (retail qagamex86 0x10058580).  Alpha readies up and bravo
+# does not: CS_READY_UP carries the three-second deadline, and a first
+# deadline is cancelled by alpha unreadying.  At the second deadline
+# action 1 unreadies alpha and benches bravo as a spectate-only spectator,
+# and action 2 readies both into the countdown.  No one else queues:
+# retail stamps a benched player's queue time with the CRT wall clock
+# (0x100404ed), which lockstep cannot pin, so a second queued spectator
+# would order by real time rather than by the scenario.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+
+clientcmd 20 alpha readyup
+clientcmd 60 alpha readyup
+clientcmd 100 alpha readyup

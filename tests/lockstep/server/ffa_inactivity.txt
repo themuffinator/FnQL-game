@@ -1,0 +1,30 @@
+# Gate G3 scenario (scripts/server_lockstep.py --frames 400 --set
+# g_inactivity 4 --set g_inactivityWarning 2 [--set g_dropInactive 0]):
+# the retail inactivity timer (qagamex86 0x10033fd0).  Alpha idles from the
+# start and gets the warning after two seconds, then the drop (or, with
+# g_dropInactive 0, the move to the spectators and a follow) after four.
+# Bravo keeps moving and is never counted.  Charlie idles too but speaks
+# after its warning: speaking restarts the count, not the warning flag, so
+# it gets no second warning before its later drop.  Dave stays a spectator,
+# which never counts.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client dave name Dave
+
+clientcmd 1 alpha team f
+clientcmd 1 bravo team f
+clientcmd 1 charlie team f
+
+at 0  alpha weapon=2
+at 0  bravo weapon=2
+at 0  charlie weapon=2
+at 10 bravo forward=127 dyaw=3
+at 60 bravo forward=0 right=127
+at 90 bravo right=0 buttons=attack
+at 95 bravo buttons=0 forward=-127
+clientcmd 100 charlie say still here
+clientcmd 120 dave say watching

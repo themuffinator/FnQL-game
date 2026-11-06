@@ -426,8 +426,14 @@ struct gclient_s {
 
 	// timers
 	int			respawnTime;		// can respawn when time > this, force after g_forcerespwan
-	int			inactivityTime;		// kick players when time > this
-	qboolean	inactivityWarning;	// qtrue if the five seoond warning has been given
+	// Retail gclient +0x32c/+0x330: idle msec counted by ClientThink and the
+	// g_inactivityWarning centerprint already sent (qagamex86 0x10033fd0).
+	int			inactivityMsec;
+	qboolean	inactivityWarning;
+	// Retail +0x334/+0x338: the flood-protection decay stamp and counter
+	// (0x100341e0). No retail code increments the counter; see G_FloodCheck.
+	int			floodDecayTime;
+	int			floodCount;
 	int			rewardTime;			// clear the EF_AWARD_IMPRESSIVE, etc when time > this
 
 	int			airOutTime;
@@ -519,6 +525,20 @@ typedef struct {
 	int			teamScores[TEAM_NUM_TEAMS];
 	qboolean teamLocked[TEAM_NUM_TEAMS];
 	qboolean shuffling;
+	// Automatic team shuffle (retail level +0x44/+0x48, qagamex86 0x1005992b):
+	// armed at map start and whenever too few play; the level.time its
+	// g_shuffle_timedelay countdown began, or 0.
+	qboolean	autoShuffleArmed;
+	int			autoShuffleTime;
+	// Ready players while waiting to start (retail +0x58/+0x5c, 0x100577a0):
+	// everyone counting as ready, and those who readied themselves.
+	int			numReadyClients;
+	int			numReadyHumans;
+	int			readyDelayTime;		// duel g_warmupReadyDelay deadline (retail 0x105e19c8)
+	// g_suddenDeathRespawn: the overtime respawn delay and the one last
+	// announced (retail 0x105df41c/0x105df420, set by G_RunFrame 0x1005952f).
+	int			suddenDeathRespawnDelay;
+	int			suddenDeathRespawnShown;
 	gentity_t *raceEditorPrevious;
 	int raceEditorCount, racePointCount;
 	char raceEditorNames[64][8];
@@ -958,6 +978,12 @@ void G_ShutdownAccess( void );
 void G_ReloadAccess( void );
 void G_ListAccess( gentity_t *ent, int page );
 int G_ForceTeam( gentity_t *ent, const char *team );
+void G_ExecuteTeamChange( gentity_t *ent, team_t team, spectatorState_t specState, int specClient );
+void G_TackleFlag( gentity_t *targ );
+void G_CheckReadyDelay( void );
+void G_UpdateSuddenDeathRespawn( void );
+void G_CheckAutoShuffle( void );
+int G_DeathRespawnDelay( void );
 void G_ResetClientStats( gclient_t *client );
 int G_StartingAmmo( int weapon );
 void G_ReadClientSessionData( gclient_t *client );

@@ -1,0 +1,31 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory tdm --frames 800
+# --set teamsize 2): joining and switching teams (retail qagamex86
+# 0x10040921-0x10040b65, 0x10068100).  A full team refuses a third
+# player.  With the teams two apart the larger refuses a joiner; with
+# them within one, a switch between uneven teams is allowed.  Once the
+# countdown and the match are under way a requested colour is ignored
+# and the joiner goes to the smaller team.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client dave name Dave
+client eve name Eve
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team r
+clientcmd 3 charlie team r
+clientcmd 4 charlie team b
+clientcmd 5 dave team b
+clientcmd 100 charlie team s
+clientcmd 120 dave team s
+clientcmd 140 eve team r
+clientcmd 150 eve team b
+clientcmd 200 alpha team b
+clientcmd 260 alpha readyup
+clientcmd 262 bravo readyup
+clientcmd 264 eve readyup
+clientcmd 300 charlie team b
+clientcmd 700 dave team b

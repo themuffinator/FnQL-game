@@ -1030,6 +1030,8 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 
 	ent = g_entities + clientNum;
 	client = ent->client;
+	// Retail 0x1003a49c restarts the flood-protection decay window here.
+	if ( client ) client->floodDecayTime = level.time;
 
 	trap_GetUserinfo( clientNum, userinfo, sizeof( userinfo ) );
 
@@ -1389,6 +1391,8 @@ void ClientBegin( int clientNum ) {
 	client->pers.connected = CON_CONNECTED;
 	client->pers.enterTime = level.time;
 	client->pers.teamState.state = TEAM_BEGIN;
+	// Retail 0x1003b0e0: the idle count starts over (its warning flag does not).
+	client->inactivityMsec = 0;
 	client->pers.complaintClient = client->pers.complaintDeadline = -1;
 
 	// save eflags around this, because changing teams will
@@ -1948,7 +1952,6 @@ void ClientSpawn(gentity_t *ent) {
 	client->ps.pm_time = 100;
 
 	client->respawnTime = level.time;
-	client->inactivityTime = level.time + g_inactivity.integer * 1000;
 	client->latched_buttons = 0;
 	// Retail 0x1003c319 arms factory regeneration on spawn as well as damage.
 	client->healthRegenActive = g_regenHealth.integer != 0;

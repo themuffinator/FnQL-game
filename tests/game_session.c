@@ -3,7 +3,7 @@
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #x); exit(1); } } while (0)
 
 level_locals_t level;
-vmCvar_t g_gametype, g_teamAutoJoin;
+vmCvar_t g_gametype, g_teamAutoJoin, g_teamSpawnAsSpec;
 static gclient_t clients[2];
 static char record[MAX_STRING_CHARS];
 static char world[32];
@@ -73,6 +73,13 @@ int main(void) {
 		CHECK(c->sess.sessionTeam == TEAM_SPECTATOR && c->sess.spectatorState == SPECTATOR_FREE);
 		CHECK(!c->sess.muted && !c->sess.sessionReservedTail && c->pers.privileges == 2);
 	}
+	/* g_teamSpawnAsSpec (retail 0x10065a03): team modes in their warmup only */
+	g_teamSpawnAsSpec.integer = 1; g_gametype.integer = GT_CTF; level.warmupTime = -1;
+	Read(retail); CHECK(c->sess.sessionTeam == TEAM_SPECTATOR && c->sess.wins == 11);
+	level.warmupTime = 0; Read(retail); CHECK(c->sess.sessionTeam == TEAM_RED);
+	g_gametype.integer = GT_FFA; level.warmupTime = -1; Read(retail); CHECK(c->sess.sessionTeam == TEAM_RED);
+	g_teamSpawnAsSpec.integer = 0; g_gametype.integer = GT_CTF; Read(retail); CHECK(c->sess.sessionTeam == TEAM_RED);
+	level.warmupTime = 0;
 	memset(c, 0, sizeof(*c));
 	g_gametype.integer = GT_TOURNAMENT;
 	G_InitSessionData(c, "", qfalse);
