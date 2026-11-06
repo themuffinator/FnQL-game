@@ -61,7 +61,7 @@
 #define	GIANT_WIDTH			32
 #define	GIANT_HEIGHT		48
 
-#define	NUM_CROSSHAIRS		10
+#define	CG_NUM_CROSSHAIRS		29
 
 #define TEAM_OVERLAY_MAXNAME_WIDTH	12
 #define TEAM_OVERLAY_MAXLOCATION_WIDTH	16
@@ -237,7 +237,8 @@ typedef enum {
 	LE_INVULIMPACT,
 	LE_INVULJUICED,
 #endif
-	LE_SHOWREFENTITY
+	LE_SHOWREFENTITY,
+	LE_QL_GIB_FLASH	// retail type 15 light (0x1001f730)
 } leType_t;
 
 typedef enum {
@@ -250,13 +251,17 @@ typedef enum {
 typedef enum {
 	LEMT_NONE,
 	LEMT_BURN,
-	LEMT_BLOOD
+	LEMT_BLOOD,
+	LEMT_ICE,
+	LEMT_ELECTRO	// retail mark type 3 (0x1001e316)
 } leMarkType_t;			// fragment local entities can leave marks on walls
 
 typedef enum {
 	LEBS_NONE,
 	LEBS_BLOOD,
-	LEBS_BRASS
+	LEBS_BRASS,
+	LEBS_ICE,
+	LEBS_ELECTRO	// retail bounce type 3 (0x1001ec7a)
 } leBounceSoundType_t;	// fragment local entities can make sounds on impacts
 
 typedef struct localEntity_s {
@@ -307,11 +312,34 @@ typedef struct {
 	int				captures;
 	qboolean		perfect;
 	team_t			team;
+	int alive, kills, deaths, bestWeapon, bestAccuracy, damageGiven, damageTaken;
+	int roundScore, suicides, teamKills, teamKilled;
+	int itemPickups[4]; /* red/yellow/green armor, mega */
+	float itemWait[4];
+	int powerupPickups[5]; /* quad, suit, regen, haste, invisibility */
+	struct { int hits, shots, accuracy, damage, kills; } weaponStats[16];
 
 	int				minx, maxx;
 	int				miny, maxy;
 
 } score_t;
+
+qboolean CG_ParseScoreCommand(const char *command);
+void CG_UpdateTeamInfoFromSnapshot(const snapshot_t *snapshot);
+void CG_SetAccuracyOverlay(qboolean show);
+void CG_SetPlayerStatsRequest(qboolean down);
+void CG_DrawCrosshairNameText(float *color);
+qboolean CG_ClientMuted(int client);
+qboolean CG_AccuracyOverlayVisible(void);
+void CG_DrawAccuracyColumn(qboolean icons, float x, float y, float width,
+    float step, float scale, vec4_t color);
+int CG_ScoreRow(float feeder, int index);
+const char *CG_ScoreCell(float feeder, int index, int column, qhandle_t *handle);
+const char *CG_SelectedPlayerAccuracy(void);
+const char *CG_ScoreMode(void);
+const char *CG_ScoreMenuName(qboolean end);
+qboolean CG_ScoreVisible2(int flags);
+qboolean CG_OwnerDrawVisibleEx(int flags, int flags2);
 
 // each client has an associated clientInfo_t
 // that contains media references necessary to present the
@@ -321,6 +349,7 @@ typedef struct {
 #define	MAX_CUSTOM_SOUNDS	32
 
 typedef struct {
+	int speaking, speakingTime;
 	qboolean		infoValid;
 
 	char			name[MAX_NAME_LENGTH];
@@ -339,6 +368,8 @@ typedef struct {
 
 	int				handicap;
 	int				wins, losses;	// in tourney mode
+	int				spectatorOnly;	// "so" (retail clientInfo +0x714)
+	int				playerQueue;	// "pq" (retail clientInfo +0x718)
 
 	int				teamTask;		// task in teamplay (offence/defence)
 	qboolean		teamLeader;		// true when this is a team leader
@@ -378,6 +409,7 @@ typedef struct {
 	qhandle_t		headSkin;
 
 	qhandle_t		modelIcon;
+	float			modelHeightScale;	// retail clientInfo +0x2d8 (0x1003d260)
 
 	animation_t		animations[MAX_TOTALANIMATIONS];
 
@@ -402,6 +434,7 @@ typedef struct weaponInfo_s {
 	qhandle_t		weaponModel;
 	qhandle_t		barrelModel;
 	qhandle_t		flashModel;
+	qhandle_t		attachedAmmoModel;	// grapple "_ammo.md3" on tag_ammo (retail weaponInfo +0x18)
 
 	vec3_t			weaponMidpoint;		// so it will rotate centered instead of by tag
 
@@ -456,7 +489,7 @@ typedef struct {
 } skulltrail_t;
 
 
-#define MAX_REWARDSTACK		10
+#define MAX_REWARDSTACK		16 /* Retail queue: 0x10043570. */
 #define MAX_SOUNDBUFFER		20
 
 //======================================================================
@@ -470,7 +503,155 @@ typedef struct {
 
 #define NUM_SAVED_STATES ( CMD_BACKUP + 2 )
 
+#define CG_MAX_TIMED_ITEMS 10
 typedef struct {
+	int entity, side, item, remaining, distance, group;	// remaining ms, counted down per frame
+	vec3_t origin;
+} cgTimedItem_t;
+
+#define CG_MAX_DAMAGE_PLUMS 32
+typedef struct {
+	qboolean active;
+	int startedAt;
+	vec3_t origin;
+	vec4_t color;
+	float horizontalSpeed, verticalSpeed;
+	char text[16];
+} cgDamagePlum_t;
+
+void CG_DamagePlum(const centity_t *cent);
+void CG_DrawDamagePlums(void);
+
+void CG_ClearTimedItems(void);
+void CG_UpdateTimedItems(int frametime);
+qboolean CG_TimedItemShown(int mask, const gitem_t *item);
+void CG_DrawItemTimers(void);
+
+void CG_VitalsCleanName(char *name);
+int CG_VitalsFitName(char *name, int size, float maxWidth);
+void CG_DrawTeamVitals(void);
+void CG_ParseAppearanceSettings(void);
+void CG_CrosshairColorEntry(int index, vec4_t color);
+void CG_RecordCrosshairHit(const playerState_t *ps, const playerState_t *ops);
+qboolean CG_CrosshairHitStyle(float *w, float *h, vec4_t color);
+void CG_DrawQLCrosshair(void);
+const char *CG_DemoHudTime(int msec);
+void CG_DrawDemoHud(void);
+int trap_FS_GetFileList(const char *path, const char *extension, char *listbuf, int bufsize);
+void CG_RegisterGoreDLC(void);
+qboolean CG_GoreGibPlayer(const vec3_t origin);
+qboolean CG_GoreBleed(const vec3_t origin);
+qboolean CG_GoreBloodTrail(localEntity_t *le);
+sfxHandle_t CG_GoreImpactSound(void);
+qboolean CG_GoreBloodMark(const trace_t *trace);
+void CG_CloseInitialScoreboard(void);
+void CG_CheckInitialScoreboard(void);
+void CG_ComputeModelHeightScale(clientInfo_t *ci, const char *modelName);
+void CG_RefreshModelHeightScales(void);
+qboolean CG_LeaderModelView(float x, float y, float w, float h, float heightScale, refdef_t *refdef, vec3_t origin);
+void CG_DrawLeaderModel(float x, float y, float w, float h, int torsoAnim, int weapon, const vec3_t angles);
+void CG_DrawLeaderModelOwnerDraw(int ownerDraw, float x, float y, float w, float h);
+
+/* Retail world-marker projection (0x10011680), shared by race navigation
+ * icons and points of interest. */
+void CG_WorldMarkerWidths(float scale, float *worldWidth, float *minimum);
+qboolean CG_ProjectWorldMarker(const vec3_t point, float worldWidth, float minimum,
+                               float *x, float *y, float *size);
+
+/* EV_POI pings (retail 0x1001c228): Quad Hog carriers, neutral flag
+ * carriers and Red Rover infection. Retail's marker queue holds 32. */
+#define CG_MAX_POINTS_OF_INTEREST 32
+#define CG_SETTING_QUAD_HOG (1u << 18)
+#define CG_SETTING_RR_INFECTED (1u << 26)
+typedef struct {
+	qboolean active;
+	int startedAt, lifetime, fadeDelay;
+	int client, team;
+	vec3_t origin;
+	vec4_t color;
+	float worldWidth, minimum;
+	qhandle_t shader;
+} cgPointOfInterest_t;
+typedef struct {
+	qhandle_t quadHog, infected, neutralFlag, harvesterCapture, flagCapture;
+} cgPoiMedia_t;
+void CG_RegisterPoiMedia(void);
+void CG_RegisterFlagStatusIcons(void);
+qhandle_t CG_FlagStatusIcon(int team, int state);
+qhandle_t CG_FlagTrackPointer(void);
+void CG_DrawFlagTrack(float x, float y, float w, float h);
+qboolean CG_DrawTeamFlagStatus(int ownerDraw, float x, float y, float w, float h);
+void CG_DrawOneFlagStatus(float x, float y, float w, float h);
+void CG_PointOfInterest(const centity_t *cent);
+void CG_DrawPointsOfInterest(void);
+void CG_DrawOverheadNames(void);
+const float *CG_OverheadTeamColor(int team);
+void CG_OverheadHealthColor(int client, int value, vec4_t color);
+const gitem_t *CG_PowerupItem(int powerup);
+/* Per-frame teammate markers (retail marker type 4, 0x10040dcd). */
+#define CG_MAX_TEAMMATE_MARKERS 32
+typedef struct { vec3_t origin; vec4_t color; float worldWidth, minimum; qhandle_t shader; } cgTeammateMarker_t;
+void CG_AddTeammateMarker(const vec3_t origin, const vec4_t color, qhandle_t shader);
+void CG_RecordObjectiveBase(int team, const vec3_t origin);
+void CG_ObjectiveMarkers(const centity_t *cent);
+typedef struct { qboolean active; int startedAt; float lifetime, worldWidth, minimum; vec3_t origin; } cgDeadFriend_t;
+void CG_DeadTeammateMarker(const entityState_t *obituary);
+void CG_RetailObituary(const entityState_t *ent);
+void CG_AddObituary(const char *target, const char *attacker, int targetTeam, int attackerTeam,
+                    qboolean hasAttacker, qhandle_t icon);
+void CG_ClearObituaries(void);
+void CG_ClearChatArea(void);
+void CG_ChatAreaAdd(const char *text, int type, int extraMsec);
+void CG_ChatHistoryShow(qboolean show);
+void CG_ChatHistoryToggle(void);
+qboolean CG_ChatHistoryShown(void);
+int CG_ObituaryRows(void);
+qhandle_t CG_LightningBoltShader(void);
+
+void CG_RegisterQLEventSounds(void);
+qboolean CG_QL_EntityEvent(centity_t *cent);
+void CG_PushReward(sfxHandle_t sound, qhandle_t shader, int count);
+void CG_FollowPowerup(int client, qboolean flag);
+void CG_GlobalItemPickupAnnouncement(const entityState_t *event, int giType, int giTag);
+void CG_PersistentPowerupAnnouncement(int giTag);
+
+typedef struct {
+	qboolean active, hasSplit;
+	int startedAt, lastTime, bestTime, reportedSplits;
+	int nextPoint, followingPoint, splitDelta, pointsPassed;
+} cgRaceState_t;
+typedef struct {
+	qhandle_t start, checkpoint, finish, inactive;
+	qhandle_t base, redSkin, blueSkin, neutralSkin;
+	qhandle_t icons[3];
+} cgRaceMedia_t;
+void CG_ResetRace(qboolean clearRecords, qboolean notifyServer);
+qboolean CG_ParseRaceCommand(const char *command);
+void CG_RaceEvent(const entityState_t *event);
+void CG_RaceLevelTimeChanged(int oldTime, int newTime);
+void CG_DrawRaceHud(int ownerDraw, float x, float y, float scale, vec4_t color, int align);
+void CG_RaceRespawnCommand(void);
+void CG_RegisterRaceMedia(void);
+qboolean CG_DrawRacePoint(const centity_t *cent);
+void CG_DrawRaceMarkers(void);
+
+typedef struct {
+	qboolean chatExpanded;
+	cgRaceState_t race;
+	qboolean raceRespawnUsed;
+	cgTimedItem_t timedItems[CG_MAX_TIMED_ITEMS];
+	int timedItemCount;			// records filled (retail 0x10ab994c)
+	int messageTime, noticeTime;	// last message/notice expiry (retail 0x10a5f2f8/0x10a5f2fc)
+	int crosshairHitTime, crosshairHitLevel;	// retail 0x10ab8fb0/0x10ab8fb4
+	qboolean initialScoreboard;	// scoreboard raised by CG_Init (retail 0x10a9c9ac)
+	cgDamagePlum_t damagePlums[CG_MAX_DAMAGE_PLUMS];
+	unsigned damagePlumRandom;
+	cgPointOfInterest_t pointsOfInterest[CG_MAX_POINTS_OF_INTEREST];
+	cgTeammateMarker_t teammateMarkers[CG_MAX_TEAMMATE_MARKERS];
+	int teammateMarkerCount;
+	cgDeadFriend_t deadFriends[CG_MAX_TEAMMATE_MARKERS];
+	vec3_t objectiveBases[3];		// neutral, red, blue (retail 0x10aba978)
+	qboolean objectiveBaseSeen[3];
 	int			clientFrame;		// incremented each frame
 
 	int			clientNum;
@@ -504,6 +685,7 @@ typedef struct {
 
 	int			timelimitWarnings;	// 5 min, 1 min, overtime
 	int			fraglimitWarnings;
+	int			teamJoinTime;	// last spectator-to-team transition (retail 0x10a9c9b0)
 
 	qboolean	mapRestart;			// set on a map restart to set back the weapon
 
@@ -531,6 +713,8 @@ typedef struct {
 
 	// input state sent to server
 	int			weaponSelect;
+	int             weaponPrimary; /* queued loadout slot, native user command */
+	int             weaponSelectPrevious, weaponSelectObserved; /* per-frame history */
 
 	// auto rotating items
 	vec3_t		autoAngles;
@@ -546,6 +730,7 @@ typedef struct {
 	qboolean	zoomed;
 	int			zoomTime;
 	float		zoomSensitivity;
+	int			userCmdFov; // retail 4:3 command value, before projection/water warp
 
 	// information screen text during loading
 	char		infoScreenText[MAX_STRING_CHARS];
@@ -556,10 +741,17 @@ typedef struct {
 	int			selectedScore;
 	int			teamScores[2];
 	score_t		scores[MAX_CLIENTS];
+	int scoreTeamStats[2][17]; /* CTF order; TDM omits flag/medkit fields. */
+	int weaponAccuracy[WP_NUM_WEAPONS]; /* acc/pstats, including WP_NONE */
+	qboolean showAccuracy;
+	int accuracyRequestTime;
+	qboolean playerStatsHeld;
+	int scoreRoundStats[20]; /* attack/defend supplementary scores_ad */
 	qboolean	showScores;
 	qboolean	scoreBoardShowing;
 	int			scoreFadeTime;
 	char		killerName[MAX_NAME_LENGTH+32];
+	qhandle_t	killerIcon;	// retail 0x10aa69b0, the killing weapon icon
 	int			killerTime;
 	char			spectatorList[MAX_STRING_CHARS];		// list of names
 	int				spectatorLen;												// length of list
@@ -614,6 +806,7 @@ typedef struct {
 	int			soundBufferIn;
 	int			soundBufferOut;
 	int			soundTime;
+	qboolean matchEnded; /* retail suppresses new announcements after the result */
 	qhandle_t	soundBuffer[MAX_SOUNDBUFFER];
 	qhandle_t	soundPlaying;
 
@@ -696,6 +889,7 @@ typedef struct {
 // Other media that can be tied to clients, weapons, or items are
 // stored in the clientInfo_t, itemInfo_t, weaponInfo_t, and powerupInfo_t
 typedef struct {
+	qhandle_t sizeCursor, selectCursor;
 	qhandle_t	charsetShader;
 	qhandle_t	charsetProp;
 	qhandle_t	charsetPropGlow;
@@ -738,6 +932,8 @@ typedef struct {
 
 	qhandle_t	armorModel;
 	qhandle_t	armorIcon;
+    qhandle_t infiniteAmmoShader;
+    qhandle_t weaponBarLitShader;
 
 	qhandle_t	teamStatusBar;
 
@@ -765,7 +961,22 @@ typedef struct {
 
 	qhandle_t	lightningShader;
 
+	qhandle_t	lightningBolts[5];
+	qhandle_t	electroGibModel;
+	sfxHandle_t	electroGibSounds[2];
+	sfxHandle_t	electroBounceSounds[2];
 	qhandle_t	friendShader;
+	qhandle_t	healthSegmentShader;	// retail 0x10a5f4a8, overhead health
+	qhandle_t	obituaryIcon;	// retail 0x10a5f680 icons/icon_frag
+	qhandle_t	thawIcon;	// retail 0x10a5f684 icons/thaw, Freeze Tag up
+	qhandle_t	speakingIcon;
+	qhandle_t	mutedIcon;
+	qhandle_t	friendHitShader;
+	qhandle_t	friendDeadShader;
+	qhandle_t	voiceWindowShader;	// ui/assets/voiceWindow (retail 0x10a5f4d4)
+	qhandle_t	frozenSpriteShader;
+	qhandle_t	flagCarrierShader;
+	qhandle_t	flagCarrierHitShader;
 
 	qhandle_t	balloonShader;
 	qhandle_t	connectionShader;
@@ -773,12 +984,13 @@ typedef struct {
 	qhandle_t	selectShader;
 	qhandle_t	viewBloodShader;
 	qhandle_t	tracerShader;
-	qhandle_t	crosshairShader[NUM_CROSSHAIRS];
+	qhandle_t	crosshairShader[CG_NUM_CROSSHAIRS];
 	qhandle_t	lagometerShader;
 	qhandle_t	backTileShader;
 	qhandle_t	noammoShader;
 
 	qhandle_t	smokePuffShader;
+	qhandle_t	iceTrailShader, iceMarkShader, surfacePuffShader;
 	qhandle_t	smokePuffRageProShader;
 	qhandle_t	shotgunSmokePuffShader;
 	qhandle_t	plasmaBallShader;
@@ -808,6 +1020,9 @@ typedef struct {
 	qhandle_t	redQuadShader;
 	qhandle_t	quadWeaponShader;
 	qhandle_t	invisShader;
+	qhandle_t	noPlayerClipShader;
+	qhandle_t	ghostWeaponShader;
+	qhandle_t	icePlayerShader[3];
 	qhandle_t	regenShader;
 	qhandle_t	battleSuitShader;
 	qhandle_t	battleWeaponShader;
@@ -846,6 +1061,13 @@ typedef struct {
 	qhandle_t	ammoRegenPowerupModel;
 	qhandle_t	invulnerabilityImpactModel;
 	qhandle_t	invulnerabilityJuicedModel;
+	// gore DLC (retail 0x10022ffc/0x10020ea8: registered only when dlc_gibs exists)
+	qboolean	goreDLC;
+	qhandle_t	dlcGibModels[15];		// skull, brain, chest, abdomen, intestine, arm x2, forearm x2, fist x2, leg x2, foot x2
+	qhandle_t	dlcBloodSpray[4];		// bloodSpray1..4
+	qhandle_t	dlcViewBloodBlend;
+	sfxHandle_t	dlcGibSplatSound;
+	sfxHandle_t	dlcGibImpactSounds[3];
 	qhandle_t	medkitUsageModel;
 	qhandle_t	dustPuffShader;
 	qhandle_t	heartShader;
@@ -912,6 +1134,7 @@ typedef struct {
 	sfxHandle_t	teleInSound;
 	sfxHandle_t	teleOutSound;
 	sfxHandle_t	noAmmoSound;
+	sfxHandle_t	lowAmmoSound;
 	sfxHandle_t	respawnSound;
 	sfxHandle_t talkSound;
 	sfxHandle_t landSound;
@@ -1081,6 +1304,7 @@ typedef struct {
 	char			teamVoteString[2][MAX_STRING_TOKENS];
 
 	int				levelStartTime;
+	int overtimeSeconds; /* g_overtime from serverinfo */
 
 	int				scores1, scores2;		// from configstrings
 	int				redflag, blueflag;		// flag status from configstrings
@@ -1107,9 +1331,7 @@ typedef struct {
 	int				teamLastChatPos;
 
 #ifdef MISSIONPACK
-	int cursorX;
-	int cursorY;
-	qboolean eventHandling;
+	int eventHandling;
 	qboolean mouseCaptured;
 	qboolean sizingHud;
 	void *capturedItem;
@@ -1128,12 +1350,24 @@ typedef struct {
 
 	// media
 	cgMedia_t		media;
+	cgRaceMedia_t raceMedia;
+	cgPoiMedia_t poiMedia;
 
 	float			fov;		// clamped cg_fov value
 	float			zoomFov;	// clamped cg_zoomFov value
 
-	qboolean		pmove_fixed;
-	int				pmove_msec;
+	pmoveSettings_t pmoveSettings;
+	qboolean noPlayerClipPresentation; // CS_SETTINGS_MASK bit 25, separate from movement settings
+	unsigned settingsMask; // CS_SETTINGS_MASK (retail 0x10a3ff28); 0 when malformed
+	int itemHeight, weaponRespawn;
+	int startingHealth; // serverinfo g_startingHealth (retail 0x10a601e0)
+	int timeoutCount;   // serverinfo g_timeoutCount (retail 0x10a3ff60)
+	// CS_APPEARANCE_SETTINGS (retail 0x10048e40): head scale/offset and model scale
+	float playerHeadScale, playerHeadScaleOffset, playerModelScale;
+	char playerModelOverride[64], playerHeadModelOverride[64];	// g_playermodelOverride, g_playerheadmodelOverride
+	int allowCustomHeadmodels;		// g_allowCustomHeadmodels
+	int teamSize; // serverinfo teamsize (retail 0x10a3ff18)
+	qboolean armorTiered;
 
 	qboolean		synchronousClients;
 
@@ -1182,6 +1416,7 @@ int CG_LastAttacker( void );
 void CG_LoadMenus(const char *menuFile);
 void CG_KeyEvent( int key, qboolean down );
 void CG_MouseEvent( int x, int y );
+void CG_MouseMoveTo( int x, int y );
 void CG_EventHandling( cgame_event_t type );
 void CG_RankRunFrame( void );
 void CG_SetScoreSelection(void *menu);
@@ -1203,6 +1438,8 @@ void CG_TestModelNextSkin_f (void);
 void CG_TestModelPrevSkin_f (void);
 void CG_ZoomDown_f( void );
 void CG_ZoomUp_f( void );
+int CG_CalcFov( void );
+void CG_UpdateZoomState( void );
 void CG_AddBufferedSound( sfxHandle_t sfx);
 
 void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demoPlayback );
@@ -1211,6 +1448,10 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 //
 // cg_drawtools.c
 //
+// Horizontal placement of the 4:3 frame on wide screens (retail 0x10aa6938).
+enum { CG_PLACE_DEFAULT, CG_PLACE_LEFT, CG_PLACE_CENTER, CG_PLACE_RIGHT };
+int CG_SetScreenPlacement( int placement );	// returns the previous mode
+float CG_ScreenXBias( void );
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h );
 void CG_FillRect( float x, float y, float width, float height, const float *color );
 void CG_FillScreen( const float *color );
@@ -1269,10 +1510,71 @@ void CG_DrawFlagModel( float x, float y, float w, float h, int team, qboolean fo
 void CG_DrawTeamBackground( int x, int y, int w, int h, float alpha, int team );
 void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle);
 void CG_Text_Paint(float x, float y, float scale, vec4_t color, const char *text, float adjust, int limit, int style);
+void CG_Text_PaintClipped(float *maxX, float x, float y, float scale, vec4_t color, const char *text);
 int CG_Text_Width(const char *text, float scale, int limit);
 int CG_Text_Height(const char *text, float scale, int limit);
+int CG_Text_WidthInFont(const char *text, int font, float scale, int limit);
+int CG_Text_HeightInFont(const char *text, int font, float scale, int limit);
 void CG_SelectPrevPlayer( void );
 void CG_SelectNextPlayer( void );
+int CG_StatusAmmo(void);
+qboolean CG_DrawStatusHud(int owner, float x, float y, float w, float h,
+    int align, float scale, vec4_t color, qhandle_t shader, int style);
+void CG_InitMatchClocks(void);
+void CG_MatchClockConfigChanged(int index);
+void CG_AdvanceMatchClocks(void);
+void CG_MatchClockWarnings(void);
+void CG_RegisterLocalSounds(void);
+void CG_QLCheckLocalSounds(const playerState_t *ps, const playerState_t *ops);
+void CG_ClearMatchNotice(void);
+qboolean CG_MatchNoticeCommand(const char *command);
+qboolean CG_DrawMatchNotice(void);
+void CG_CenterPrintNative(const char *text, int y, float scale);
+void CG_DrawMatchPause(void);
+void CG_AnnounceMatchStart(void);
+void CG_InitPregame(void);
+void CG_PregameRestart(void);
+void CG_PregameConfigChanged(int index);
+void CG_DrawPregame(void);
+void CG_InitStandings(void);
+void CG_StandingsConfigChanged(int index);
+qboolean CG_StandingsVisible(int flags);
+qboolean CG_DrawStandings(int owner,float x,float y,float w,float h,int align,float scale,vec4_t color,int style);
+const char *CG_StandingsName(int slot);
+void CG_DrawArmorTierColorized(float x, float y, float w, float h, const vec4_t color, qhandle_t shader);
+void CG_DrawHealthColorized(float x, float y, float w, float h, const vec4_t color, qhandle_t shader);
+void CG_DrawHeldKeys(float x, float y, float w, float h);
+qboolean CG_SpectatorHudActive(void);
+void CG_ClearDuelSlots(void);
+qboolean CG_DrawTeamStat(int ownerDraw, float x, float y, int align, float scale, vec4_t color, int style);
+const char *CG_TeamHeldTime(int seconds);
+int CG_TeamAveragePing(int team);
+const char *CG_TeamPlayerCountText(int team);
+int CG_TeamTimeoutsLeft(int team);
+void CG_DrawTeamPickupStrip(int team, float x, float y, float w, float h, float scale, vec4_t color, int style);
+void CG_DuelScoresParsed(const score_t *rows, int count);
+const score_t *CG_DuelSlot(int slot);
+const char *CG_DuelName(int slot, float scale);
+qboolean CG_DrawDuelStat(int ownerDraw, float x, float y, float w, float h, int align, float scale, vec4_t color, int style);
+qboolean CG_DrawEndVote(int ownerDraw, float x, float y, float w, float h, int align, float scale, vec4_t color, int style);
+const char *CG_VoteChoice(const char *key, int choice);
+const char *CG_VoteTimerText(void);
+void CG_DrawSpectatorHud(void);
+void CG_DrawFollowPlayerName(int ownerDraw, float x, float y, int align, float scale, vec4_t color, int style);
+qboolean CG_DrawEndSummary(int ownerDraw, float x, float y, int align, float scale, vec4_t color, int style);
+const char *CG_MatchStateText(void);
+const char *CG_GametypeTag(int gametype);
+const char *CG_MatchEndCondition(void);
+const char *CG_EndGameScoreText(void);
+const char *CG_BestWeaponName(void);
+const char *CG_PlayerCountText(void);
+int CG_AwardClient(int ownerDraw);
+qboolean CG_DrawAwardPicture(int ownerDraw, float x, float y, float w, float h);
+const char *CG_MatchWinnerText(float scale);
+sfxHandle_t CG_QLVoice(const char *file);
+void CG_ClearMatchAnnouncements(void);
+void trap_S_StartLocalSoundVolume(sfxHandle_t sfx, int channelNum, float volume);
+qboolean CG_DrawMatchClock(int owner, float x, float y, int align, float scale, vec4_t color, int style);
 float CG_GetValue(int ownerDraw);
 qboolean CG_OwnerDrawVisible(int flags);
 void CG_RunMenuScript(char **args);
@@ -1299,6 +1601,15 @@ void CG_TrackClientTeamChange( void );
 void CG_Player( centity_t *cent );
 void CG_ResetPlayerEntity( centity_t *cent );
 void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team );
+void CG_AddWeaponWithPowerups(refEntity_t *gun, const entityState_t *state);
+void CG_UpdatePlayerPresentationSettings(void);
+void CG_CheckAmmo(void);
+void CG_DrawAmmoWarning(void);
+void CG_PlayerSprites(centity_t *cent);
+void CG_RunLerpFrame(clientInfo_t *ci, lerpFrame_t *lf, int animation, float speedScale);
+void CG_ClearLerpFrame(clientInfo_t *ci, lerpFrame_t *lf, int animation);
+void CG_PlayerAnimation(centity_t *cent, int *legsOld, int *legs, float *legsBackLerp,
+                        int *torsoOld, int *torso, float *torsoBackLerp);
 void CG_NewClientInfo( int clientNum );
 sfxHandle_t	CG_CustomSound( int clientNum, const char *soundName );
 
@@ -1310,6 +1621,7 @@ int	CG_PointContents( const vec3_t point, int passEntityNum );
 void CG_Trace( trace_t *result, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, 
 					 int skipNumber, int mask );
 void CG_PredictPlayerState( void );
+qboolean CG_IsConnectionInterrupted( void );
 void CG_LoadDeferredPlayers( void );
 
 void CG_PlayDroppedEvents( playerState_t *ps, playerState_t *ops );
@@ -1344,6 +1656,9 @@ void CG_PositionRotatedEntityOnTag( refEntity_t *entity, const refEntity_t *pare
 void CG_NextWeapon_f( void );
 void CG_PrevWeapon_f( void );
 void CG_Weapon_f( void );
+void CG_SelectPickedUpWeapon(int weapon);
+void CG_SelectSpawnWeapon(void);
+void CG_UpdateWeaponSelection(void);
 
 void CG_RegisterWeapon( int weaponNum );
 void CG_RegisterItemVisuals( int itemNum );
@@ -1407,6 +1722,15 @@ void CG_LightningBoltBeam( vec3_t start, vec3_t end );
 void CG_ScorePlum( int client, const vec3_t origin, int score );
 
 void CG_GibPlayer( const vec3_t playerOrigin );
+void CG_ThawPlayer(const vec3_t origin);
+void CG_ElectroGibs(const vec3_t origin, qboolean event);
+sfxHandle_t CG_ElectroGibSound(void);
+void CG_ElectroFragmentBounce(localEntity_t *le, const trace_t *trace);
+void CG_ElectroFragmentMark(localEntity_t *le, const trace_t *trace);
+void CG_AddGibFlash(localEntity_t *le);
+void CG_ThawTrail(const localEntity_t *fragment);
+void CG_IceFragmentMark(const trace_t *trace);
+void CG_MissileHitWallDmgThrough(int weapon, vec3_t origin, vec3_t direction);
 void CG_BigExplode( vec3_t playerOrigin );
 
 void CG_Bleed( const vec3_t origin, int entityNum );
@@ -1450,6 +1774,7 @@ void Menu_Reset( void );
 void CG_ExecuteNewServerCommands( int latestSequence );
 void CG_ParseServerinfo( void );
 void CG_ParseSysteminfo( void );
+void CG_ParsePmoveSettings(void);
 void CG_SetConfigValues( void );
 void CG_ShaderStateChanged(void);
 #ifdef MISSIONPACK
@@ -1485,6 +1810,8 @@ int			trap_Milliseconds( void );
 
 // console variable interaction
 void		trap_Cvar_Register( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags );
+void trap_Cvar_RegisterRange(vmCvar_t *vmCvar, const char *name, const char *value,
+	const char *minimum, const char *maximum, int flags);
 void		trap_Cvar_Update( vmCvar_t *vmCvar );
 void		trap_Cvar_Set( const char *var_name, const char *value );
 void		trap_Cvar_VariableStringBuffer( const char *var_name, char *buffer, int bufsize );
@@ -1645,6 +1972,7 @@ qboolean	trap_Key_IsDown( int keynum );
 int			trap_Key_GetCatcher( void );
 void		trap_Key_SetCatcher( int catcher );
 int			trap_Key_GetKey( const char *binding );
+void trap_Key_KeynumToStringBuf(int keynum, char *buffer, int size);
 
 
 typedef enum {
@@ -1701,3 +2029,11 @@ extern int dll_trap_R_AddRefEntityToScene2;
 extern int dll_trap_R_AddLinearLightToScene;
 extern int dll_trap_Cvar_SetDescription;
 #endif
+
+void trap_R_DrawText(int x, int y, const char *text, int font, float size, int limit, int forceColor);
+void trap_R_DrawTextClipped(int x, int y, const char *text, int font, float size, float *maxX);
+qboolean trap_R_ProjectPoint(const vec3_t point, vec4_t window);
+qboolean trap_R_ProjectScreenFraction(const vec3_t point, float *across, float *up);
+void trap_R_MeasureTextBounds(const char *text, int font, float size, int limit, float bounds[5]);
+void trap_R_MeasureText(const char *text, int font, float size, int limit, float *width, float *height);
+void CG_SetTextFont(int font);

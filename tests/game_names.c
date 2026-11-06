@@ -88,6 +88,18 @@ int main( void ) {
 	longInput[i] = '\0';
 	G_CleanPlayerName(longInput, cleaned, sizeof(cleaned));
 	CHECK(!strcmp(cleaned, "UnnamedPlayer"));
-	puts("game names OK: color resets, aliases, fallback, filtering, capacity sweeps, in-place and overlong input");
+	CHECK(G_PlayerNamesEqual("^1Alpha^7", "^2aLPHA"));
+	CHECK(!G_PlayerNamesEqual("^aAlpha", "Alpha"));
+	CHECK(G_PlayerNamesEqual("^aAlpha", "^AALPHA"));
+	CHECK(G_PlayerNamesEqual("Zo\xc3\xab", "zo\xc3\xab"));
+	CHECK(!G_PlayerNamesEqual("Zo\xc3\xab", "Zo"));
+	CHECK(G_PlayerNamesEqual(NULL, ""));
+	memset(longInput, 'x', sizeof(longInput));
+	longInput[sizeof(longInput) - 1] = '\0';
+	memset(cleaned, 'x', 39); cleaned[39] = '\0';
+	CHECK(G_PlayerNamesEqual(longInput, cleaned));
+	cleaned[38] = '^'; longInput[38] = '^'; longInput[39] = '2';
+	CHECK(G_PlayerNamesEqual(longInput, cleaned)); // truncate before color removal
+	puts("game names OK: normalization, uniqueness keys, bounds and oversized input");
 	return 0;
 }

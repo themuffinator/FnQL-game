@@ -43,6 +43,18 @@ scoreboards, duel queueing and forfeits, ready-up, the end-of-match vote and
 awards, CTF captures and defense bonuses, spectator following, timeouts, and
 the stats and auto-action commands. Manual weapon, flag and timed-powerup
 transfers also match retail, including powerup decay across timeouts.
+Optional damaged-health drops, underwater lightning discharge and grappling
+now have strict retail comparisons for their combat and item behavior.
+Loadout choices and team-kill complaints also match the retail scenarios;
+session persistence uses retail's thirteen-field format and reads older
+FnQL-game records. One Flag CTF now has strict comparisons for captures,
+carrier visibility and pings, drops, expiry, disconnect and capture limits.
+Retail lag compensation now passes delayed moving-target comparisons; moving
+brush grapple collision and live infinite-ammo changes have focused gates too.
+Railgun headshot bonuses are exercised through FnQL's retail-shaped point
+traces, with player movement collision protected by separate engine tests.
+Thin-ceiling rocket splash and warmup-disabled team matches have retail
+comparison gates as well.
 Optional dropped-flag jump-pad and teleporter physics, capture zones,
 portal camera roll and fallback intermission spawns have retail comparison
 gates, including the default-off flag-physics path.
@@ -62,8 +74,9 @@ See [server command compatibility](docs/SERVER_COMMANDS.md) for coverage.
 Broader bot behavior and special-mode parity remain in progress.
 
 The module does not yet claim retail wire parity, so FnQL keeps loading the
-retail modules unless told otherwise. cgame and ui arrive in later
-milestones.
+retail modules unless told otherwise. Native cgame and UI builds now have
+local hosting gates. The [native UI](docs/UI.md) replaces the old Q3 UI
+entirely; client provider selection and pure-server packaging remain M10.
 
 ## Using it
 

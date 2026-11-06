@@ -3,6 +3,10 @@
 // cg_view.c -- setup all the parameters (position, angle, etc)
 // for a 3D rendering
 #include "cg_local.h"
+#ifdef MISSIONPACK
+#include "../ui/ui_shared.h"
+extern displayContextDef_t cgDC;
+#endif
 
 
 /*
@@ -423,126 +427,6 @@ static void CG_OffsetFirstPersonView( void ) {
 
 //======================================================================
 
-void CG_ZoomDown_f( void ) { 
-	if ( cg.zoomed ) {
-		return;
-	}
-	cg.zoomed = qtrue;
-	cg.zoomTime = cg.time;
-}
-
-void CG_ZoomUp_f( void ) { 
-	if ( !cg.zoomed ) {
-		return;
-	}
-	cg.zoomed = qfalse;
-	cg.zoomTime = cg.time;
-}
-
-
-/*
-====================
-CG_CalcFov
-
-Fixed fov at intermissions, otherwise account for fov variable and zooms.
-====================
-*/
-#define	WAVE_AMPLITUDE	1
-#define	WAVE_FREQUENCY	0.4
-
-static int CG_CalcFov( void ) {
-	float	x;
-	//float	phase;
-	float	v;
-	int		contents;
-	float	fov_x, fov_y;
-	float	zoomFov;
-	float	f;
-	int		inwater;
-
-	cgs.fov = cg_fov.value;
-	if ( cgs.fov < 1.0 )
-		cgs.fov = 1.0;
-	else if ( cgs.fov > 160.0 )
-		cgs.fov = 160.0;
-
-	cgs.zoomFov = cg_zoomFov.value;
-	if ( cgs.zoomFov < 1.0 )
-		cgs.zoomFov = 1.0;
-	else if ( cgs.zoomFov > 160.0 )
-		cgs.zoomFov = 160.0;
-
-	if ( cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
-		// if in intermission, use a fixed value
-		fov_x = 90;
-	} else {
-		// user selectable
-		fov_x = cgs.fov;
-
-		// account for zooms
-		zoomFov = cgs.zoomFov;
-
-		if ( cg.zoomed ) {
-			f = ( cg.time - cg.zoomTime ) / (float)ZOOM_TIME;
-			if ( f > 1.0 ) {
-				fov_x = zoomFov;
-			} else {
-				fov_x = fov_x + f * ( zoomFov - fov_x );
-			}
-		} else {
-			f = ( cg.time - cg.zoomTime ) / (float)ZOOM_TIME;
-			if ( f > 1.0 ) {
-				//fov_x = fov_x;
-			} else {
-				fov_x = zoomFov + f * ( fov_x - zoomFov );
-			}
-		}
-	}
-
-	if ( cg_fovAdjust.integer ) {
-		// Based on LordHavoc's code for Darkplaces
-		// http://www.quakeworld.nu/forum/topic/53/what-does-your-qw-look-like/page/30
-		const float baseAspect = 0.75f; // 3/4
-		const float aspect = (float)cg.refdef.width/(float)cg.refdef.height;
-		const float desiredFov = fov_x;
-
-		fov_x = atan2( tan( desiredFov * M_PI / 360.0f ) * baseAspect * aspect, 1 ) * 360.0f / M_PI;
-	}
-
-	x = cg.refdef.width / tan( fov_x / 360 * M_PI );
-	fov_y = atan2( cg.refdef.height, x );
-	fov_y = fov_y * 360 / M_PI;
-
-	// warp if underwater
-	contents = CG_PointContents( cg.refdef.vieworg, -1 );
-	if ( contents & ( CONTENTS_WATER | CONTENTS_SLIME | CONTENTS_LAVA ) ){
-		//phase = cg.time / 1000.0 * WAVE_FREQUENCY * M_PI * 2;
-		//v = WAVE_AMPLITUDE * sin( phase );
-		v = WAVE_AMPLITUDE * sin( (cg.time % 16419587) / 397.87735f ); // result is very close to original
-		fov_x += v;
-		fov_y -= v;
-		inwater = qtrue;
-	}
-	else {
-		inwater = qfalse;
-	}
-
-
-	// set it
-	cg.refdef.fov_x = fov_x;
-	cg.refdef.fov_y = fov_y;
-
-	if ( !cg.zoomed ) {
-		cg.zoomSensitivity = 1;
-	} else {
-		cg.zoomSensitivity = cg.refdef.fov_y / 75.0;
-	}
-
-	return inwater;
-}
-
-
-
 /*
 ===============
 CG_DamageBlendBlob
@@ -727,6 +611,9 @@ void CG_AddBufferedSound( sfxHandle_t sfx ) {
 		memset( cg.soundBuffer, 0, sizeof( cg.soundBuffer ) );
 		return;
 	}
+	/* Retail 1004e110 stops new calls after the match result, while the queued
+	 * result itself remains eligible to play. map_restart reopens the queue. */
+	if (cg.matchEnded) return;
 
 	cg.soundBuffer[cg.soundBufferIn] = sfx;
 	cg.soundBufferIn = (cg.soundBufferIn + 1) % MAX_SOUNDBUFFER;
@@ -821,9 +708,6 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		return;
 	}
 
-	// let the client system know what our weapon and zoom settings are
-	trap_SetUserCmdValue( cg.weaponSelect, cg.zoomSensitivity );
-
 	if ( cg.clientFrame == 0 )
 		CG_FirstFrame();
 
@@ -846,6 +730,9 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// build cg.refdef
 	inwater = CG_CalcViewValues();
 
+	// Retail 1004e597-1004e5c6 publishes this frame's unadjusted command FOV.
+	trap_SetUserCmdValue( cg.weaponSelect, cg.zoomSensitivity );
+
 	// first person blend blobs, done after AnglesToAxis
 	if ( !cg.renderingThirdPerson ) {
 		CG_DamageBlendBlob();
@@ -858,6 +745,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		CG_AddParticles ();
 		CG_AddLocalEntities();
 	}
+	CG_UpdateWeaponSelection();
 	CG_AddViewWeapon( &cg.predictedPlayerState );
 
 	// add buffered sounds
@@ -889,6 +777,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 		}
 		cg.oldTime = cg.time;
 		CG_AddLagometerFrameInfo();
+		CG_UpdateTimedItems( cg.frametime );	// retail 0x1004e80b
 	}
 	if (cg_timescale.value != cg_timescaleFadeEnd.value) {
 		if (cg_timescale.value < cg_timescaleFadeEnd.value) {
@@ -907,6 +796,10 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	}
 
 	// actually issue the rendering calls
+#ifdef MISSIONPACK
+	cgDC.realTime = cg.time;
+	cgDC.frameTime = cg.frametime;
+#endif
 	CG_DrawActive( stereoView );
 
 	// this counter will be bumped for every valid scene we generate

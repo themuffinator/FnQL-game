@@ -6,6 +6,10 @@
 #include "cg_local.h"
 #include "../ui/ui_shared.h"
 
+void CG_DrawObituaries(const rectDef_t *rect, float scale);
+void CG_DrawChatArea(const rectDef_t *rect, float scale);
+void CG_DrawSpecMessages(const rectDef_t *rect);
+
 extern displayContextDef_t cgDC;
 
 
@@ -165,28 +169,7 @@ static void CG_DrawPlayerArmorIcon( rectDef_t *rect, qboolean draw2D ) {
 
 }
 
-static void CG_DrawPlayerArmorValue(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
-	char	num[16];
-  int value;
-	centity_t	*cent;
-	playerState_t	*ps;
 
-  cent = &cg_entities[cg.snap->ps.clientNum];
-	ps = &cg.snap->ps;
-
-	value = ps->stats[STAT_ARMOR];
-  
-
-	if (shader) {
-    trap_R_SetColor( color );
-		CG_DrawPic(rect->x, rect->y, rect->w, rect->h, shader);
-	  trap_R_SetColor( NULL );
-	} else {
-		Com_sprintf (num, sizeof(num), "%i", value);
-		value = CG_Text_Width(num, scale, 0);
-	  CG_Text_Paint(rect->x + (rect->w - value) / 2, rect->y + rect->h, scale, color, num, 0, 0, textStyle);
-	}
-}
 
 #ifndef MISSIONPACK // bk001206 
 static float healthColors[4][4] = { 
@@ -225,31 +208,7 @@ static void CG_DrawPlayerAmmoIcon( rectDef_t *rect, qboolean draw2D ) {
   }
 }
 
-static void CG_DrawPlayerAmmoValue(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle) {
-	char	num[16];
-	int value;
-	centity_t	*cent;
-	playerState_t	*ps;
 
-	cent = &cg_entities[cg.snap->ps.clientNum];
-	ps = &cg.snap->ps;
-
-	if ( cent->currentState.weapon ) {
-		value = ps->ammo[cent->currentState.weapon];
-		if ( value > -1 ) {
-			if (shader) {
-		    trap_R_SetColor( color );
-				CG_DrawPic(rect->x, rect->y, rect->w, rect->h, shader);
-			  trap_R_SetColor( NULL );
-			} else {
-				Com_sprintf (num, sizeof(num), "%i", value);
-				value = CG_Text_Width(num, scale, 0);
-				CG_Text_Paint(rect->x + (rect->w - value) / 2, rect->y + rect->h, scale, color, num, 0, 0, textStyle);
-			}
-		}
-	}
-
-}
 
 
 
@@ -562,61 +521,25 @@ static void CG_DrawSelectedPlayerHead( rectDef_t *rect, qboolean draw2D, qboolea
 }
 
 
-static void CG_DrawPlayerHealth(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle ) {
-	playerState_t	*ps;
-  int value;
-	char	num[16];
 
-	ps = &cg.snap->ps;
 
-	value = ps->stats[STAT_HEALTH];
 
-	if (shader) {
-		trap_R_SetColor( color );
-		CG_DrawPic(rect->x, rect->y, rect->w, rect->h, shader);
-		trap_R_SetColor( NULL );
-	} else {
-		Com_sprintf (num, sizeof(num), "%i", value);
-	  value = CG_Text_Width(num, scale, 0);
-	  CG_Text_Paint(rect->x + (rect->w - value) / 2, rect->y + rect->h, scale, color, num, 0, 0, textStyle);
-	}
+/* Retail 1002ff50/10030090 uses the rectangle origin as a text anchor,
+ * with alignment around that point, rather than the old Q3 bottom edge. */
+static void CG_DrawTeamLabel(rectDef_t *rect, const char *text, int align,
+        float scale, vec4_t color, int textStyle) {
+    float x = rect->x;
+    if (align == ITEM_ALIGN_CENTER) x -= CG_Text_Width(text,scale,0) * 0.5f;
+    else if (align == ITEM_ALIGN_RIGHT) x -= CG_Text_Width(text,scale,0);
+    CG_Text_Paint(x,rect->y,scale,color,text,0,0,textStyle);
 }
 
-
-static void CG_DrawRedScore(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle ) {
-	int value;
-	char num[16];
-	if ( cgs.scores1 == SCORE_NOT_PRESENT ) {
-		Com_sprintf (num, sizeof(num), "-");
-	}
-	else {
-		Com_sprintf (num, sizeof(num), "%i", cgs.scores1);
-	}
-	value = CG_Text_Width(num, scale, 0);
-	CG_Text_Paint(rect->x + rect->w - value, rect->y + rect->h, scale, color, num, 0, 0, textStyle);
-}
-
-static void CG_DrawBlueScore(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle ) {
-	int value;
-	char num[16];
-
-	if ( cgs.scores2 == SCORE_NOT_PRESENT ) {
-		Com_sprintf (num, sizeof(num), "-");
-	}
-	else {
-		Com_sprintf (num, sizeof(num), "%i", cgs.scores2);
-	}
-	value = CG_Text_Width(num, scale, 0);
-	CG_Text_Paint(rect->x + rect->w - value, rect->y + rect->h, scale, color, num, 0, 0, textStyle);
-}
-
-// FIXME: team name support
-static void CG_DrawRedName(rectDef_t *rect, float scale, vec4_t color, int textStyle ) {
-  CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, cg_redTeamName.string , 0, 0, textStyle);
-}
-
-static void CG_DrawBlueName(rectDef_t *rect, float scale, vec4_t color, int textStyle ) {
-  CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, cg_blueTeamName.string, 0, 0, textStyle);
+static void CG_DrawTeamScore(rectDef_t *rect, int score, int align,
+        float scale, vec4_t color, int textStyle) {
+    char text[24];
+    if (score == SCORE_NOT_PRESENT || score == -999) Q_strncpyz(text,"-",sizeof(text));
+    else Com_sprintf(text,sizeof(text),"%i",score);
+    CG_DrawTeamLabel(rect,text,align,scale,color,textStyle);
 }
 
 static void CG_DrawBlueFlagName(rectDef_t *rect, float scale, vec4_t color, int textStyle ) {
@@ -626,33 +549,6 @@ static void CG_DrawBlueFlagName(rectDef_t *rect, float scale, vec4_t color, int 
       CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, cgs.clientinfo[i].name, 0, 0, textStyle);
       return;
     }
-  }
-}
-
-static void CG_DrawBlueFlagStatus(rectDef_t *rect, qhandle_t shader) {
-	if (cgs.gametype != GT_CTF && cgs.gametype != GT_1FCTF) {
-		if (cgs.gametype == GT_HARVESTER) {
-		  vec4_t color = {0, 0, 1, 1};
-		  trap_R_SetColor(color);
-	    CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.blueCubeIcon );
-		  trap_R_SetColor(NULL);
-		}
-		return;
-	}
-  if (shader) {
-		CG_DrawPic( rect->x, rect->y, rect->w, rect->h, shader );
-  } else {
-	  gitem_t *item = BG_FindItemForPowerup( PW_BLUEFLAG );
-    if (item) {
-		  vec4_t color = {0, 0, 1, 1};
-		  trap_R_SetColor(color);
-	    if( cgs.blueflag >= 0 && cgs.blueflag <= 2 ) {
-		    CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.flagShaders[cgs.blueflag] );
-			} else {
-		    CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.flagShaders[0] );
-			}
-		  trap_R_SetColor(NULL);
-	  }
   }
 }
 
@@ -676,33 +572,6 @@ static void CG_DrawRedFlagName(rectDef_t *rect, float scale, vec4_t color, int t
       CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, cgs.clientinfo[i].name, 0, 0, textStyle);
       return;
     }
-  }
-}
-
-static void CG_DrawRedFlagStatus(rectDef_t *rect, qhandle_t shader) {
-	if (cgs.gametype != GT_CTF && cgs.gametype != GT_1FCTF) {
-		if (cgs.gametype == GT_HARVESTER) {
-		  vec4_t color = {1, 0, 0, 1};
-		  trap_R_SetColor(color);
-	    CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.redCubeIcon );
-		  trap_R_SetColor(NULL);
-		}
-		return;
-	}
-  if (shader) {
-		CG_DrawPic( rect->x, rect->y, rect->w, rect->h, shader );
-  } else {
-	  gitem_t *item = BG_FindItemForPowerup( PW_REDFLAG );
-    if (item) {
-		  vec4_t color = {1, 0, 0, 1};
-		  trap_R_SetColor(color);
-	    if( cgs.redflag >= 0 && cgs.redflag <= 2) {
-		    CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.flagShaders[cgs.redflag] );
-			} else {
-		    CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.flagShaders[0] );
-			}
-		  trap_R_SetColor(NULL);
-	  }
   }
 }
 
@@ -761,32 +630,6 @@ static void CG_HarvesterSkulls(rectDef_t *rect, float scale, vec4_t color, qbool
 	}
 }
 
-static void CG_OneFlagStatus(rectDef_t *rect) {
-	if (cgs.gametype != GT_1FCTF) {
-		return;
-	} else {
-		gitem_t *item = BG_FindItemForPowerup( PW_NEUTRALFLAG );
-		if (item) {
-			if( cgs.flagStatus >= 0 && cgs.flagStatus <= 4 ) {
-				vec4_t color = {1, 1, 1, 1};
-				int index = 0;
-				if (cgs.flagStatus == FLAG_TAKEN_RED) {
-					color[1] = color[2] = 0;
-					index = 1;
-				} else if (cgs.flagStatus == FLAG_TAKEN_BLUE) {
-					color[0] = color[1] = 0;
-					index = 1;
-				} else if (cgs.flagStatus == FLAG_DROPPED) {
-					index = 2;
-				}
-			  trap_R_SetColor(color);
-				CG_DrawPic( rect->x, rect->y, rect->w, rect->h, cgs.media.flagShaders[index] );
-			}
-		}
-	}
-}
-
-
 static void CG_DrawCTFPowerUp(rectDef_t *rect) {
 	int		value;
 
@@ -802,8 +645,10 @@ static void CG_DrawCTFPowerUp(rectDef_t *rect) {
 
 
 
+
+
 static void CG_DrawTeamColor(rectDef_t *rect, vec4_t color) {
-	CG_DrawTeamBackground(rect->x, rect->y, rect->w, rect->h, color[3], cg.snap->ps.persistant[PERS_TEAM]);
+    CG_DrawTeamBackground(rect->x, rect->y, rect->w, rect->h, color[3], cg.snap->ps.persistant[PERS_TEAM]);
 }
 
 static void CG_DrawAreaPowerUp(rectDef_t *rect, int align, float special, float scale, vec4_t color) {
@@ -889,30 +734,17 @@ static void CG_DrawAreaPowerUp(rectDef_t *rect, int align, float special, float 
 }
 
 float CG_GetValue(int ownerDraw) {
-	centity_t	*cent;
- 	clientInfo_t *ci;
 	playerState_t	*ps;
 
-  cent = &cg_entities[cg.snap->ps.clientNum];
+  if (!cg.snap) return -1;
 	ps = &cg.snap->ps;
 
   switch (ownerDraw) {
-  case CG_SELECTEDPLAYER_ARMOR:
-    ci = cgs.clientinfo + sortedTeamPlayers[CG_GetSelectedPlayer()];
-    return ci->armor;
-    break;
-  case CG_SELECTEDPLAYER_HEALTH:
-    ci = cgs.clientinfo + sortedTeamPlayers[CG_GetSelectedPlayer()];
-    return ci->health;
-    break;
   case CG_PLAYER_ARMOR_VALUE:
 		return ps->stats[STAT_ARMOR];
     break;
   case CG_PLAYER_AMMO_VALUE:
-		if ( cent->currentState.weapon ) {
-		  return ps->ammo[cent->currentState.weapon];
-		}
-    break;
+        return CG_StatusAmmo();
   case CG_PLAYER_SCORE:
 	  return cg.snap->ps.persistant[PERS_SCORE];
     break;
@@ -981,6 +813,10 @@ qboolean CG_YourTeamHasFlag() {
 
 // THINKABOUTME: should these be exclusive or inclusive.. 
 // 
+qboolean CG_OwnerDrawVisibleEx(int flags, int flags2) {
+    return (!flags && !flags2) || (flags && CG_OwnerDrawVisible(flags)) || CG_ScoreVisible2(flags2);
+}
+
 qboolean CG_OwnerDrawVisible(int flags) {
 
 	if (flags & CG_SHOW_TEAMINFO) {
@@ -1056,32 +892,27 @@ qboolean CG_OwnerDrawVisible(int flags) {
 		}
 	}
 
-	if (flags & CG_SHOW_HEALTHOK) {
-		if (cg.snap->ps.stats[STAT_HEALTH] >= 25) {
-			return qtrue;
-		}
-	}
-
-	if (flags & CG_SHOW_SINGLEPLAYER) {
-		if( cgs.gametype == GT_SINGLE_PLAYER ) {
-			return qtrue;
-		}
-	}
-
-	if (flags & CG_SHOW_TOURNAMENT) {
-		if( cgs.gametype == GT_TOURNAMENT ) {
-			return qtrue;
-		}
-	}
-
-	if (flags & CG_SHOW_DURINGINCOMINGVOICE) {
-	}
-
 	if (flags & CG_SHOW_IF_PLAYER_HAS_FLAG) {
 		if (cg.snap->ps.powerups[PW_REDFLAG] || cg.snap->ps.powerups[PW_BLUEFLAG] || cg.snap->ps.powerups[PW_NEUTRALFLAG]) {
 			return qtrue;
 		}
 	}
+	/* Retail 0x100317e2..0x10031a15: further mode, match-phase, chat and
+	 * team tests. Clan Arena answers by mode alone, as retail does. */
+	if ((flags & CG_SHOW_DUEL) && cgs.gametype == GT_TOURNAMENT) return qtrue;
+	if (flags & CG_SHOW_CLAN_ARENA) return cgs.gametype == GT_CLAN_ARENA;
+	if ((flags & CG_SHOW_INTERMISSION) && cg.predictedPlayerState.pm_type == PM_INTERMISSION) return qtrue;
+	if ((flags & CG_SHOW_NOTINTERMISSION) && cg.predictedPlayerState.pm_type != PM_INTERMISSION) return qtrue;
+	if ((flags & CG_SHOW_IF_WARMUP) && cg.warmup) return qtrue;
+	if ((flags & CG_SHOW_IF_NOT_WARMUP) && !cg.warmup) return qtrue;
+	/* Retail 0x10031938..0x1003195a: shown while the message or notice timer
+	 * runs, blinking on bit 0x200 of the client time. */
+	if (flags & CG_SHOW_IF_MSG_PRESENT) return cg.messageTime && (cg.time & 0x200);
+	if (flags & CG_SHOW_IF_NOTICE_PRESENT) return cg.noticeTime && (cg.time & 0x200);
+	if (flags & CG_SHOW_IF_CHAT_VISIBLE) return CG_ChatHistoryShown() || cg.scoreBoardShowing;
+	if ((flags & CG_SHOW_IF_PLYR_IS_ON_RED) && cg.snap && cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED) return qtrue;
+	if ((flags & CG_SHOW_IF_PLYR_IS_ON_BLUE) && cg.snap && cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE) return qtrue;
+	if (CG_StandingsVisible(flags)) return qtrue;
 	return qfalse;
 }
 
@@ -1168,24 +999,23 @@ static void CG_DrawGameStatus(rectDef_t *rect, float scale, vec4_t color, qhandl
 	CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, CG_GetGameStatusText(), 0, 0, textStyle);
 }
 
+/* Retail table 0x10079028 ("Unknown Gametype" past the end). */
 const char *CG_GameTypeString() {
-	if ( cgs.gametype == GT_FFA ) {
-		return "Free For All";
-	} else if ( cgs.gametype == GT_TEAM ) {
-		return "Team Deathmatch";
-	} else if ( cgs.gametype == GT_CTF ) {
-		return "Capture the Flag";
-	} else if ( cgs.gametype == GT_1FCTF ) {
-		return "One Flag CTF";
-	} else if ( cgs.gametype == GT_OBELISK ) {
-		return "Overload";
-	} else if ( cgs.gametype == GT_HARVESTER ) {
-		return "Harvester";
+	static const char *const names[] = { "Free For All", "Duel", "Race", "Team Deathmatch", "Clan Arena",
+		"Capture the Flag", "One Flag CTF", "Overload", "Harvester", "Freeze Tag", "Domination",
+		"Attack and Defend", "Red Rover" };
+	if ( cgs.gametype < 0 || cgs.gametype >= (int)ARRAY_LEN( names ) ) {
+		return "Unknown Gametype";
 	}
-	return "";
+	return names[cgs.gametype];
 }
-static void CG_DrawGameType(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle ) {
-	CG_Text_Paint(rect->x, rect->y + rect->h, scale, color, CG_GameTypeString(), 0, 0, textStyle);
+/* Retail 0x10034c20: font 0 at the rect's top, centered on its origin for
+ * center alignment. */
+static void CG_DrawGameType(rectDef_t *rect, float scale, vec4_t color, int align, int textStyle ) {
+	const char *text = CG_GameTypeString();
+	int width = align == ITEM_ALIGN_CENTER ? CG_Text_WidthInFont( text, 0, scale, 0 ) : 0;
+	CG_SetTextFont( 0 );
+	CG_Text_Paint(rect->x - width / 2, rect->y, scale, color, text, 0, 0, textStyle);
 }
 
 static void CG_Text_Paint_Limit(float *maxX, float x, float y, float scale, vec4_t color, const char* text, float adjust, int limit) {
@@ -1453,7 +1283,7 @@ void CG_DrawMedal(int ownerDraw, rectDef_t *rect, float scale, vec4_t color, qha
 			value = score->perfect;
 			break;
 		case CG_GAUNTLET:
-			value = score->guantletCount;
+			value = score->gauntletCount;
 			break;
 		case CG_CAPTURES:
 			value = score->captures;
@@ -1504,60 +1334,62 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
 	//	return;
 	//}
 
+  if (CG_DrawStatusHud(ownerDraw,x,y,w,h,align,scale,color,shader,textStyle)) return;
+  if (CG_DrawMatchClock(ownerDraw,x,y,align,scale,color,textStyle)) return;
+  if (CG_DrawStandings(ownerDraw,x,y,w,h,align,scale,color,textStyle)) return;
+  if (CG_DrawEndSummary(ownerDraw,x,y,align,scale,color,textStyle)) return;
+  if (CG_DrawAwardPicture(ownerDraw,x,y,w,h)) return;
+  if (CG_DrawDuelStat(ownerDraw,x,y,w,h,align,scale,color,textStyle)) return;
+  if (CG_DrawTeamStat(ownerDraw,x,y,align,scale,color,textStyle)) return;
+  if (ownerDraw == CG_RED_TEAM_MAP_PICKUPS || ownerDraw == CG_BLUE_TEAM_MAP_PICKUPS) {
+    CG_DrawTeamPickupStrip(ownerDraw == CG_BLUE_TEAM_MAP_PICKUPS ? TEAM_BLUE : TEAM_RED, x, y, w, h, scale, color, textStyle);
+    return;
+  }
+  if (CG_DrawEndVote(ownerDraw,x,y,w,h,align,scale,color,textStyle)) return;
+
   rect.x = x;
   rect.y = y;
   rect.w = w;
   rect.h = h;
 
   switch (ownerDraw) {
+  case CG_WP_VERTICAL:
+  case CG_ACC_VERTICAL:
+    CG_DrawAccuracyColumn(ownerDraw == CG_WP_VERTICAL,x,y,w,h,scale,color);
+    break;
+  case CG_RACE_STATUS:
+  case CG_RACE_TIMES:
+    CG_DrawRaceHud(ownerDraw,x,y,scale,color,align);
+    break;
+  case CG_SELECTED_PLYR_ACCURACY:
+    /* 10034590 paints directly at the origin; it does not apply the team
+     * label's alignment adjustment even when the menu supplies align. */
+    CG_Text_Paint(x,y,scale,color,CG_SelectedPlayerAccuracy(),0,0,0);
+    break;
   case CG_PLAYER_ARMOR_ICON:
     CG_DrawPlayerArmorIcon(&rect, ownerDrawFlags & CG_SHOW_2DONLY);
     break;
   case CG_PLAYER_ARMOR_ICON2D:
     CG_DrawPlayerArmorIcon(&rect, qtrue);
     break;
-  case CG_PLAYER_ARMOR_VALUE:
-    CG_DrawPlayerArmorValue(&rect, scale, color, shader, textStyle);
-    break;
+
   case CG_PLAYER_AMMO_ICON:
     CG_DrawPlayerAmmoIcon(&rect, ownerDrawFlags & CG_SHOW_2DONLY);
     break;
   case CG_PLAYER_AMMO_ICON2D:
     CG_DrawPlayerAmmoIcon(&rect, qtrue);
     break;
-  case CG_PLAYER_AMMO_VALUE:
-    CG_DrawPlayerAmmoValue(&rect, scale, color, shader, textStyle);
-    break;
-  case CG_SELECTEDPLAYER_HEAD:
-    CG_DrawSelectedPlayerHead(&rect, ownerDrawFlags & CG_SHOW_2DONLY, qfalse);
-    break;
-  case CG_VOICE_HEAD:
-    CG_DrawSelectedPlayerHead(&rect, ownerDrawFlags & CG_SHOW_2DONLY, qtrue);
-    break;
-  case CG_VOICE_NAME:
-    CG_DrawSelectedPlayerName(&rect, scale, color, qtrue, textStyle);
-    break;
-  case CG_SELECTEDPLAYER_STATUS:
-    CG_DrawSelectedPlayerStatus(&rect);
-    break;
-  case CG_SELECTEDPLAYER_ARMOR:
-    CG_DrawSelectedPlayerArmor(&rect, scale, color, shader, textStyle);
-    break;
-  case CG_SELECTEDPLAYER_HEALTH:
-    CG_DrawSelectedPlayerHealth(&rect, scale, color, shader, textStyle);
-    break;
-  case CG_SELECTEDPLAYER_NAME:
-    CG_DrawSelectedPlayerName(&rect, scale, color, qfalse, textStyle);
-    break;
-  case CG_SELECTEDPLAYER_LOCATION:
-    CG_DrawSelectedPlayerLocation(&rect, scale, color, textStyle);
-    break;
-  case CG_SELECTEDPLAYER_WEAPON:
-    CG_DrawSelectedPlayerWeapon(&rect);
-    break;
-  case CG_SELECTEDPLAYER_POWERUP:
-    CG_DrawSelectedPlayerPowerup(&rect, ownerDrawFlags & CG_SHOW_2DONLY);
-    break;
+
+
+
+
+
+
+
+
+
+
+
   case CG_PLAYER_HEAD:
     CG_DrawPlayerHead(&rect, ownerDrawFlags & CG_SHOW_2DONLY);
     break;
@@ -1567,39 +1399,35 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
   case CG_PLAYER_SCORE:
     CG_DrawPlayerScore(&rect, scale, color, shader, textStyle);
     break;
-  case CG_PLAYER_HEALTH:
-    CG_DrawPlayerHealth(&rect, scale, color, shader, textStyle);
-    break;
+
   case CG_RED_SCORE:
-    CG_DrawRedScore(&rect, scale, color, shader, textStyle);
+    CG_DrawTeamScore(&rect, cgs.scores1, align, scale, color, textStyle);
     break;
   case CG_BLUE_SCORE:
-    CG_DrawBlueScore(&rect, scale, color, shader, textStyle);
+    CG_DrawTeamScore(&rect, cgs.scores2, align, scale, color, textStyle);
     break;
   case CG_RED_NAME:
-    CG_DrawRedName(&rect, scale, color, textStyle);
+    /* Retail 0x10030090: cg_redTeamName/cg_blueTeamName, else the plain
+     * team names (Quake III's g_redteam default "Stroggs" is not used),
+     * measured and painted in font 0. */
+    CG_SetTextFont(0);
+    CG_DrawTeamLabel(&rect, cg_scoreRedTeamName.string[0] ? cg_scoreRedTeamName.string : "Red Team",
+      align, scale, color, textStyle);
     break;
   case CG_BLUE_NAME:
-    CG_DrawBlueName(&rect, scale, color, textStyle);
+    CG_SetTextFont(0);
+    CG_DrawTeamLabel(&rect, cg_scoreBlueTeamName.string[0] ? cg_scoreBlueTeamName.string : "Blue Team",
+      align, scale, color, textStyle);
     break;
-  case CG_BLUE_FLAGHEAD:
-    CG_DrawBlueFlagHead(&rect);
-    break;
-  case CG_BLUE_FLAGSTATUS:
-    CG_DrawBlueFlagStatus(&rect, shader);
-    break;
-  case CG_BLUE_FLAGNAME:
-    CG_DrawBlueFlagName(&rect, scale, color, textStyle);
-    break;
-  case CG_RED_FLAGHEAD:
-    CG_DrawRedFlagHead(&rect);
-    break;
+
   case CG_RED_FLAGSTATUS:
-    CG_DrawRedFlagStatus(&rect, shader);
+  case CG_RED_BASESTATUS:
+  case CG_BLUE_FLAGSTATUS:
+  case CG_BLUE_BASESTATUS:
+    // retail ownerdraw dispatch 0x1003b2cc -> 0x10030a80
+    CG_DrawTeamFlagStatus(ownerDraw, rect.x, rect.y, rect.w, rect.h);
     break;
-  case CG_RED_FLAGNAME:
-    CG_DrawRedFlagName(&rect, scale, color, textStyle);
-    break;
+
   case CG_HARVESTER_SKULLS:
     CG_HarvesterSkulls(&rect, scale, color, qfalse, textStyle);
     break;
@@ -1607,40 +1435,61 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
     CG_HarvesterSkulls(&rect, scale, color, qtrue, textStyle);
     break;
   case CG_ONEFLAG_STATUS:
-    CG_OneFlagStatus(&rect);
+    // retail 0x1003b312 -> 0x10030ff0
+    CG_DrawOneFlagStatus(rect.x, rect.y, rect.w, rect.h);
     break;
-  case CG_PLAYER_LOCATION:
-    CG_DrawPlayerLocation(&rect, scale, color, textStyle);
-    break;
+
+
   case CG_TEAM_COLOR:
-    CG_DrawTeamColor(&rect, color);
+    CG_DrawTeamColor(&rect,color);
     break;
   case CG_CTF_POWERUP:
     CG_DrawCTFPowerUp(&rect);
     break;
+  case CG_FOLLOW_PLAYER_NAME:
+  case CG_FOLLOW_PLAYER_NAME_EX:
+    CG_DrawFollowPlayerName(ownerDraw, x, y, align, scale, color, textStyle);
+    break;
+  case CG_ARMORTIERED_COLORIZED:
+    CG_DrawArmorTierColorized(x, y, w, h, color, shader);
+    break;
+  case CG_HEALTH_COLORIZED:
+    CG_DrawHealthColorized(x, y, w, h, color, shader);
+    break;
+  case CG_PLAYER_HASKEY:
+    CG_DrawHeldKeys(x, y, w, h);
+    break;
+  case CG_AREA_NEW_CHAT:
+    CG_DrawChatArea(&rect, scale);
+    break;
+  case CG_PLAYER_OBIT:
+    CG_DrawObituaries(&rect, scale);
+    break;
+  case CG_SPEC_MESSAGES:
+    CG_DrawSpecMessages(&rect);
+    break;
+  case CG_FLAG_STATUS:
+    CG_DrawFlagTrack(rect.x, rect.y, rect.w, rect.h);
+    break;
+  case CG_1STPLACE_PLYR_MODEL:
+  case CG_PLAYERMODEL:
+    CG_DrawLeaderModelOwnerDraw(ownerDraw, rect.x, rect.y, rect.w, rect.h);
+    break;
   case CG_AREA_POWERUP:
 		CG_DrawAreaPowerUp(&rect, align, special, scale, color);
     break;
-  case CG_PLAYER_STATUS:
-    CG_DrawPlayerStatus(&rect);
-    break;
+
   case CG_PLAYER_HASFLAG:
     CG_DrawPlayerHasFlag(&rect, qfalse);
     break;
   case CG_PLAYER_HASFLAG2D:
     CG_DrawPlayerHasFlag(&rect, qtrue);
     break;
-  case CG_AREA_SYSTEMCHAT:
-    CG_DrawAreaSystemChat(&rect, scale, color, shader);
-    break;
-  case CG_AREA_TEAMCHAT:
-    CG_DrawAreaTeamChat(&rect, scale, color, shader);
-    break;
-  case CG_AREA_CHAT:
-    CG_DrawAreaChat(&rect, scale, color, shader);
-    break;
+
+
+
   case CG_GAME_TYPE:
-    CG_DrawGameType(&rect, scale, color, shader, textStyle);
+    CG_DrawGameType(&rect, scale, color, align, textStyle);
     break;
   case CG_GAME_STATUS:
     CG_DrawGameStatus(&rect, scale, color, shader, textStyle);
@@ -1661,11 +1510,7 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
   case CG_SPECTATORS:
 		CG_DrawTeamSpectators(&rect, scale, color, shader);
 		break;
-  case CG_TEAMINFO:
-		if (cg_currentSelectedPlayer.integer == numSortedTeamPlayers) {
-			CG_DrawNewTeamInfo(&rect, text_x, text_y, scale, color, shader);
-		}
-		break;
+
   case CG_CAPFRAGLIMIT:
     CG_DrawCapFragLimit(&rect, scale, color, shader, textStyle);
 		break;
@@ -1718,6 +1563,27 @@ void CG_MouseEvent(int x, int y) {
 
 /*
 ==================
+CG_MouseMoveTo
+
+The native engine sends absolute positions; cg_native.c maps them onto the
+640x480 canvas as retail 0x1003c4f0 does. Retail then stores the cursor and
+calls Display_MouseMove(NULL, x, y) without clamping, cursor-type or
+captured-item handling. Releasing the cgame catcher during ordinary play is
+FnQL-game's inherited safeguard, kept from the delta handler above.
+==================
+*/
+void CG_MouseMoveTo(int x, int y) {
+	if ( (cg.predictedPlayerState.pm_type == PM_NORMAL || cg.predictedPlayerState.pm_type == PM_SPECTATOR) && cg.showScores == qfalse) {
+		trap_Key_SetCatcher(0);
+		return;
+	}
+	cgs.cursorX = x;
+	cgs.cursorY = y;
+	Display_MouseMove(NULL, x, y);
+}
+
+/*
+==================
 CG_HideTeamMenus
 ==================
 
@@ -1749,7 +1615,7 @@ CG_EventHandling
       2 - hud editor
 
 */
-void CG_EventHandling(int type) {
+void CG_EventHandling(cgame_event_t type) {
 	cgs.eventHandling = type;
   if (type == CGAME_EVENT_NONE) {
     CG_HideTeamMenu();

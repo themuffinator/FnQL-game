@@ -50,6 +50,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>	// offsetof; MSVC pulls it in through stdlib.h, glibc does not
 #include <time.h>
 #include <ctype.h>
 #include <limits.h>
@@ -918,7 +919,7 @@ typedef struct playerState_s {
 	int			clientNum;		// ranges from 0 to MAX_CLIENTS-1
 	int			location;		// retail team location index
 	int			weapon;			// copied to entityState_t->weapon
-	int			weaponPrimary;	// mirrored usercmd byte for retail follow/demo HUD widgets
+	int			weaponPrimary;	// usercmd loadout choice, also replicated to follow/demo HUDs
 	int			weaponstate;
 	int			fov;			// mirrored usercmd byte for retail prediction/HUD consumers
 
@@ -1176,9 +1177,9 @@ typedef enum {
 typedef enum _flag_status {
 	FLAG_ATBASE = 0,
 	FLAG_TAKEN,			// CTF
+	FLAG_DROPPED,		// retail flag status 2 (0x10071aa0)
 	FLAG_TAKEN_RED,		// One Flag CTF
-	FLAG_TAKEN_BLUE,	// One Flag CTF
-	FLAG_DROPPED
+	FLAG_TAKEN_BLUE	// One Flag CTF
 } flagStatus_t;
 
 #define SAY_ALL		0

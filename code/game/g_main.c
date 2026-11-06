@@ -362,9 +362,8 @@ void G_RegisterCvars( void ) {
 
 	level.warmupModificationCount = g_warmup.modificationCount;
 
-	// force g_doWarmup to 1
-	trap_Cvar_Register( NULL, "g_doWarmup", "1", CVAR_ROM );
-	trap_Cvar_Set( "g_doWarmup", "1" );
+	// Retail's table (0x1008e0b8) registers g_doWarmup as archived and
+	// writable. Do not overwrite the operator's choice on initialization.
 }
 
 
@@ -390,6 +389,17 @@ static void G_UpdateCvars( void ) {
 
 				if ( cv->cvarFlags & ( CVAR_QL_PMOVE_SETTINGS | CVAR_QL_WEAPON_RELOAD ) ) {
 					pmoveChanged = qtrue;
+				}
+				if ( cv->vmCvar == &g_infiniteAmmo ) {
+					int slot, weapon;
+					// Retail 0x100520e0 / 0x10059cb0 updates all normal,
+					// connected players immediately, including unowned weapons.
+					for ( slot = 0; slot < level.maxclients; ++slot ) {
+						gclient_t *client = &level.clients[slot];
+						if ( client->pers.connected != CON_CONNECTED || client->ps.pm_type != PM_NORMAL ) continue;
+						for ( weapon = WP_GAUNTLET; weapon < WP_NUM_WEAPONS; ++weapon )
+							client->ps.ammo[weapon] = g_infiniteAmmo.integer ? -1 : bg_weaponMaxAmmo[weapon];
+					}
 				}
 
 				// retail's change callbacks announce game-rule changes only
@@ -595,6 +605,7 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// initialize all clients for this game
 	level.maxclients = g_maxclients.integer;
+	G_InitLagHax();
 	memset( g_clients, 0, MAX_CLIENTS * sizeof(g_clients[0]) );
 	level.clients = g_clients;
 
@@ -677,8 +688,9 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	G_RemapTeamShaders();
 
-	// don't forget to reset times
-	trap_SetConfigstring( CS_INTERMISSION, "" );
+	// Retail G_InitGame leaves CS_INTERMISSION intact across map_restart.
+	// A new map clears configstrings in the engine; ExitLevel writes zero.
+	// This also preserves the end-of-match restart payload.
 
 	if ( !G_IsSinglePlayer() ) {
 		// launch rotation system on first map load
@@ -2674,8 +2686,6 @@ static void G_RunFrame( int levelTime ) {
 	int			i;
 	gentity_t	*ent;
 	gclient_t	*client;
-	static	gentity_t *missiles[ MAX_GENTITIES - MAX_CLIENTS ];
-	int		numMissiles;
 	
 	// if we are waiting for the level to restart, do nothing
 	if ( level.restarted ) {
@@ -2702,7 +2712,6 @@ static void G_RunFrame( int levelTime ) {
 	// get any cvar changes
 	G_UpdateCvars();
 
-	numMissiles = 0;
 
 	//
 	// go through all allocated objects
@@ -2758,9 +2767,18 @@ static void G_RunFrame( int levelTime ) {
 		}
 
 		if ( ent->s.eType == ET_MISSILE ) {
-			// queue for unlagged pass
-			missiles[ numMissiles ] = ent;
-			numMissiles++;
+			// Retail 0x100597d4 updates missiles in entity order. Items
+			// created by impact damage may run later in this same frame.
+			// Retail does not rewind projectiles; retain that option only
+			// for the explicitly selected legacy compensation modes.
+			if ( g_unlagged.integer != 1 ) G_TimeShiftAllClients( level.previousTime, NULL );
+			G_RunMissile( ent );
+			if ( g_unlagged.integer != 1 ) G_UnTimeShiftAllClients( NULL );
+			continue;
+		}
+
+		if ( ent->s.eType == ET_GRAPPLE ) {
+			Weapon_HookThink( ent ); // retail 0x100597ea, every frame
 			continue;
 		}
 
@@ -2783,16 +2801,6 @@ static void G_RunFrame( int levelTime ) {
 		}
 
 		G_RunThink( ent );
-	}
-
-	if ( numMissiles ) {
-		// unlagged
-		G_TimeShiftAllClients( level.previousTime, NULL );
-		// run missiles
-		for ( i = 0; i < numMissiles; i++ )
-			G_RunMissile( missiles[ i ] );
-		// unlagged
-		G_UnTimeShiftAllClients( NULL );
 	}
 
 	// perform final fixups on the players

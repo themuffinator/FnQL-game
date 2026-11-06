@@ -679,7 +679,7 @@ void weapon_railgun_fire( gentity_t *ent ) {
 				tent = G_TempEntity( trace.endpos, EV_MISSILE_HIT );
 				tent->s.otherEntityNum = traceEnt->s.number;
 				tent->s.weapon = ent->s.weapon;
-				if ( trace.contents & 0x400 ) {
+				if ( trace.contents & CONTENTS_HEADSHOT ) {
 					damage += g_headShotDamage_rg.integer;
 					mod = MOD_RAILGUN_HEADSHOT;
 				}
@@ -759,8 +759,10 @@ GRAPPLING HOOK
 
 void Weapon_GrapplingHook_Fire (gentity_t *ent)
 {
-	if (!ent->client->fireHeld && !ent->client->hook)
-		fire_grapple (ent, muzzle, forward);
+	if (!ent->client->fireHeld && !ent->client->hook) {
+		gentity_t *hook = fire_grapple (ent, muzzle, forward);
+		hook->damage = (int)( hook->damage * (double)s_quadFactor );
+	}
 
 	ent->client->fireHeld = qtrue;
 }
@@ -768,27 +770,69 @@ void Weapon_GrapplingHook_Fire (gentity_t *ent)
 
 void Weapon_HookFree (gentity_t *ent)
 {
-	ent->parent->client->hook = NULL;
-	ent->parent->client->ps.pm_flags &= ~PMF_GRAPPLE_PULL;
+	// Retail 0x1006e330 resets the firing latch and the victim's friction
+	// flag as well as releasing the owner's pull point.
+	// A mover may already have freed the hook. Do not free its vacant slot
+	// again (or a temporary event that has since reused it).
+	if ( !ent->parent || !ent->parent->client ) return;
+	if ( ent->parent && ent->parent->client ) {
+		gclient_t *owner = ent->parent->client;
+		owner->hook = NULL;
+		VectorClear( owner->ps.grapplePoint );
+		owner->ps.pm_flags = ( owner->ps.pm_flags & ~PMF_GRAPPLE_PULL ) | PMF_WEAPON_RESET;
+		owner->ps.eFlags &= ~EF_FIRING;
+	}
+	if ( ent->enemy && ent->enemy->client ) ent->enemy->client->ps.pm_flags &= ~PMF_SCOREBOARD;
 	G_FreeEntity( ent );
 }
 
 
 void Weapon_HookThink (gentity_t *ent)
 {
-	if (ent->enemy) {
-		vec3_t v, oldorigin;
+	gentity_t *owner = ent->parent, *victim = ent->enemy;
+	vec3_t eye, direction, endpoint;
+	trace_t trace;
+	int axis;
 
-		VectorCopy(ent->r.currentOrigin, oldorigin);
-		v[0] = ent->enemy->r.currentOrigin[0] + (ent->enemy->r.mins[0] + ent->enemy->r.maxs[0]) * 0.5;
-		v[1] = ent->enemy->r.currentOrigin[1] + (ent->enemy->r.mins[1] + ent->enemy->r.maxs[1]) * 0.5;
-		v[2] = ent->enemy->r.currentOrigin[2] + (ent->enemy->r.mins[2] + ent->enemy->r.maxs[2]) * 0.5;
-		SnapVectorTowards( v, oldorigin );	// save net bandwidth
-
-		G_SetOrigin( ent, v );
+	// Retail 0x1006e400 runs each frame, including obstruction checks and
+	// periodic damage. g_latchedHookOffset adjusts the visibility trace,
+	// not the replicated grapple point.
+	if ( !owner || !owner->client ) { G_FreeEntity(ent); return; }
+	if ( !owner->inuse ) { Weapon_HookFree( ent ); return; }
+	if ( !victim || victim->s.eType != ET_MOVER ) {
+		VectorCopy( owner->client->ps.origin, eye );
+		eye[2] += owner->client->ps.pm_flags & PMF_DUCKED ? 12 : 26;
+		VectorSubtract( ent->r.currentOrigin, eye, direction );
+		PM_VectorNormalize( direction );
+		for ( axis = 0; axis < 3; axis++ ) endpoint[axis] = (float)( ent->r.currentOrigin[axis] + (double)g_latchedHookOffset.value * direction[axis] );
+		trap_Trace( &trace, eye, vec3_origin, vec3_origin, endpoint, owner->s.number, CONTENTS_SOLID );
+		if ( trace.fraction != 1.0f && ++ent->bounceCount >= 3 ) {
+			gentity_t *event = G_TempEntity( trace.endpos, EV_GENERAL_SOUND );
+			event->s.eventParm = G_SoundIndex( "sound/weapons/grapple/grreset.wav" );
+			event->r.svFlags |= SVF_BROADCAST;
+			Weapon_HookFree( ent );
+			return;
+		}
 	}
-
-	VectorCopy( ent->r.currentOrigin, ent->parent->client->ps.grapplePoint);
+	if ( owner->client->ps.weaponstate == WEAPON_DROPPING || owner->client->ps.weapon != WP_GRAPPLING_HOOK
+		|| ( victim && ( !victim->inuse || ( victim->s.eType == ET_PLAYER && victim->client
+			&& ( ( victim->health <= 0 && victim->client->ps.pm_type != PM_FREEZE )
+				|| ( victim->health > 0 && OnSameTeam( victim, owner ) ) ) ) ) ) ) {
+		Weapon_HookFree( ent );
+		return;
+	}
+	if ( victim && ( victim->s.eType != ET_MOVER || !ent->count ) ) {
+		for ( axis = 0; axis < 3; axis++ ) endpoint[axis] = (float)( victim->r.currentOrigin[axis]
+			+ ( (double)victim->r.mins[axis] + victim->r.maxs[axis] ) * 0.5 );
+		SnapVectorTowards( endpoint, ent->r.currentOrigin );
+		G_SetOrigin( ent, endpoint );
+		if ( victim->client && victim->client->hook ) Weapon_HookFree( victim->client->hook );
+		if ( level.time > ent->wait ) {
+			ent->wait = (float)( (double)level.time + weapon_reload_gh.integer );
+			G_Damage( victim, ent, owner, forward, NULL, (int)( g_damage_gh.integer * (double)s_quadFactor ), 0, MOD_GRAPPLE );
+		}
+	}
+	VectorCopy( ent->r.currentOrigin, owner->client->ps.grapplePoint );
 }
 
 
@@ -817,6 +861,25 @@ void Weapon_LightningFire( gentity_t *ent ) {
 	for ( i = 0; i < 2; i++ ) {
 		for ( j = 0; j < 3; j++ ) {
 			end[j] = (float)( forward[j] * (double)LIGHTNING_RANGE + muzzle[j] );
+		}
+
+		// Retail 0x1006eb1d: pmove already consumed this shot. Discharge
+		// spends the remaining cells plus that shot, or the stock capacity
+		// for infinite ammo, and reports the cell count in the effect.
+		if ( g_lightningDischarge.integer && ( trap_PointContents( muzzle, -1 ) & MASK_WATER ) ) {
+			int cells = ent->client->ps.ammo[WP_LIGHTNING];
+			double energy;
+			if ( !cells ) return;
+			cells = g_infiniteAmmo.integer || cells == -1 ? bg_weaponMaxAmmo[WP_LIGHTNING] : cells + 1;
+			SnapVectorTowards( muzzle, ent->s.origin );
+			tent = G_TempEntity( muzzle, EV_LIGHTNING_DISCHARGE );
+			tent->s.eventParm = cells;
+			ent->client->ps.ammo[WP_LIGHTNING] = 0;
+			energy = (double)cells * g_damage_lg.integer;
+			if ( G_LightningDischarge( ent, muzzle, (float)energy, (float)( energy + 16.0 ) ) ) {
+				G_StatsHit( ent->client, ent->s.weapon );
+			}
+			return;
 		}
 
 		// unlagged
@@ -1009,6 +1072,7 @@ void FireWeapon( gentity_t *ent ) {
 	CalcMuzzlePoint( ent );
 
 	// fire the specific weapon
+	G_BeginLagHax(ent);
 	switch( ent->s.weapon ) {
 	case WP_GAUNTLET:
 		Weapon_Gauntlet( ent );
@@ -1069,6 +1133,7 @@ void FireWeapon( gentity_t *ent ) {
 // FIXME		G_Error( "Bad ent->s.weapon" );
 		break;
 	}
+	G_EndLagHax();
 }
 
 

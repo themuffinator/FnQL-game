@@ -70,13 +70,13 @@ tryagain:
 
 	if ( weaponNum == WP_MACHINEGUN || weaponNum == WP_GAUNTLET || weaponNum == WP_BFG ) {
 		strcpy( path, item->world_model[0] );
-		COM_StripExtension( path, path );
+		COM_StripExtension( path, path, sizeof(path) );
 		strcat( path, "_barrel.md3" );
 		pi->barrelModel = trap_R_RegisterModel( path );
 	}
 
 	strcpy( path, item->world_model[0] );
-	COM_StripExtension( path, path );
+	COM_StripExtension( path, path, sizeof(path) );
 	strcat( path, "_flash.md3" );
 	pi->flashModel = trap_R_RegisterModel( path );
 
@@ -665,6 +665,37 @@ float	UI_MachinegunSpinAngle( playerInfo_t *pi ) {
 
 /*
 ===============
+UI_PlayerHeightScale
+
+Retail 0x10012e44..0x10012f07: the idle height is 24 units below the legs
+origin, plus the legs tag_torso at the first LEGS_IDLE frame, the torso
+tag_head at the first TORSO_STAND frame and the top of the head bounds.
+A degenerate model keeps its authored size instead of dividing by zero.
+===============
+*/
+static float UI_PlayerHeightScale( playerInfo_t *pi ) {
+	orientation_t	tag;
+	vec3_t			mins, maxs;
+	double			height;
+	int				frame;
+
+	trap_R_ModelBounds( pi->headModel, mins, maxs );
+	frame = pi->animations[LEGS_IDLE].firstFrame;
+	memset( &tag, 0, sizeof( tag ) );
+	trap_CM_LerpTag( &tag, pi->legsModel, frame, frame, 1.0f, "tag_torso" );
+	height = tag.origin[2] + 24.0;
+	frame = pi->animations[TORSO_STAND].firstFrame;
+	memset( &tag, 0, sizeof( tag ) );
+	trap_CM_LerpTag( &tag, pi->torsoModel, frame, frame, 1.0f, "tag_head" );
+	height += maxs[2] + tag.origin[2];
+	if ( !( height > 1.0 ) || height > 1e6 ) {
+		return 1.0f;
+	}
+	return (float)( 56.0 / height * 1.1 );
+}
+
+/*
+===============
 UI_DrawPlayer
 ===============
 */
@@ -712,6 +743,23 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 	memset( &legs, 0, sizeof(legs) );
 	memset( &torso, 0, sizeof(torso) );
 	memset( &head, 0, sizeof(head) );
+    if (pi->tintColors) {
+        /* Retail 0x10012e0d..0x10012e3e and 0x10001e20: the RGB tint is
+         * doubled (clamped to 255) unless the engine's colour correction is
+         * active, when it is used as is; alpha is copied unscaled. */
+        const int colorScale = trap_Cvar_VariableValue("r_colorCorrectActive") == 0 ? 2 : 1;
+        int part, channel;
+        byte *targets[3];
+        targets[0] = legs.shaderRGBA; targets[1] = torso.shaderRGBA; targets[2] = head.shaderRGBA;
+        for (part = 0; part < 3; ++part) {
+            for (channel = 0; channel < 3; ++channel) {
+                const int value = pi->partColors[part][channel] * colorScale;
+                targets[part][channel] = (byte)(value > 255 ? 255 : value);
+            }
+            targets[part][3] = pi->partColors[part][3];
+        }
+    }
+
 
 	refdef.rdflags = RDF_NOWORLDMODEL;
 
@@ -728,7 +776,9 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 	refdef.fov_y *= ( 360 / (float)M_PI );
 
 	// calculate distance so the player nearly fills the box
-	len = 0.7 * ( maxs[2] - mins[2] );		
+	/* Retail 0x1001311e..0x10013166 frames 1.1 times the 56-unit box
+	 * (61.6) rather than the baseline 0.7 times. */
+	len = 1.1 * ( maxs[2] - mins[2] );
 	origin[0] = len / tan( DEG2RAD(refdef.fov_x) * 0.5 );
 	origin[1] = 0.5 * ( mins[1] + maxs[1] );
 	origin[2] = -0.5 * ( mins[2] + maxs[2] );
@@ -757,6 +807,18 @@ void UI_DrawPlayer( float x, float y, float w, float h, playerInfo_t *pi, int ti
 	VectorCopy( origin, legs.lightingOrigin );
 	legs.renderfx = renderfx;
 	VectorCopy (legs.origin, legs.oldorigin);
+
+	if ( pi->normalizeHeight ) {
+		/* Retail 0x10012e44..0x10012f07, applied at 0x1001325d: scale the
+		 * legs so idle height (24 + tag_torso + tag_head + head top) maps to
+		 * 1.1 times 56 units. Torso and head inherit it through the tags. */
+		const float scale = UI_PlayerHeightScale( pi );
+		int axis;
+		legs.nonNormalizedAxes = qtrue;
+		for ( axis = 0; axis < 3; ++axis ) {
+			VectorScale( legs.axis[axis], scale, legs.axis[axis] );
+		}
+	}
 
 	trap_R_AddRefEntityToScene( &legs );
 
@@ -1238,6 +1300,9 @@ void UI_PlayerInfo_SetModel( playerInfo_t *pi, const char *model, const char *he
 	pi->chat = qfalse;
 	pi->newModel = qtrue;
 	UI_PlayerInfo_SetWeapon( pi, pi->weapon );
+	/* Retail 0x100142c3: every model except orbb is drawn at a normalized
+	 * height (the comparison is against the first four characters). */
+	pi->normalizeHeight = Q_stricmpn( model, "orbb", 4 ) != 0;
 }
 
 

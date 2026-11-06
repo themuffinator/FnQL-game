@@ -992,6 +992,30 @@ static int G_MaxHealthForUserinfo( const char *userinfo ) {
 	return health < 1 || health > g_startingHealth.integer ? g_startingHealth.integer : health;
 }
 
+static qboolean PlayerNameTaken( int clientNum, const char *name ) {
+	int slot;
+	for ( slot = 0; slot < level.maxclients && slot < MAX_CLIENTS; ++slot ) {
+		if ( slot != clientNum && level.clients[slot].pers.connected == CON_CONNECTED &&
+			G_PlayerNamesEqual(name, level.clients[slot].pers.netname) ) return qtrue;
+	}
+	return qfalse;
+}
+
+static void SetUniquePlayerName( int clientNum, const char *name ) {
+	char cleaned[MAX_INFO_STRING];
+	char *dest = level.clients[clientNum].pers.netname;
+	int suffix;
+	G_CleanPlayerName(name, cleaned, sizeof(cleaned));
+	Q_strncpyz(dest, cleaned, MAX_NETNAME);
+	if ( !PlayerNameTaken(clientNum, dest) ) return;
+	// Retail 0x1003a62a-0x1003a771 prefixes (2)..(99), then truncates.
+	for ( suffix = 2; suffix < 100; ++suffix ) {
+		int prefixLength = Com_sprintf(dest, MAX_NETNAME, "(%i) ", suffix);
+		Q_strncpyz(dest + prefixLength, cleaned, MAX_NETNAME - prefixLength);
+		if ( !PlayerNameTaken(clientNum, dest) ) break;
+	}
+}
+
 qboolean ClientUserinfoChanged( int clientNum ) {
 	gentity_t *ent;
 	int		teamTask, teamLeader;
@@ -1047,7 +1071,7 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	// set name
 	Q_strncpyz( oldname, client->pers.netname, sizeof( oldname ) );
 	s = Info_ValueForKey( userinfo, "name" );
-	G_CleanPlayerName( s, client->pers.netname, sizeof( client->pers.netname ) );
+	SetUniquePlayerName( clientNum, s );
 
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
 		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
@@ -1109,6 +1133,19 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 	// the duel queue is renumbered before the keys are built (retail
 	// qagamex86 0x1003a9b2)
 	G_NumberDuelQueue();
+
+	/* Retail 0x1003aa03-0x1003aa9d checks this exact combination after
+	 * normalizing the name. Steam identity or either color makes it valid;
+	 * an operator can retain the diagnostic while disabling the kick. */
+	if ( !strcmp( client->pers.netname, "UnnamedPlayer" ) &&
+		!c1[0] && !c2[0] && client->pers.steamId == 0 ) {
+		if ( g_kickBadUserinfo.integer ) {
+			G_Printf( "Dropping client %i for a deformed userinfo: %s\n", clientNum, userinfo );
+			trap_DropClient( clientNum, "Detected bad userinfo." );
+		} else {
+			G_Printf( "Found client %i with deformed userinfo, but cowardly refusing to kick: %s\n", clientNum, userinfo );
+		}
+	}
 
 	// sets are the retail ones (retail qagamex86 format strings): bots add
 	// "skill", humans add their SteamID and country.
@@ -1352,6 +1389,7 @@ void ClientBegin( int clientNum ) {
 	client->pers.connected = CON_CONNECTED;
 	client->pers.enterTime = level.time;
 	client->pers.teamState.state = TEAM_BEGIN;
+	client->pers.complaintClient = client->pers.complaintDeadline = -1;
 
 	// save eflags around this, because changing teams will
 	// cause this to happen with a valid entity, and we
@@ -1392,7 +1430,7 @@ void ClientBegin( int clientNum ) {
 ===========
 G_GiveSpawnLoadout
 
-Retail qagamex86 0x1003b6c0 without the g_loadout choices (milestone 5):
+Retail qagamex86 0x1003b6c0:
 the g_startingWeapons kit (bit w-1 is weapon w) with g_startingAmmo_*,
 g_startingHealth plus g_startingHealthBonus, g_startingArmor, and during
 warmup every weapon the map places, with the warmup ammo of the retail
@@ -1670,7 +1708,10 @@ void G_RoundSpawn( gentity_t *ent ) {
 	if ( level.roundState >= 3 && !level.roundRespawning ) ent->client->ps.pm_type = PM_SPECTATOR;
 	ClientSpawn( ent );
 	if ( level.roundState < 3 || g_gametype.integer == GT_FREEZE ) G_SelectSpawnWeapon( ent );
-	if ( G_RoundCountingDown() && (g_gametype.integer != GT_FREEZE || g_freezeRoundDelay.integer) ) ent->client->ps.pm_flags |= PMF_ATTACK_LOCKOUT;
+	// Retail 0x100381f1 / 0x1004bea9: a player joining the match's
+	// countdown is fire-locked just like a player in a round countdown.
+	if ( (level.warmupTime > 0 || G_RoundCountingDown())
+		&& (g_gametype.integer != GT_FREEZE || g_freezeRoundDelay.integer) ) ent->client->ps.pm_flags |= PMF_ATTACK_LOCKOUT;
 	if ( level.roundState >= 3 && ent->client->sess.sessionTeam != TEAM_SPECTATOR ) G_FollowNextOrStop(ent);
 }
 
@@ -1996,6 +2037,7 @@ void ClientDisconnect( int clientNum ) {
 	G_RemoveQueuedBotBegin( clientNum );
 
 	ent = g_entities + clientNum;
+	G_ResetLagHax(ent);
 	if (!ent->client || ent->client->pers.connected == CON_DISCONNECTED) {
 		return;
 	}
@@ -2013,6 +2055,7 @@ void ClientDisconnect( int clientNum ) {
 	}
 
 	// send effect if they were completely connected
+	G_ComplaintDisconnect(clientNum);
 	if ( ent->client->pers.connected == CON_CONNECTED 
 		&& ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
 		// Retail 0x1003c9ef leaves this event's clientNum at its zero default.

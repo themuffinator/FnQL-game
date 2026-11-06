@@ -6,6 +6,7 @@
 // It also handles local physics interaction, like fragments bouncing off walls
 
 #include "cg_local.h"
+#include <stdint.h>
 
 static	pmove_t		cg_pmove;
 
@@ -13,6 +14,18 @@ static	int			cg_numSolidEntities;
 static	centity_t	*cg_solidEntities[MAX_ENTITIES_IN_SNAPSHOT];
 static	int			cg_numTriggerEntities;
 static	centity_t	*cg_triggerEntities[MAX_ENTITIES_IN_SNAPSHOT];
+
+/* Retail 1000af31..4f: exhausted command history, excluding restart/future
+ * commands and the first three seconds after level start. Failed native
+ * reads cannot establish a disconnect. Wide subtraction also handles seeks. */
+qboolean CG_IsConnectionInterrupted(void) {
+	usercmd_t command;
+	int oldest;
+	if (!cg.snap || (int64_t)cg.time - cgs.levelStartTime < 3000) return qfalse;
+	oldest = (int)((unsigned)trap_GetCurrentCmdNumber() - (CMD_BACKUP - 1));
+	if (!trap_GetUserCmd(oldest, &command)) return qfalse;
+	return command.serverTime > cg.snap->ps.commandTime && command.serverTime <= cg.time;
+}
 
 /*
 ====================
@@ -206,9 +219,11 @@ static void CG_InterpolatePlayerState( qboolean grabAngles ) {
 		int			cmdNum;
 
 		cmdNum = trap_GetCurrentCmdNumber();
-		trap_GetUserCmd( cmdNum, &cmd );
-
-		PM_UpdateViewAngles( out, &cmd );
+		if (trap_GetUserCmd(cmdNum, &cmd)) {
+			PM_UpdateViewAngles(out, &cmd);
+		} else {
+			grabAngles = qfalse; // fall back to snapshot angles, including interpolation
+		}
 	}
 
 	// if the next frame is a teleport, we can't lerp to it
@@ -338,7 +353,7 @@ static void CG_AddAmmo( int weapon, int count )
 static void CG_AddWeapon( int weapon, int quantity, qboolean dropped ) 
 {
 	//int	ammo;
-	
+
 	//ammo = quantity;
 
 	// dropped items and teamplay weapons always have full ammo
@@ -370,7 +385,7 @@ static int CG_CheckArmor( int damage ) {
 
 	if ( !save )
 		return 0;
-	
+
 	cg.predictedPlayerState.stats[STAT_ARMOR] -= save;
 
 	return save;
@@ -406,7 +421,7 @@ static int CG_CheckArmor( int damage ) {
 	//cg.predictedPlayerState.damageEvent++;
 	cg.predictedPlayerState.damageCount = take + asave;
 }
- 
+
 
 static void CG_PickupPrediction( centity_t *cent, const gitem_t *item ) {
 
@@ -480,7 +495,7 @@ static void CG_TouchItem( centity_t *cent ) {
 	}
 
 	// milestone 7: take the reach from the server's g_itemHeight (serverinfo)
-	if ( !BG_PlayerTouchesItem( &cg.predictedPlayerState, &cent->currentState, cg.time, 35 ) ) {
+	if ( !BG_PlayerTouchesItem( &cg.predictedPlayerState, &cent->currentState, cg.time, cgs.itemHeight ) ) {
 		return;
 	}
 
@@ -490,7 +505,7 @@ static void CG_TouchItem( centity_t *cent ) {
 	}
 
 	if ( !BG_CanItemBeGrabbed( cgs.gametype, &cent->currentState, &cg.predictedPlayerState,
-			cg.time, cg.warmup, qfalse, 1 )	// milestone 7 reads armor_tiered and g_weaponRespawn ) {
+			cg.time, cg.warmup != 0, cgs.armorTiered, cgs.weaponRespawn ) ) {
 		return;	// can't hold it
 	}
 
@@ -666,13 +681,24 @@ static void CG_CheckTimers( void ) {
 static int CG_IsUnacceptableError( playerState_t *ps, playerState_t *pps, qboolean *forceMove ) {
 	vec3_t delta;
 	int i, n, v0, v1;
- 
+
+	/* The retail predictor starts from the complete acknowledged state
+	 * (100448ea..10044929). Preserve our incremental replay optimization,
+	 * but never replace corrected QL fields with a matching Q3-only cache.
+	 * Jump/crouch timers affect future movement even when origins match. */
+	if (pps->jumpTime != ps->jumpTime || pps->doubleJumped != ps->doubleJumped ||
+		pps->crouchTime != ps->crouchTime || pps->crouchSlideTime != ps->crouchSlideTime ||
+		pps->weaponPrimary != ps->weaponPrimary || pps->fov != ps->fov ||
+		pps->location != ps->location || pps->armorTier != ps->armorTier) {
+		return 21;
+	}
+
 	if ( pps->pm_time != ps->pm_time ||
 		 pps->pm_type != ps->pm_type ||
 		 pps->pm_flags != ps->pm_flags ) {
 		return 1;
 	}
- 
+
 	VectorSubtract( pps->origin, ps->origin, delta );
 	if ( VectorLengthSquared( delta ) > 0.01f * 0.01f ) {
 		if( cg_showmiss.integer > 2 ) {
@@ -721,6 +747,7 @@ static int CG_IsUnacceptableError( playerState_t *ps, playerState_t *pps, qboole
 	VectorSubtract( pps->grapplePoint, ps->grapplePoint, delta );
 	if( VectorLengthSquared( delta ) > 0.01f * 0.01f )
 		return 6;
+
 
 	// check/update eFlags if needed
 	v0 = pps->eFlags & EF_NOPREDICT;
@@ -896,6 +923,8 @@ void CG_PredictPlayerState( void ) {
 	qboolean	moved;
 	usercmd_t	oldestCmd;
 	usercmd_t	latestCmd;
+	usercmd_t	commands[CMD_BACKUP];
+	int firstCommand, commandCount, commandIndex;
 	int stateIndex = 0, predictCmd = 0;
 
 	cg.hyperspace = qfalse;	// will be set if touching a trigger_teleport
@@ -922,6 +951,7 @@ void CG_PredictPlayerState( void ) {
 	}
 
 	// prepare for pmove
+	cg_pmove.settings = &cgs.pmoveSettings;
 	cg_pmove.ps = &cg.predictedPlayerState;
 	cg_pmove.trace = CG_Trace;
 	cg_pmove.pointcontents = CG_PointContents;
@@ -944,7 +974,13 @@ void CG_PredictPlayerState( void ) {
 	// can't accurately predict a current position, so just freeze at
 	// the last good position we had
 	cmdNum = current - CMD_BACKUP + 1;
-	trap_GetUserCmd( cmdNum, &oldestCmd );
+	if (!trap_GetUserCmd(cmdNum, &oldestCmd)) {
+		cg.stateHead = cg.stateTail = 0;
+		cg.lastPredictedCommand = 0;
+		cg.lastServerTime = -1;
+		eventStack = 0;
+		return;
+	}
 	if ( oldestCmd.serverTime > cg.snap->ps.commandTime
 		&& oldestCmd.serverTime < cg.time ) {	// special check for map_restart
 		if ( cg_showmiss.integer ) {
@@ -953,8 +989,23 @@ void CG_PredictPlayerState( void ) {
 		return;
 	}
 
-	// get the latest command so we can know which commands are from previous map_restarts
-	trap_GetUserCmd( current, &latestCmd );
+	// Read the replay window before changing state or emitting predicted events.
+	// A failed native read must not replay the previous iteration's command or
+	// leave a partially advanced state/cache. No extra engine reads are needed
+	// during replay. This is a hardened fallback for unavailable history.
+	firstCommand = cmdNum < 0 ? 0 : cmdNum;
+	commandCount = current - firstCommand + 1;
+	if (commandCount <= 0 || commandCount > CMD_BACKUP) return;
+	for (commandIndex = 0; commandIndex < commandCount; ++commandIndex) {
+		if (!trap_GetUserCmd(firstCommand + commandIndex, &commands[commandIndex])) {
+			cg.stateHead = cg.stateTail = 0;
+			cg.lastPredictedCommand = 0;
+			cg.lastServerTime = -1;
+			eventStack = 0;
+			return;
+		}
+	}
+	latestCmd = commands[commandCount-1];
 
 	// get the most recent information we have, even if
 	// the server time is beyond our current cg.time,
@@ -968,17 +1019,17 @@ void CG_PredictPlayerState( void ) {
 		cg.physicsTime = cg.snap->serverTime;
 	}
 
-	cg_pmove.pmove_fixed = cgs.pmove_fixed;
-	cg_pmove.pmove_msec = cgs.pmove_msec;
+
+
 
 	// clean event stack
 	eventStack = 0;
-	
+
 	// run cmds
 	moved = qfalse;
 
-	cg_pmove.pmove_fixed = cgs.pmove_fixed;
-	cg_pmove.pmove_msec = cgs.pmove_msec;
+
+
 
 	// Like the comments described above, a player's state is entirely
 	// re-predicted from the last valid snapshot every client frame, which
@@ -1030,15 +1081,15 @@ void CG_PredictPlayerState( void ) {
 						CG_Printf( "errorcode %d at %d\n", errorcode, cg.time );
 					break;
 				}
-  
+
 				// this one is almost exact, so we'll copy it in as the starting point
 				*cg_pmove.ps = cg.savedPmoveStates[ i ];
 				// advance the head
 				cg.stateHead = ( i + 1 ) % NUM_SAVED_STATES;
-  
+
 				// set the next command to predict
 				predictCmd = cg.lastPredictedCommand + 1;
-  
+
 				// a saved state matched, so flag it
 				error = qfalse;
 				break;
@@ -1058,20 +1109,14 @@ void CG_PredictPlayerState( void ) {
 		stateIndex = cg.stateHead;
 	}
 
-	cmdNum = current - CMD_BACKUP + 1;
-	if ( cmdNum < 0 ) // can happen on first spawn
-		cmdNum = 0;
-
 	// run cmds
 	// moved = qfalse;
 
-	for ( /* cmdNum = current - CMD_BACKUP + 1 */; cmdNum <= current ; cmdNum++ ) {
-		// get the command
-		trap_GetUserCmd( cmdNum, &cg_pmove.cmd );
+	for (commandIndex = 0; commandIndex < commandCount; ++commandIndex) {
+		cmdNum = firstCommand + commandIndex;
+		cg_pmove.cmd = commands[commandIndex];
 
-		if ( cgs.pmove_fixed ) {
-			PM_UpdateViewAngles( cg_pmove.ps, &cg_pmove.cmd );
-		}
+
 
 		// don't do anything if the time is before the snapshot player time
 		if ( cg_pmove.cmd.serverTime <= cg.predictedPlayerState.commandTime ) {
@@ -1144,9 +1189,7 @@ void CG_PredictPlayerState( void ) {
 		// when it actually inflicts damage
 		cg_pmove.gauntletHit = qfalse;
 
-		if ( cg_pmove.pmove_fixed ) {
-			cg_pmove.cmd.serverTime = ((cg_pmove.cmd.serverTime + cg_pmove.pmove_msec-1) / cg_pmove.pmove_msec) * cg_pmove.pmove_msec;
-		}
+
 #if 0
 		if ( !cg_optimizePrediction.integer ) {
 			Pmove (&cg_pmove);
@@ -1164,7 +1207,7 @@ void CG_PredictPlayerState( void ) {
 
 			// record the last predicted command
 			cg.lastPredictedCommand = cmdNum;
- 
+
 			// if we haven't run out of space in the saved states queue
 			if( ( stateIndex + 1 ) % NUM_SAVED_STATES != cg.stateHead ) {
 				// save the state for the false case ( of cmdNum >= predictCmd )

@@ -1,0 +1,1 @@
+{"id":"fnql_test_weaponbar","title":"FnQL weapon bar gate","basegt":"ffa","cvars":{"g_startingHealth":100,"g_startingHealthBonus":50,"g_startingArmor":150,"g_startingAmmo_mg":23,"g_startingWeapons":3,"g_loadout":1}}

@@ -333,8 +333,9 @@ qboolean G_MoverPush( gentity_t *pusher, vec3_t move, vec3_t amove, gentity_t **
 			}
 		}
 #endif
-		// only push items and players
-		if ( check->s.eType != ET_ITEM && check->s.eType != ET_PLAYER && !check->physicsObject ) {
+		// Retail 0x1005e395 includes latched hooks in mover collision.
+		if ( check->s.eType != ET_ITEM && check->s.eType != ET_PLAYER
+			&& check->s.eType != ET_GRAPPLE && !check->physicsObject ) {
 			continue;
 		}
 
@@ -783,6 +784,11 @@ void Blocked_Door( gentity_t *ent, gentity_t *other ) {
 		// except CTF flags!!!!
 		if( other->s.eType == ET_ITEM && other->item->giType == IT_TEAM ) {
 			Team_DroppedFlagThink( other );
+			return;
+		}
+		// Retail 0x1005f17d tests the chain pointer, not the hook owner.
+		if ( other->s.eType == ET_GRAPPLE && other->chain ) {
+			Weapon_HookFree(other);
 			return;
 		}
 		G_TempEntity( other->s.origin, EV_ITEM_POP );
@@ -1421,6 +1427,7 @@ void SP_func_train (gentity_t *self) {
 	InitMover( self );
 
 	self->reached = Reached_Train;
+	self->blocked = Blocked_Door; // retail 0x10060a56, shared crush handler
 
 	// start trains on the second frame, to make sure their targets have had
 	// a chance to spawn

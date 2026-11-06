@@ -309,6 +309,18 @@ qboolean UI_ConsoleCommand( int realTime ) {
 
 	cmd = UI_Argv( 0 );
 
+    /* Retail console dispatcher 0x10002bb6/0x10002bd9. These commands
+     * operate on the loaded definitions without replacing their scripts. */
+    if (!Q_stricmp(cmd, "menu_open") || !Q_stricmp(cmd, "menu_close")) {
+        qboolean open = !Q_stricmp(cmd, "menu_open");
+        const char *name = UI_Argv(1);
+        if (*name) {
+            if (open) Menus_ActivateByName(name);
+            else Menus_CloseByName(name);
+        }
+        return qtrue;
+    }
+
 	// ensure minimum menu data is available
 	//Menu_Cache();
 
@@ -316,8 +328,84 @@ qboolean UI_ConsoleCommand( int realTime ) {
 		UI_ShowPostGame(qtrue);
 	}
 
+    if (!Q_stricmp(cmd, "ui_menuaction")) {
+        menuDef_t *menu;
+        itemDef_t *item;
+        int i;
+        char continuation[MAX_QPATH];
+        if (!trap_Cvar_VariableValue("developer")) return qtrue;
+        Q_strncpyz(continuation, UI_Argv(3), sizeof(continuation));
+        /* Queue a probe continuation after commands emitted by the action.
+         * An ordinary exec in the caller would run before those commands. */
+        for (i = 0; continuation[i]; ++i) {
+            if (!(isalnum((unsigned char)continuation[i]) || strchr("_.-", continuation[i]))) {
+                Com_Printf("UI: invalid continuation filename\n");
+                return qtrue;
+            }
+        }
+        menu = Menus_FindByName(UI_Argv(1));
+        item = NULL;
+        if (menu) for (i = 0; i < menu->itemCount; ++i) {
+            itemDef_t *candidate = menu->items[i];
+            if (candidate->action && candidate->window.name && !Q_stricmp(candidate->window.name, UI_Argv(2))) {
+                item = candidate;
+                break;
+            }
+        }
+        if (!item || !item->action || !(menu->window.flags & WINDOW_VISIBLE))
+            Com_Printf("UI: unavailable menu action\n");
+        else {
+            Item_RunScript(item, item->action);
+            Com_Printf("UI: action %s/%s\n", menu->window.name, item->window.name);
+            if (*continuation) trap_Cmd_ExecuteText(EXEC_APPEND, va("exec %s\n", continuation));
+        }
+        return qtrue;
+    }
+    if (!Q_stricmp(cmd, "ui_openmenu")) {
+        menuDef_t *menu = Menus_FindByName(UI_Argv(1));
+        if (!menu) Com_Printf("UI: unknown menu %s\n", UI_Argv(1));
+        else {
+            Menus_CloseAll();
+            trap_Key_SetCatcher(trap_Key_GetCatcher() | KEYCATCH_UI);
+            Menus_Activate(menu);
+            Com_Printf("UI: opened %s (%d items)\n", menu->window.name, menu->itemCount);
+        }
+        return qtrue;
+    }
+	/* Retail 0x10002b07 -> 0x1000f960: one teaminfo model per line, as
+	 * model/skin, or the model alone for its default skin. */
+	if ( Q_stricmp (cmd, "listPlayerModels") == 0 ) {
+		int i;
+		for ( i = 0; i < uiInfo.characterCount; ++i ) {
+			const characterInfo *entry = &uiInfo.characterList[i];
+			const char *skin = entry->base ? strchr( entry->base, '/' ) : NULL;
+			if ( !entry->name ) {
+				continue;
+			}
+			if ( !skin || !Q_stricmp( skin + 1, "default" ) ) {
+				Com_Printf( "%s\n", entry->name );
+			} else {
+				Com_Printf( "%s\n", entry->base );
+			}
+		}
+		return qtrue;
+	}
+
 	if ( Q_stricmp (cmd, "ui_report") == 0 ) {
 		UI_Report();
+        if (trap_Cvar_VariableValue("developer")) {
+            menuDef_t *menu = Menus_FindByName(UI_Argv(1));
+            int i;
+            if (menu) {
+                Com_Printf("UI: menu %s items=%d catcher=%d\n", menu->window.name, menu->itemCount, trap_Key_GetCatcher());
+                for (i = 0; i < menu->itemCount; ++i) {
+                    itemDef_t *item = menu->items[i];
+                    Com_Printf("UI: item %s type=%d owner=%d flags=%x color=%g,%g,%g,%g\n",
+                        item->window.name ? item->window.name : "", item->type, item->window.ownerDraw,
+                        item->window.flags, item->window.foreColor[0], item->window.foreColor[1], item->window.foreColor[2], item->window.foreColor[3]);
+                }
+            }
+        }
 		return qtrue;
 	}
 	
@@ -385,10 +473,10 @@ void UI_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 	*h *= uiInfo.uiDC.scale;
 #endif
 
-	*x *= uiInfo.uiDC.xscale;
-	*y *= uiInfo.uiDC.yscale;
-	*w *= uiInfo.uiDC.xscale;
-	*h *= uiInfo.uiDC.yscale;
+	if (x) *x = *x * uiInfo.uiDC.xscale + uiInfo.uiDC.bias;
+	if (y) *y *= uiInfo.uiDC.yscale;
+	if (w) *w *= uiInfo.uiDC.xscale;
+	if (h) *h *= uiInfo.uiDC.yscale;
 
 }
 

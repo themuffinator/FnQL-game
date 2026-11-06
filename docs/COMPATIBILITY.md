@@ -19,6 +19,7 @@ milestone gate checks meaning.
 | retail engine + retail qagame | FnQL + retail cgame | FnQL today; unchanged |
 | retail engine + retail qagame | FnQL + FnQL-game cgame | unpure servers only; retail profile (M7, M10) |
 | FnQL + FnQL-game qagame | retail Quake Live | retail profile; the core requirement (M2–M6) |
+| FnQL + FnQL-game qagame | retail Quake Live + FnQL-game cgame | retail profile; scratch base path, install untouched (`retail-client-cgame`, `-unpure`) |
 | FnQL + FnQL-game qagame | FnQL + retail cgame | same as the retail client row |
 | FnQL + FnQL-game qagame | FnQL + FnQL-game cgame | retail profile plus negotiated extensions (M10) |
 | FnQL + retail qagame | FnQL + FnQL-game cgame | same as the retail server row |

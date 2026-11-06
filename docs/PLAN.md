@@ -198,8 +198,8 @@ Open after M3:
 
 - the game logic that sets `PMF_ATTACK_LOCKOUT` during round countdowns
   goes to M5;
-- what the game sets `pmove_t.grappleSlow` (retail `+0xe8`) for is not yet
-  identified (M4, with the hook);
+- `pmove_t.grappleSlow` (retail `+0xe8`) is now identified and wired under
+  M4: a hook latched to a client quarters the owner's pull (0x10035190);
 - the full-server differential G3 moves to M4, where combat makes it worth
   its cost.
 
@@ -334,8 +334,8 @@ the whole-unit player `trDelta`, ammo pack and ammo box grabbing and pickup
 `tdm_items` (team deathmatch under `--cheats`) passes with no divergence
 since the team-mode slice: `g_loadout`'s kit (the session's loadout weapon,
 gclient +0x358: the heavy machinegun for players, a random loadout weapon
-for bots, minus `g_disableLoadout`; how a player picks another is not yet
-identified in the retail qagame), the spawn weapon (the loadout weapon, or
+for bots, minus `g_disableLoadout`; players select through the replicated
+`weaponPrimary` byte, consumed before pmove at 0x10034e20), the spawn weapon (the loadout weapon, or
 the first held from `g_bestStartingWeapons`, 0x1003b5a0), which spawns
 fire their spot's targets, team locations every frame (0x100356de) with
 retail's nearest-location test, the `tinfo` overlay (0x10068490: up to
@@ -391,23 +391,103 @@ shared `BG_CleanName` and its client/UI callers remain unchanged.
 
 Separate userinfo-policy finding: the retail probe drops a client whose
 name cleans to `UnnamedPlayer` when both color fields and Steam ID are
-absent, under `g_kickBadUserinfo` (0x1003aa03-0x1003aa9d). FnQL-game does
-not yet apply that exact check. The name-normalization scenario supplies
-ordinary color fields so fallback names can be compared without changing
-the retail rejection policy.
+absent, under `g_kickBadUserinfo` (0x1003aa03-0x1003aa9d). FnQL-game now
+applies that check after retail duplicate-name resolution. Uniqueness uses
+the first 39 bytes, removes numeric color codes and compares ASCII case
+insensitively (0x1003a350/0x10070b90); collisions receive prefixes `(2)`
+through `(99)` before the final copy (0x1003a62a-0x1003a771).
+The `ffa_bad_userinfo` pair covers disabled enforcement, each valid color,
+duplicate fallback names, an actual drop, color/case collisions, long names,
+prefix reuse and restart. Unit checks cover the comparison key's truncation
+and extended-byte handling. The earlier name-normalization scenario retains
+ordinary color fields so fallback names remain valid there.
 
-Open in M4: grapple impact and hook behaviour, rocket damage through thin
-ceilings (`g_forceDmgThroughSurface`, read in G_MissileImpact 0x1005bbe0;
-radius damage 0x1004a3e0), LG discharge (`g_lightningDischarge`, default
-0: radius damage under water from Weapon_LightningFire 0x1006eba1 into
-0x1004a7a0), the `g_loadout` choices, retail lag compensation
-(`g_lagHaxMs`; baseq3a's unlagged stays meanwhile), `g_dropDamagedHealth`
-(default 0: G_Damage 0x10049a2b drops "25 Health"/"5 Health" items through
-0x1004f8c0, dropped items then last 10 s instead of 30, 0x1004f6ec, and
-0x1004ffd0 registers them), and whether
-the engine marks capsule head hits with contents 0x400 (FnQL does not;
-retail's engine is unverified). Still deferred to
-M5/M6: team-kill complaints (`g_complaintLimit`) and retail's Steam
+Combat-rule follow-up (2026-11-05): damaged-health drops now convert actual
+health lost (excluding armor and overkill) into rings of 25- and 5-health
+pickups. The rule precaches both sizes and changes ordinary dropped-item
+expiry to ten seconds; flags and runes retain their mode-specific lifetime.
+Evidence: retail 0x10049a2b, 0x1004f8c0, 0x1004f6ec and 0x1004ffd0.
+The strict `combat-damage-health0/1` self-check/differential pairs each cover
+1,600 frames, including armor, death, self-damage, pickup physics, weapon
+expiry and restart. Missile updates now retain entity order (0x100597d4),
+so items created during an impact can run in that frame. Existing collision
+rewind is preserved around each missile. Entity exhaustion safely stops
+additional health drops instead of terminating the server.
+
+Grapple and discharge follow-up (2026-11-05): hook impacts now place their
+event on the hook, replicate its facing/normal, mark a hooked player for
+reduced friction and slow the owner's pull. Latched hooks update every
+frame, follow their target, damage it at `weapon_reload_gh`, release on
+weapon changes/death and reset after three obstruction checks. The
+`g_latchedHookOffset` setting adjusts the obstruction trace, not the
+replicated pull point. Evidence: 0x1005bf3d-0x1005c323,
+0x1006e330-0x1006e7b5 and 0x10035190. Missile traces now honor
+`g_playerCylinders`, including start-solid retraces (0x1005c991).
+The `ffa_grapple` scenario compares wall/player latches, release, weapon
+changes, obstruction and restart with both capsule and box traces.
+
+Underwater lightning discharge now consumes the available cells, publishes
+`EV_LIGHTNING_DISCHARGE`, and applies distance-scaled damage to submerged
+entities in sight, including the shooter (0x1006eb1d, 0x1004a7a0). With
+infinite ammo, a subsequent LG pickup restores its ammo sentinel
+(0x1004dac1). `ffa_discharge` compares enabled/disabled discharge and
+infinite ammo on Corrosion, including a dry player and dry firing.
+These comparisons live in the `combat-rules` suite; the moving-train
+follow-up below adds brush collision and crush coverage.
+
+Thin-ceiling splash follow-up (2026-11-05): eligible rockets probe back
+through a downward-facing ceiling (0x1005c395), publish
+`EV_MISSILE_MISS_DMGTHROUGH`, and use a reduced-radius visibility fallback
+from the other side (0x1004a3e0). Ordinary splash keeps its original two
+visibility tests. The penetrating path accepts either ordinary test, then
+tries the far-side point; damage falloff still measures from the impact,
+while knockback starts at the far-side point. Nonpositive or NaN fallback
+radii are skipped safely. `ffa_surface_damage` exercises a 16-unit stock
+Campgrounds bridge: retail event 86 and 68 health lost above the ceiling
+were observed, while the player outside the reduced radius was unaffected.
+Six strict pairs cover enabled/disabled forcing, insufficient probe depth,
+angular rejection, quarter radius and zero radius, plus wall/floor impacts.
+The authored `SURF_DMGTHROUGH` flag follows the observed bit 0x200000;
+the fixture activates the same path through the force cvar.
+
+Retail lag compensation now uses an independently written bounded sample
+ring (`g_laghax.c`; 0x10051660..0x10051add). The default is four samples
+and an 80 ms cap; hitscan rewinds around the whole shot using ps.commandTime,
+interpolates origins and uses the newer sample's stance bounds. Projectiles
+keep current positions. The inherited compensation remains explicitly
+available as `g_unlagged 2` (full) or `0` (frame); `1` selects retail behavior.
+History storage has a separate fixed budget and clamps excessive depth to
+256 with a diagnostic. Nonpositive depth/window disables safely.
+
+FnQL's dedicated lockstep harness now accepts per-client `delay` timestamps.
+The moving/ducking/teleport rail fixture at 200 and 75 ms command age reports
+1,744 field/frame differences with the previous DLL and zero with the rewrite.
+Six strict pairs cover default, one-sample, extended-window, box traces and
+disabled settings; `game-laghax` checks interpolation, stance, caps, reset,
+restoration and safety bounds. Retail itself crashes in setviewpos with
+history disabled (0x100448cd); disabled-mode runtime fixtures use ordinary
+movement, and FnQL safely handles the empty history. A separate live-ammo
+pair verifies that changing g_infiniteAmmo updates normal connected players
+immediately, including unowned weapons (0x100520e0/0x10059cb0).
+
+The moving-train grapple fixture now covers hook collision/crush, release,
+teleport and restart with box and capsule traces. Retail includes hooks in
+mover collision (0x1005e395), gives trains the shared crush handler
+(0x10060a56), and does not repeatedly free a vacant hook slot (0x1006e330).
+
+The headshot engine boundary is now verified against retail executable
+0x4c6bd0/0x4c6d6b/0x4c6da0: a body cylinder plus upper sphere marks an earlier
+head hit with contents 0x400. FnQL implements this for point traces while
+preserving its existing moving-capsule collision guarantees. The two strict
+`ffa_headshot` pairs cover standing/ducked head hits, torso damage and restart;
+recording inspection confirms 210 damage for each capsule head hit and 10
+for the torso. Engine collision tests also protect unchanged movement and
+box-query behavior. Jump-pad touch now sets doubleJumped and event parm zero,
+accepts frozen players and ignores hooked players (0x1002d540/0x1006b5d0);
+the ordinary-movement `ffa_jumppad` pair reaches the stock campgrounds pad.
+
+Still deferred to
+M5/M6: retail's Steam
 achievements and ZMQ stats reports (engine
 imports 185/186 and 201-204, under the online-services rules).
 Freeze Tag thawing, Red Rover infection scoring and CA/FT/RR respawn rules
@@ -676,12 +756,71 @@ Progress (G3, both with no divergence):
   tests. Red Rover command shuffles respawn unchanged-team players and
   preserve match stats; `rr_shuffle` and `rr_shuffle_live` cover the mode.
 
-Open in M5: the remaining retail session-string differences (twelve fields,
-0x10065880; FnQL-game appends mute/privilege state to its existing ten-field
-prefix), team-kill complaints, one
-flag CTF, and G5 runs with retail clients.  Spectators also honour a
+Session/loadout/complaint follow-up (2026-11-05): the session writer and
+reader now use retail's **thirteen** fields (0x10065880/0x10065930), including
+the selected weapon before wins/losses and the reserved final word. The
+earlier twelve-field description was incorrect. Old FnQL-game seven- to
+twelve-field records remain readable; malformed records become safe
+spectator sessions. `game-session` covers ordering, migration, bounds and
+round trips. The otherwise-unused reserved word is preserved without
+inventing behavior for it.
+
+ClientThink now records the previous pmove's `weaponPrimary` as the next
+spawn's loadout (0x10034e20). `ffa_loadout` compares enabled/disabled
+loadouts over 1,100 frames each, including spectator/dead choices, invalid
+bytes, disabled weapons and restart.
+
+Team-kill complaints are implemented from 0x1004756e, 0x10043ab0 and
+0x1003c943: 15.5-second prompts, `vote` responses, admin immunity, warnings,
+temporary bans at the limit and disconnect cancellation. The retail
+affirmative-byte quirk is preserved and gated. Nonfatal damage does **not**
+prompt, even with `g_complaintDamageThreshold` enabled: disassembly at
+0x10049363..0x1004936f proves its condition impossible (`sete` followed by
+testing bit 8); the live fixture confirms it. This intentionally differs
+from the reconstructed QLSRP behavior. `game-complaint` covers policy and
+failure bounds; `tdm_complaints` and `tdm_complaint_kick` compare 6,200 frames.
+
+The inherited forced/read-only `g_doWarmup` override is removed: retail
+registers it as writable/archive (0x1008e0b8). TDM, CA and FT strict pairs
+now cover warmup disabled. CA/FT players joining the match countdown
+retain the firing lock (0x100381f1/0x1004bea9), just as at round countdown.
+
+One Flag CTF now passes seven strict pairs (17,100 frames/provider): both
+teams' captures, own-stand rejection, manual/death drops, pickup bonuses,
+expiry, disconnect, pause, restart and capturelimit. Retail neutral statuses
+are dropped=2, red carrier=3, blue carrier=4 (0x10069eaf/0x10071aa0).
+The carrier snapshot predicate reads entity-state powerups, not server flags
+(0x10052dc0). Pickup and periodic pings broadcast the carrier's team and
+`g_neutralFlagPingRate`, sharing the Quad Hog residual (0x1004f293/0x10034777).
+Zero ping rate emits every command, as retail does. `g_droppedFlagBonus`
+enables a fixed ten points when a death drop's previous owner differs from
+the picker (0x10069f51); manually thrown flags do not get that bonus.
+The capturelimit fixture also proves that `map_restart` preserves
+CS_INTERMISSION: the inherited initialization clear is removed.
+
+The initial pure/unpure G5 runs with retail clients now pass. Spectators also honour a
 0x800 button retail checks in SpectatorThink (0x10033f93: it frees a
 follower); which client key sends it is not yet identified.
+
+Qagame validation, 2026-11-05: the x86 build and 325 selected ABI, contract,
+unit, runtime, differential, factory, round, objective, combat and stock-map
+tests pass. FnQL's x86 client/dedicated builds, three collision gates and 620
+engine source checks pass. G5a now passes on all thirteen base gametypes
+with the current x86 client: the retail cgame reaches CS_ACTIVE, the requested
+gametype is confirmed, a bot connects, and an engine screenshot is written.
+The `interop-modes` suite adds twelve modes to the original FFA gate. Overload
+uses an explicit `devmap` fixture because retail arena metadata excludes it;
+the stock Dueling Keeps BSP nevertheless contains the required obelisks.
+These are startup interoperability gates, not full-match client validation.
+After Steam sign-in, G5b passes with the legitimate retail executable against
+both pure and unpure FnQL servers. Each run confirms successful Steam session
+validation, adds a bot, and verifies that the retail client remains in the
+final server status after thirty seconds. The probe uses authenticated
+loopback rcon because redirected stdin did not reach the Windows headless
+console; it stops the server before cancelling the client's ticket and
+restores the retail configuration and logs. Both settings are registered in
+the opt-in `retail-client` suite. This closes the live-join validation blocker
+for the qagame fixes; it does not claim M10's complete full-match matrix.
 
 ### M6 — Round-based and special modes
 
@@ -872,7 +1011,7 @@ asks (native slots 12-18) are rewritten from retail 0x10052dc0-0x100530f0
 and its team helpers 0x10067ec0-0x10067f70, replacing the neutral stubs.
 
 - Visibility (slot 12): teammates in the team modes, everyone for a
-  spectator, bots in One Flag CTF and everyone under Red Rover infection.
+  spectator, neutral-flag carriers in One Flag CTF and everyone under Red Rover infection.
   The old stub showed every player to everyone regardless of PVS.
 - Thaw tick (slot 13): only a linked viewer is filtered, so unlinked
   spectators keep seeing the tick; retail checks `r.linked`, not `inuse`.
@@ -906,6 +1045,69 @@ Exit: G3 per mode; G5 per mode.
 
 ### M7 — cgame
 
+Native hosting bring-up is implemented; M7 remains open. The x86 DLL builds,
+passes its adapter gate, and reaches active Campgrounds/FFA play with both
+qagame providers. See [CGAME.md](CGAME.md) for evidence and outstanding work.
+Capability bits remain zero; hosting does not establish G4 or visual parity.
+
+The retail score command family now has bounded parsers and main per-mode
+player rows. FFA/TDM scoreboards pass with both qagame providers and repeated
+HUD reloads; retail Duel, Race, CA and CTF also pass command/menu bring-up.
+End tables and remaining ownerdraws still prevent scoreboard visual parity.
+Retail team-index lists and accuracy replies now parse, snapshot vitals feed
+the HUD, and `+acc` displays and refreshes weapon/overall accuracy. The four
+`cgame-stats` probes pass with both providers; `+pstats` presentation remains.
+Overtime, match results and red/blue round-win announcements now have
+retail-backed handlers and unit coverage. Full FFA match-end probes pass
+with both providers; the optional `cgame-match` suite also gates overtime.
+End-screen ownerdraws, remaining event variants and audio/visual parity
+remain open; see the evidence and probe limitations in [CGAME.md](CGAME.md).
+Thaw fragments/trails/marks and damage-through impact debris now use retail
+event evidence and have focused unit coverage plus passing runtime event
+gates with both providers. Frozen-player body materials and animation speed
+now follow retail, with regression tests for existing animation/powerup
+paths. Round draws, last-standing voice and Red Rover winner/survivor
+messages now have retail-backed handlers and unit coverage; paused-bot round
+probes exercise CA draws and infected RR survivors. Teammate markers,
+POI and remaining objective/team-sound variants still need work. Race start,
+checkpoint and finish events, reliable race state, timeout compensation and
+elapsed/last-time HUD are implemented. Gravity-only race probes exercise
+both server providers. Checkpoint model progression, floor projectors,
+navigation icons and the bound/unbound respawn hint also have production
+tests and a gravity-only presentation fixture. The shared native font bridge
+now uses retail pixel sizing and visual bounds/ascent, with production
+coverage across HUD transforms. Full HUD visual parity remains open. No-player-clipping body/weapon materials, ghost view weapons
+and selected-weapon ammo warnings now have production regression coverage.
+Status-value anchors, unlimited ammo, health/armor bar cropping and
+team-tinted HUD images now have production tests and matched retail-module
+captures. Weapon lists now have retail persistent layouts, timed strip,
+ammo/full-list/follow policies, production tests and matched retail-module
+captures. Snapshot-based cycle/direct/toggle selection, empty switching,
+frame history, spawn preferences, queued primary loadouts and weapon config
+dispatch now have production tests. Input-free hosting gates and retail
+comparison captures exercise spawn/loadout/config behavior with both qagame
+providers. Match/round clocks, round labels, overtime and local time now
+have production tests; matched retail captures and hosting gates cover
+active clocks and indefinite pauses. Pause/time-in banners, server `cp`/`pcp`
+notices and timeout countdown/resume cues now follow retail evidence, with
+production tests and matched time-in captures. Top-left player/team standings,
+mode icons, win limits and remaining-player/owned-point counters now have
+production tests and input-free hosting gates. Matched retail-module captures
+cover FFA long-name clipping and CA default/custom team labels. Normal-match
+warmup waiting/ready-up/countdown presentation and its announcer transitions
+now have production tests and FFA/CA hosting gates with both providers.
+Broader mixed visibility flags, training/tutorial presentation and remaining
+menu-capture behavior remain open.
+Retail FOV presets, command FOV,
+spectator/demo overrides, zoom scaling/toggle/sensitivity and death resets
+now have production regression coverage. Broader camera parity and live
+zoom/follow/demo captures remain open.
+An offline production-predictor gate now covers delayed acknowledgements,
+cache reuse, QL server-state corrections, missing history and interpolation.
+The cache no longer discards corrected jump/crouch timing or QL sidecars.
+The live prediction probe accepts FnQL cgame with both qagame providers;
+the full G4 live/demo corpus is still required.
+
 A retail-ABI `fnql_cgamex86.dll`:
 
 - 128 import slots; 21 exports including the reserved NULL slot 16.
@@ -920,11 +1122,24 @@ captures.
 
 ### M8 — ui
 
+Implemented in the sole `code/ui/` native module; `code/q3_ui/` is removed.
+The installed legacy menu definitions supply all screens and actions. The
+runtime gate includes normal menu activation and retail screenshot comparisons
+at 640x480 and 960x600; no custom navigation is injected. [UI.md](UI.md)
+records the recovered behavior, validation evidence and integration boundaries.
+A table-by-table gap pass against the retail DLL also brought in retail's cvar
+table and change callbacks, its binding table, the slot 3/4 item gates,
+`toggle`, the display and model scripts, retail menu activation, absolute
+mouse input and workshop download progress. Pixel gates now compare every
+in-game menu, tab page and out-of-game screen with retail at 960x600 and
+1024x768, and an input-proxy gate compares hover, slider, list, tab,
+edit-field and key-binding interaction at both sizes.
+
 A retail-ABI `fnql_uix86.dll`:
 
 - 97 import slots; 14 exports.
 - The Team Arena menu system: in-game, callvote, admin, join and options
-  menus; the connect and advert screens; the offline main-menu fallback.
+  menus; the existing connect/download and advert screens.
 - Coexists with the engine-hosted WebUI.
 
 ### M9 — Bots

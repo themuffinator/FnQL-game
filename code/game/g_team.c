@@ -182,7 +182,8 @@ qboolean OnSameTeam( gentity_t *ent1, gentity_t *ent2 ) {
 }
 
 
-static char ctfFlagStatusRemap[] = { '0', '1', '*', '*', '2' };
+static char ctfFlagStatusRemap[] = { '0', '1', '2', '*', '*' };
+// Retail uses 2 for a dropped neutral flag and 3/4 for red/blue carriers.
 static char oneFlagStatusRemap[] = { '0', '1', '2', '3', '4' };
 
 static void Team_SetFlagStatus( team_t team, flagStatus_t status ) {
@@ -767,7 +768,7 @@ captures.  The capture names the time since the pickup ("held for" when the
 flag had been dropped on the way), books the award, and gives the team 25,
 and 10 more to whoever returned the flag or fragged the enemy carrier
 within the last ten seconds.  Nothing happens once the match has ended.
-One flag CTF keeps the baseq3a rules (milestone 5).
+One Flag CTF captures the neutral flag at the opposing stand.
 ==============
 */
 static void G_AwardCapture( gentity_t *ent, int persistant, int award ) {
@@ -946,6 +947,9 @@ static int Team_TouchEnemyFlag( gentity_t *ent, gentity_t *other, team_t team ) 
 	if ( !( ent->flags & FL_DROPPED_ITEM ) ) {
 		AddScore( other, ent->r.currentOrigin, CTF_FLAG_BONUS );
 		level.teamStats[TEAM_STAT_FLAG_PICKUPS][cl->sess.sessionTeam]++;
+	} else if ( g_droppedFlagBonus.integer && ent->activator && ent->activator != other ) {
+		// Retail 0x10069f51: this cvar enables the fixed pickup bonus.
+		AddScore( other, ent->r.currentOrigin, CTF_FLAG_BONUS );
 	}
 
 	cl->flagCarryTime = 0;

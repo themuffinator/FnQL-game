@@ -6,7 +6,7 @@
 #include "../cgame/tr_types.h"
 #include "keycodes.h"
 
-#include "../../ui/menudef.h"
+#include "../../docs/contract/retail_menudef.h"
 
 #define MAX_MENUNAME 32
 #define MAX_ITEMTEXT 64
@@ -14,7 +14,7 @@
 #define MAX_MENUDEFFILE 4096
 #define MAX_MENUFILE 32768
 #define MAX_MENUS 64
-#define MAX_MENUITEMS 96
+#define MAX_MENUITEMS 1024
 #define MAX_COLOR_RANGES 10
 #define MAX_OPEN_MENUS 16
 
@@ -82,7 +82,7 @@
 #define SLIDER_HEIGHT 16.0
 #define SLIDER_THUMB_WIDTH 12.0
 #define SLIDER_THUMB_HEIGHT 20.0
-#define	NUM_CROSSHAIRS			10
+#define	NUM_CROSSHAIRS			30
 
 typedef struct {
   const char *command;
@@ -111,6 +111,7 @@ typedef struct {
   int border;                     //
   int ownerDraw;									// ownerDraw style
 	int ownerDrawFlags;							// show flags for ownerdraw items
+	int ownerDrawFlags2;
   float borderSize;               // 
   int flags;                      // visible, focus, mouseover, cursor
   Rectangle rectEffects;          // for various effects
@@ -142,7 +143,7 @@ typedef struct {
 // the benefits of c++ in DOOM will greatly help crap like this
 // FIXME: need to put a type ptr that points to specific type info per type
 // 
-#define MAX_LB_COLUMNS 16
+#define MAX_LB_COLUMNS 32
 
 typedef struct columnInfo_s {
 	int pos;
@@ -162,6 +163,8 @@ typedef struct listBoxDef_s {
 	columnInfo_t columnInfo[MAX_LB_COLUMNS];
 	const char *doubleClick;
 	qboolean notselectable;
+	vec4_t elementColor, selectedColor, altRowColor;
+	qboolean hasElementColor, hasSelectedColor, hasAltRowColor;
 } listBoxDef_t;
 
 typedef struct editFieldDef_s {
@@ -202,6 +205,9 @@ typedef struct itemDef_s {
   Rectangle textRect;            // rectangle the text ( if any ) consumes     
   int type;                      // text, button, radiobutton, checkbox, textfield, listbox, combo
   int alignment;                 // left center right
+  int textFont;
+  int widescreen;
+  qboolean widescreenSet;
   int textalignment;             // ( optional ) alignment for text within rect based on text width
   float textalignx;              // ( optional ) text alignment x coord
   float textaligny;              // ( optional ) text alignment x coord
@@ -218,6 +224,16 @@ typedef struct itemDef_s {
   const char *onFocus;           // select script
   const char *leaveFocus;        // select script
   const char *cvar;              // associated cvar 
+  /* Retail item keywords cvarTest2..4 with showCvar/hideCvar2..4 (uix86.dll
+   * keyword table 0x1002a868): independent gates, all of which must pass.
+   * Index 0 is slot 2. */
+#define ITEM_EXTRA_CVAR_SLOTS 3
+  const char *extraCvarTest[ITEM_EXTRA_CVAR_SLOTS];
+  const char *extraEnableCvar[ITEM_EXTRA_CVAR_SLOTS];
+  int extraCvarFlags[ITEM_EXTRA_CVAR_SLOTS];
+  qhandle_t outlineImage;        // retail outlineimage: selected list row art
+  int precision;
+  qboolean integerCvar;
   const char *cvarTest;          // associated cvar for enable actions
 	const char *enableCvar;			   // enable, disable, show, or hide based on value, this can contain a list
 	int cvarFlags;								 //	what type of action to take on cvarenables
@@ -232,6 +248,8 @@ typedef struct itemDef_s {
 typedef struct {
   Window window;
   const char  *font;								// font
+  rectDef_t backgroundSize;
+  int widescreen;
   qboolean fullScreen;							// covers entire screen 
   int itemCount;										// number of items;
   int fontIndex;										// 
@@ -246,7 +264,8 @@ typedef struct {
 
   vec4_t focusColor;								// focus color for items
   vec4_t disableColor;							// focus color for items
-  itemDef_t *items[MAX_MENUITEMS];	// items this menu contains   
+  qboolean toggled;								// retail toggle-script state
+  itemDef_t *items[MAX_MENUITEMS];	// items this menu contains
 } menuDef_t;
 
 typedef struct {
@@ -311,15 +330,18 @@ typedef struct {
   void (*clearScene) ();
   void (*addRefEntityToScene) (const refEntity_t *re );
   void (*renderScene) ( const refdef_t *fd );
+  void (*setTextFont)(int font);
   void (*registerFont) (const char *pFontname, int pointSize, fontInfo_t *font);
   void (*ownerDrawItem) (float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle);
 	float (*getValue) (int ownerDraw);
 	qboolean (*ownerDrawVisible) (int flags);
+	qboolean (*ownerDrawVisibleEx) (int flags, int flags2);
   void (*runScript)(char **p);
   void (*getTeamColor)(vec4_t *color);
   void (*getCVarString)(const char *cvar, char *buffer, int bufsize);
   float (*getCVarValue)(const char *cvar);
   void (*setCVar)(const char *cvar, const char *value);
+  void (*registerCvar)(vmCvar_t *cvar, const char *name, const char *value, int flags);
   void (*drawTextWithCursor)(float x, float y, float scale, vec4_t color, const char *text, int cursorPos, char cursor, int limit, int style);
   void (*setOverstrikeMode)(qboolean b);
   qboolean (*getOverstrikeMode)();
@@ -403,6 +425,8 @@ int Display_CursorType(int x, int y);
 qboolean Display_KeyBindPending();
 void Menus_OpenByName(const char *p);
 menuDef_t *Menus_FindByName(const char *p);
+itemDef_t *Menu_FindItemByName(menuDef_t *menu, const char *name);
+void Item_RunScript(itemDef_t *item, const char *script);
 void Menus_ShowByName(const char *p);
 void Menus_CloseByName(const char *p);
 void Display_HandleKey(int key, qboolean down, int x, int y);

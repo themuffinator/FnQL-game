@@ -11,6 +11,33 @@ or (at your option) any later version.
 
 #include "g_local.h"
 
+// Retail uniqueness (0x1003a350/0x10070b90) compares the first 39 bytes,
+// ignores numeric color codes only, and folds ASCII case. Keep this separate
+// from display-name cleaning and the broader shared Q_CleanStr policy.
+static void PlayerNameKey( const char *name, char key[MAX_NETNAME] ) {
+	size_t read = 0, written = 0;
+	if ( name ) {
+		while ( read < MAX_NETNAME - 1 && name[read] ) {
+			unsigned char ch = (unsigned char)name[read++];
+			if ( ch == '^' && read < MAX_NETNAME - 1 &&
+				name[read] >= '0' && name[read] <= '7' ) {
+				++read;
+				continue;
+			}
+			if ( ch < ' ' ) continue;
+			key[written++] = ch >= 'a' && ch <= 'z' ? ch - 'a' + 'A' : ch;
+		}
+	}
+	key[written] = '\0';
+}
+
+qboolean G_PlayerNamesEqual( const char *a, const char *b ) {
+	char left[MAX_NETNAME], right[MAX_NETNAME];
+	PlayerNameKey(a, left);
+	PlayerNameKey(b, right);
+	return strcmp(left, right) == 0;
+}
+
 // Retail normalizes into an info-sized buffer (0x1003a0b0), then copies
 // at most 39 bytes into the client's name (0x1003a771). In particular, the
 // final copy may clip a color token; do not move that truncation earlier.

@@ -2,6 +2,7 @@
 //
 #include "g_local.h"
 
+static int G_MissilePrestep( void );
 
 /*
 ================
@@ -260,15 +261,16 @@ G_MissileImpact
 
 Retail qagamex86 0x1005bbe0.  A prox mine sticks before any impact damage,
 the impact event precedes the impact damage, and the splash knows the
-impact trace and the flight direction.  Not yet: retail's grapple impact
-(it pulls a hooked player) and rocket damage through thin ceilings
-(g_forceDmgThroughSurface, SURF 0x200000, radius damage 0x1004a3e0).
+impact trace and the flight direction. Thin-ceiling rocket penetration uses
+the reverse solid trace at 0x1005c395 and radius behavior at 0x1004a3e0.
 ================
 */
 void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 	gentity_t		*other;
 	qboolean		hitClient = qfalse;
 	vec3_t			dir;
+	qboolean		throughSurface = qfalse;
+	vec3_t			throughPoint;
 #ifdef MISSIONPACK
 	vec3_t			forward, impactpoint, bouncedir;
 	int				eFlags;
@@ -347,15 +349,19 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 
 	if (!strcmp(ent->classname, "hook")) {
 		gentity_t *nent;
-		vec3_t v;
+		vec3_t v, facing;
 
 		nent = G_Spawn();
 		if ( other->takedamage && other->client ) {
 
-			G_AddEvent( nent, EV_MISSILE_HIT, DirToByte( trace->plane.normal ) );
+			// Retail 0x1005bf77 puts the impact event on the hook itself.
+			G_AddEvent( ent, EV_MISSILE_HIT, DirToByte( trace->plane.normal ) );
 			nent->s.otherEntityNum = other->s.number;
 
 			ent->enemy = other;
+			ent->eventTime = level.time + weapon_reload_gh.integer;
+			// This bit reduces the hooked victim's movement friction.
+			other->client->ps.pm_flags |= PMF_SCOREBOARD;
 
 			v[0] = other->r.currentOrigin[0] + (other->r.mins[0] + other->r.maxs[0]) * 0.5;
 			v[1] = other->r.currentOrigin[1] + (other->r.mins[1] + other->r.maxs[1]) * 0.5;
@@ -364,8 +370,14 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 			SnapVectorTowards( v, ent->s.pos.trBase );	// save net bandwidth
 		} else {
 			VectorCopy(trace->endpos, v);
-			G_AddEvent( nent, EV_MISSILE_MISS, DirToByte( trace->plane.normal ) );
+			G_AddEvent( ent, EV_MISSILE_MISS, DirToByte( trace->plane.normal ) );
 			ent->enemy = NULL;
+			if ( other->s.eType == ET_MOVER && other->classname
+				&& ( !strcmp( other->classname, "func_train" ) || !strcmp( other->classname, "func_door" )
+					|| !strcmp( other->classname, "func_rotating" ) ) ) {
+				ent->enemy = other;
+				ent->count = strcmp( other->classname, "func_train" ) != 0;
+			}
 		}
 
 		SnapVectorTowards( v, ent->s.pos.trBase );	// save net bandwidth
@@ -374,12 +386,15 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 		// change over to a normal entity right at the point of impact
 		nent->s.eType = ET_GENERAL;
 		ent->s.eType = ET_GRAPPLE;
+		VectorNegate( trace->plane.normal, facing );
+		vectoangles( facing, ent->s.angles );
+		ent->s.generic1 = DirToByte( trace->plane.normal );
 
 		G_SetOrigin( ent, v );
 		G_SetOrigin( nent, v );
 
 		ent->think = Weapon_HookThink;
-		ent->nextthink = level.time + FRAMETIME;
+		ent->nextthink = level.time + G_MissilePrestep();
 
 		ent->parent->client->ps.pm_flags |= PMF_GRAPPLE_PULL;
 		VectorCopy( ent->r.currentOrigin, ent->parent->client->ps.grapplePoint);
@@ -400,6 +415,22 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 	if ( other->takedamage && other->client ) {
 		G_AddEvent( ent, EV_MISSILE_HIT, DirToByte( trace->plane.normal ) );
 		ent->s.otherEntityNum = other->s.number;
+	} else if ( ent->s.weapon == WP_ROCKET_LAUNCHER
+		&& (g_forceDmgThroughSurface.integer || (trace->surfaceFlags & SURF_DMGTHROUGH)) ) {
+		// Probe from behind a sufficiently downward-facing surface back
+		// toward the impact. A solid start means the ceiling is too thick.
+		if ( -trace->plane.normal[2] >= g_dmgThroughSurfaceAngularThreshold.value ) {
+			vec3_t start;
+			trace_t reverse;
+			int axis;
+			for ( axis = 0; axis < 3; ++axis )
+				start[axis] = (float)((double)trace->plane.normal[axis] * g_dmgThroughSurfaceDistance.value + trace->endpos[axis]);
+			trap_Trace(&reverse, start, vec3_origin, vec3_origin, trace->endpos, ENTITYNUM_NONE, CONTENTS_SOLID);
+			throughSurface = reverse.fraction < 1.0f && !reverse.startsolid && !reverse.allsolid;
+			if ( throughSurface ) VectorCopy(reverse.endpos, throughPoint);
+		}
+		G_AddEvent(ent, throughSurface ? EV_MISSILE_MISS_DMGTHROUGH : EV_MISSILE_MISS,
+			DirToByte(trace->plane.normal));
 	} else if( trace->surfaceFlags & SURF_METALSTEPS ) {
 		G_AddEvent( ent, EV_MISSILE_MISS_METAL, DirToByte( trace->plane.normal ) );
 	} else {
@@ -434,7 +465,9 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace ) {
 
 	// splash damage (doesn't apply to person directly hit)
 	if ( ent->splashDamage ) {
-		if( G_RadiusDamage( trace->endpos, ent, other, trace, dir ) ) {
+		if( throughSurface
+			? G_RadiusDamageThroughSurface(trace->endpos, ent, other, trace, dir, throughPoint)
+			: G_RadiusDamage( trace->endpos, ent, other, trace, dir ) ) {
 			if( !hitClient ) {
 				G_StatsHit( g_entities[ent->r.ownerNum].client, ent->s.weapon );
 			}
@@ -473,11 +506,19 @@ void G_RunMissile( gentity_t *ent ) {
 		passent = ent->r.ownerNum;
 	}
 	// trace a line from the previous position to the current position
-	trap_Trace( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, origin, passent, ent->clipmask );
+	if ( g_playerCylinders.integer ) {
+		trap_TraceCapsule( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, origin, passent, ent->clipmask );
+	} else {
+		trap_Trace( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, origin, passent, ent->clipmask );
+	}
 
 	if ( tr.startsolid || tr.allsolid ) {
 		// make sure the tr.entityNum is set to the entity we're stuck in
-		trap_Trace( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, ent->r.currentOrigin, passent, ent->clipmask );
+		if ( g_playerCylinders.integer ) {
+			trap_TraceCapsule( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, ent->r.currentOrigin, passent, ent->clipmask );
+		} else {
+			trap_Trace( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, ent->r.currentOrigin, passent, ent->clipmask );
+		}
 		tr.fraction = 0;
 	}
 	else {
@@ -491,7 +532,8 @@ void G_RunMissile( gentity_t *ent ) {
 		if ( tr.surfaceFlags & SURF_NOIMPACT ) {
 			// If grapple, reset owner
 			if (ent->parent && ent->parent->client && ent->parent->client->hook == ent) {
-				ent->parent->client->hook = NULL;
+				Weapon_HookFree( ent );
+				return;
 			}
 			G_FreeEntity( ent );
 			return;

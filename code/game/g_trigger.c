@@ -122,7 +122,7 @@ trigger_push
 
 void trigger_push_touch (gentity_t *self, gentity_t *other, trace_t *trace ) {
 
-	if ( !other->client ) {
+	if ( !other->client || other->client->hook ) { // retail 0x1006b5d0
 		return;
 	}
 

@@ -1,0 +1,37 @@
+// Hand-authored positions; installed Campgrounds supplies collision only.
+{
+"classname" "worldspawn"
+"message" "FnQL One Flag replay"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-400 320 250"
+}
+{
+"classname" "team_CTF_redplayer"
+"origin" "-400 -320 40"
+}
+{
+"classname" "team_CTF_redspawn"
+"origin" "-400 -320 40"
+}
+{
+"classname" "team_CTF_blueplayer"
+"origin" "120 -320 40"
+}
+{
+"classname" "team_CTF_bluespawn"
+"origin" "120 -320 40"
+}
+{
+"classname" "team_CTF_redflag"
+"origin" "-260 320 40"
+}
+{
+"classname" "team_CTF_blueflag"
+"origin" "-700 320 40"
+}
+{
+"classname" "team_CTF_neutralflag"
+"origin" "-480 320 40"
+}

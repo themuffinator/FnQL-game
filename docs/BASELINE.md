@@ -1,5 +1,181 @@
 # Baseline Import
 
+Native cgame bring-up adds a typed retail ABI adapter, repairs the dormant
+Team Arena HUD build, consumes shared QL movement settings and retail menu
+constants, and handles retail PNG icons/native text/numbered crosshairs.
+Legacy Q3-only configstrings and enums no longer enter this build. See
+[CGAME.md](CGAME.md) for clean-room evidence, gates and remaining M7 gaps.
+
+The cgame QL event adapter now handles surface footsteps, drown, armor regen,
+thaw ticks, dropped-weapon selection, spectator item timers, lightning
+discharge, awards and two announcer events. Award queuing is shared with the
+inherited playerstate path and uses retail's 16-slot capacity. Native event
+tests cover routing, bounds and effect parameters. Damage plums now have
+bounded world-text storage, weapon filtering, native projection and color
+modes; shotgun kill events produce blood and optional impact sparks from
+the retail event fields. Distance-dependent plum sizing remains open.
+No QLSRP implementation was incorporated.
+
+Cgame now handles overtime, generic match results, explicit team wins and
+red/blue round wins using retail event evidence. Result handling clears
+pending rewards/announcements, preserves a future sound deadline, chooses
+music/voice by the retail rank/team rules and suppresses later queued
+announcements until map restart. `cg_buzzerSound` defaults on. Windowed
+event-driven probes exercise complete matches and overtime; they leave the
+command buffer free for warmup's queued restart and finish through loopback
+RCON. Audio playback and full end-screen parity remain unproven.
+
+Race events now select the snapshot runner, update private run/split/record
+state, play the selected checkpoint beep and report finish deltas. Bounded
+`race_info` and `race_init` handling, timeout compensation and the installed
+race status/time ownerdraws are independently implemented from retail
+evidence. Serverinfo now publishes retail's read-only `cg_gametype` HUD
+selector. The gate links the real VM formatter, including its supported
+signed-decimal format, and gravity-only runtime probes cover both providers.
+Race points now select their active/following/finish model, floor projector,
+bob and rotation from retail evidence. Projected navigation icons use the
+retail colors, offset, world sizing and minimum size. The respawn hint reads
+native key-name import 98 without changing bindings and retires after the
+forwarded kill command. Private state, bounds and fallback behavior are
+covered by focused gates; exact text/font parity remains open.
+
+Weapon-list presentation now lives in `cg_weaponbar.c`, with retail persistent
+left/right/center lists, snapshot ammo, full-list/follow policies and the timed
+strip. Native ammo/name text, low/empty warnings and installed selection/infinite
+images follow shipping binary evidence. Default `cg_drawWeaponSelect 1` now
+uses `cg_weaponBar`; zero still hides and explicit alternate baseq3a layouts
+remain available. Production tests and retail-module comparison captures cover
+these paths. `cg_weaponselection.c` now implements shipping snapshot-based
+cycle/direct/toggle policy, empty switching, frame-observed history, spawn
+preferences, queued primary loadouts and weapon config dispatch. The native
+adapter forwards the primary instead of zero. Pickup autoswitch defaults to
+off and includes machinegun pickups when enabled, matching retail. Production
+tests bound invalid indices/numbers; input-free hosting captures exercise
+spawn preference and loadout/config behavior with both qagame providers.
+See CGAME.md for evidence and deliberate hardening of retail's slot bounds.
+
+Match/round clocks, round labels, overtime and local date/time now have
+retail-backed handlers in `cg_matchclocks.c`. Private configstring state
+handles round warmup precedence and timeout adjustments without changing
+shared structures. Production tests cover clock boundaries and malformed
+input; paired retail-module captures verify active round clocks, overtime
+and clocks held during a pause. The input-free hosting harness has new round
+and timeout gates for both providers and a finish-script marker that avoids
+retry starvation during long capture waits. Pause/time-in banners and server
+center notices (`cp`/`pcp`) now use retail text placement, lifetime and
+console behavior. Timeout audio uses existing voice selection and native
+volume import 40; the zero-count round-mode message handles AD sides and
+RR infection. Production tests and three-stage time-in captures cover the
+new path. Normal-match warmup presentation now lives in `cg_pregame.c`:
+waiting/player-count/team-balance messages, ready/unready hints, mode/duel
+titles and fixed-size countdowns use retail text and placement. Private
+configstring state supplies readiness, ready deadlines, round state and mode
+overrides. Initial preparation and per-second announcer cues replace the
+inherited duplicate sound path; round start and warmup-free map restart share
+the timeout path's retail match-start handler. Production tests and matched
+FFA/CA captures cover the normal-match path; training/tutorial presentation
+and broader menu-capture behavior remain outside this slice.
+
+The top-left standings now have private configstring inputs and retail
+mode icons, win limits, player/team rows, local-rank selection and
+remaining-player/owned-point counters. Team HUD overrides use the shipping
+`cg_redTeamName`/`cg_blueTeamName` cvars separately from inherited team names.
+Clipped names use native import 123; retail reserves ellipsis space but its
+local boundary copy leaves the dots hidden. Numeric ordering, malformed
+updates, native clipping and mode gates have production coverage. Input-free
+FFA/CA probes exercise long player names and custom team labels with both
+qagame providers. See CGAME.md for observations and validation limits.
+
+Status HUD values now use retail text anchors/ascent and the installed
+infinite-ammo icon. New production handlers supply primary/excess health
+and armor bars with retail cropped texture geometry, including the 22/32
+bonus fill height, and team-tinted HUD images. The existing team background
+and world-effect palettes are preserved. Tests cover these dispatch paths,
+invalid snapshots/indices and screen transforms; a hand-authored factory
+provides bonus-health/armor and finite-ammo runtime captures. See CGAME.md
+for shipping-binary evidence and QLSRP reconstruction discrepancies.
+
+Native HUD text now lives in `cg_text.c`. Painting and measurement use the
+same retail pixel size (`scale * vidHeight / 8`); five-float visual bounds
+and ascent are converted back to the existing HUD canvas. Native font
+selection, colors, glyph limits, shadows and glyph quads are retained.
+Production tests cover resolution transforms, invalid values and the bounds
+packet; damage-plum packed measurement remains unchanged. Custom extra
+spacing/cursor behavior and complete HUD visual parity remain open.
+
+Cgame view projection and zoom now live in `cg_fov.c`, independently written
+from retail binary evidence. The default uses retail's aspect presets,
+4:3 command FOV, local/followed/demo selection, 150 ms zoom transitions,
+sensitivity, toggle and death/intermission policy. Native range registration
+supplies the retail cvar defaults/bounds. User-command settings are published
+after the current view is calculated. The inherited explicit viewport-aspect
+option remains available, with its original attribution. Production tests
+cover these paths and invalid input; broader camera parity remains open.
+
+Round draws, last-standing voice and Red Rover winner/survivor messages now
+consume retail configstring and recipient evidence. Decimal lists and output
+buffers are bounded, with generic fallback for invalid lists. Draws clear
+pending announcements without ending the match. Paused-bot round probes
+exercise CA draws and infected RR survivors; unit tests cover local/followed
+team selection and the remaining winner-message branches.
+
+The QL effect adapter now handles thaw fragments and damage-through missile
+impacts. Thawing uses seven fragments with ice trails and one ice mark per
+fragment; the existing fragment collision path stops their trails without
+blood or bounce sounds. Through-surface impacts consume the retail distance
+configstring, add a backside burn/debris effect when collision permits it,
+and retain the ordinary explosion. Native values and trail catch-up work
+are bounded. Focused effect tests cover both effects and fallback paths;
+matched retail visual parity remains open.
+
+Player animation, powerup passes and overhead-sprite selection are isolated
+in `cg_playerpresentation.c` for direct regression tests. Frozen animation
+uses zero speed before haste; `generic1` thaw-progress bits choose the three
+installed ice materials after the existing powerup passes. Invisible players
+retain their single invisibility pass. Retail's default-off `cg_drawSpriteSelf`
+also prevents the inherited local friend sprite from obscuring third-person
+views. Teammate marker presentation remains unfinished.
+
+The cgame prediction cache now compares QL jump/crouch timing and additional
+playerstate fields before reuse, preventing server corrections from being
+replaced by stale cached state. A production-predictor harness reproduces
+the original failure and compares delayed-acknowledgement replay with fresh
+Pmove state, while bounding collision work. Missing command reads preserve
+the last valid prediction and discard the cache. Disconnect display includes
+retail's three-second level-start grace period. Full G4 remains open.
+
+Cgame now parses the retail score command family with bounded, transactional
+updates and supplies the main per-mode scoreboard rows. It loads the installed
+ingame/end scoreboard menus alongside the HUD and reloads them together.
+The shared menu reader accepts scoreboard colors, per-item widescreen anchors,
+secondary visibility flags and up to 32 list columns; excess accepted column
+definitions are consumed without desynchronizing the parser. Cgame's menu
+allocation pool is enlarged to fit these assets, with allocation-failure guards.
+Team score/name ownerdraws now use retail text anchors. Detailed end tables and
+remaining scoreboard ownerdraws are still open; see [CGAME.md](CGAME.md).
+
+The team-info reader now accepts retail's client-index list without erasing
+vitals, while preserving exact legacy records. Current snapshots supply HUD
+health, armor, location, weapon and powerup data. Bounded `acc`/`pstats` replies
+feed a working `+acc` panel with periodic requests, per-weapon icons/accuracy
+and the selected player's overall accuracy. This uses installed menu assets
+and adds no input capture or shared ABI changes.
+
+Ammo warnings now classify the selected snapshot weapon using the shared
+retail ammo-capacity table and a floating percentage threshold. Unlimited
+ammo is silent, transition sounds use the installed low/empty-ammo assets,
+and both retail warning-text sizes are available. This replaces the inherited
+Q3 loadout-wide estimate that falsely warned in Race. Production tests cover
+all weapons, fractional thresholds, transitions, invalid input and drawing.
+
+Server settings-mask bit 25 now selects the installed no-player-clipping
+material for remote bodies, missiles and weapons, before ordinary powerup
+passes. The body and weapon paths retain retail's different local/viewed
+client comparisons. `cg_drawGun 3` selects the installed local ghost-weapon
+material. Existing animation, powerup and freeze passes remain regression
+tested. Missile client lookup also replaces an incorrect bit mask with a
+bounded index, avoiding wrong team colors and a possible out-of-bounds read.
+
 | | |
 |---|---|
 | Upstream | https://github.com/ec-/baseq3a |
@@ -349,3 +525,65 @@ comments and docs/PLAN.md):
   The inherited floor-lowering pass was removed because it displaced the
   missing-intermission spectator fallback on Devilish (0x10054f4b). The
   stock-map gates now compare two spectators as well as map entities.
+
+- Damaged-health drops are independently implemented from retail 0x1004f8c0:
+  health actually lost becomes 25/5 pickups, with the retail toss and random
+  consumption. Dynamic precaching and ten-second ordinary-drop expiry follow
+  0x1004ffd0 and 0x1004f6ec. Missile updates run in entity order (0x100597d4)
+  with retail's current-position collision (legacy rewind remains opt-in);
+  this permits health items
+  spawned by impacts to run in the same frame. No QLSRP implementation was
+  incorporated.
+- Grapple lifecycle, player pull/friction, obstruction reset and damage ticks
+  follow retail 0x1005bf3d, 0x1006e330, 0x1006e400 and 0x10035190. Projectile
+  collision uses the selected box/capsule trace path (0x1005c991). Lightning
+  discharge uses a separate wet-target radius query and its retail ammo/effect
+  contract (0x1004a7a0, 0x1006eb1d); LG pickups replenish the infinite-ammo
+  sentinel after a discharge (0x1004dac1). All are independent implementations.
+- Sessions now write the retail thirteen-field order (0x10065880), preserve
+  the reserved tail, and read older FnQL-game records with explicit bounds.
+  ClientThink persists the replicated primary weapon as the loadout choice
+  before pmove (0x10034e20). Team-kill complaint prompts, vote responses,
+  privilege exemptions and temporary bans are independently implemented in
+  `g_complaint.c` from 0x1004756e/0x10043ab0/0x1003c943. The unreachable
+  nonfatal-damage branch (0x10049363..6f) remains inactive, as verified by
+  retail disassembly and the strict dedicated-server scenario.
+- Rocket penetration is independently implemented from 0x1005c395 and
+  0x1004a3e0: reverse solid probes, event 86, reduced-radius visibility and
+  far-side knockback. Normal splash retains the original path. Warmup's
+  inherited forced/read-only cvar override is removed to match the retail
+  registration at 0x1008e0b8; countdown joins preserve the CA/FT firing lock.
+
+- One Flag CTF now uses retail flag status values, neutral carrier snapshot
+  visibility and team pings (0x10069eaf/0x10052dc0/0x10034777). Death-drop
+  pickup bonuses follow 0x10069f51. Seven strict pairs cover captures, drops,
+  expiry, disconnect, pause, restart and capturelimit. The latter also
+  verifies that map_restart retains CS_INTERMISSION, as retail G_InitGame does.
+- `g_laghax.c` independently implements retail's bounded hitscan rewind
+  (0x10051660..0x10051add), including newer-sample stance bounds. FnQL's
+  harness supplies delayed usercmds; the prior DLL differs by 1,744 fields/
+  frames in the new moving-target fixture, while the rewrite has zero.
+  Legacy full/frame compensation remains selectable. Moving trains now
+  collide with hooks and use retail's crush handler (0x1005e395/0x10060a56).
+- Live infinite-ammo changes update normal connected players immediately
+  (0x100520e0/0x10059cb0). Jump-pad contact consumes the double-jump allowance,
+  emits event parm zero and accepts frozen players (0x1002d540); a player
+  with a hook ignores trigger_push (0x1006b5d0). The ordinary-movement
+  stock-map fixture reproduces the former jump-pad mismatch and now passes.
+
+- Rail headshot classification is supplied by FnQL's point-trace path from
+  retail engine evidence (0x4c6bd0/0x4c6d6b/0x4c6da0), independently of the
+  preserved movement-capsule profile. `ffa_headshot` compares standing and
+  ducked bonuses, ordinary torso damage, box traces and restart. Retail
+  qagame's bonus/death-type branch is exercised with actual 210-point hits.
+- Duplicate player names use retail's numeric-color/case comparison and
+  bounded prefix selection (0x1003a350/0x1003a62a), followed by the exact
+  bad-userinfo predicate (0x1003aa03). The strict userinfo pair covers both
+  enforcement settings, valid colors, collisions, truncation and restart.
+
+- Native UI: replaced the unused vmMain/syscall entrypoint with a typed retail
+  97-import/14-export boundary. The old `code/q3_ui/` tree is removed; native
+  menus, settings, bindings, voting, player actions and demos
+  live only in `code/ui/`. QL widgets, numeric crosshairs, model/skin pairs,
+  native text and bounded menu parsing are independent adaptations of the
+  baseline architecture. [UI.md](UI.md) records observations and gates.

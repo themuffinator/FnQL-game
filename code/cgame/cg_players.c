@@ -614,6 +614,9 @@ static qboolean CG_RegisterClientModelname( clientInfo_t *ci, const char *modelN
 	if ( CG_FindClientHeadFile( filename, sizeof(filename), ci, teamName, headName, headSkinName, "icon", "skin" ) ) {
 		ci->modelIcon = trap_R_RegisterShaderNoMip( filename );
 	}
+	else if ( CG_FindClientHeadFile( filename, sizeof(filename), ci, teamName, headName, headSkinName, "icon", "png" ) ) {
+		ci->modelIcon = trap_R_RegisterShaderNoMip( filename );
+	}
 	else if ( CG_FindClientHeadFile( filename, sizeof(filename), ci, teamName, headName, headSkinName, "icon", "tga" ) ) {
 		ci->modelIcon = trap_R_RegisterShaderNoMip( filename );
 	}
@@ -622,6 +625,7 @@ static qboolean CG_RegisterClientModelname( clientInfo_t *ci, const char *modelN
 		return qfalse;
 	}
 
+	CG_ComputeModelHeightScale( ci, modelName );	// retail 0x1003d5b5..0x1003d5df
 	return qtrue;
 }
 
@@ -854,6 +858,7 @@ static void CG_CopyClientInfoModel( const clientInfo_t *from, clientInfo_t *to )
 	to->headModel = from->headModel;
 	to->headSkin = from->headSkin;
 	to->modelIcon = from->modelIcon;
+	to->modelHeightScale = from->modelHeightScale;
 
 	to->newAnims = from->newAnims;
 	to->coloredSkin = from->coloredSkin;
@@ -994,6 +999,21 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 	team = newInfo->team;
 	pm_model = ( Q_stricmp( cg_enemyModel.string, PM_SKIN ) == 0 ) ? qtrue : qfalse;
 
+	// retail 0x1003e133/0x1003e347: a server model (head) override turns off
+	// the client's own forced models (heads); the override itself reaches
+	// the client through the player's configstring
+	if ( ( setColor ? cgs.playerModelOverride[0] : cgs.playerHeadModelOverride[0] ) ) {
+		Q_strncpyz( modelName, infomodel, modelNameSize );
+		slash = strchr( modelName, '/' );
+		if ( !slash ) {
+			Q_strncpyz( skinName, "default", skinNameSize );
+		} else {
+			Q_strncpyz( skinName, slash + 1, skinNameSize );
+			*slash = '\0';
+		}
+		return;
+	}
+
 	if ( cg_forceModel.integer || cg_enemyModel.string[0] || cg_teamModel.string[0] )
 	{
 		if ( cgs.gametype >= GT_TEAM )
@@ -1085,7 +1105,7 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 			}
 		} else { // not team game
 
-			if ( pm_model && myClientNum != clientNum && cgs.gametype != GT_SINGLE_PLAYER ) {
+			if ( pm_model && myClientNum != clientNum ) {
 				Q_strncpyz( modelName, infomodel, modelNameSize );
 
 				// strip skin name from model name
@@ -1106,7 +1126,7 @@ static void CG_SetSkinAndModel( clientInfo_t *newInfo,
 					newInfo->coloredSkin = qtrue;
 				}
 
-			} else if ( cg_enemyModel.string[0] && myClientNum != clientNum && !allowNativeModel && cgs.gametype != GT_SINGLE_PLAYER ) {
+			} else if ( cg_enemyModel.string[0] && myClientNum != clientNum && !allowNativeModel ) {
 
 				Q_strncpyz( modelName, cg_enemyModel.string, modelNameSize );
 
@@ -1258,6 +1278,12 @@ void CG_NewClientInfo( int clientNum ) {
 	v = Info_ValueForKey( configstring, "l" );
 	newInfo.losses = atoi( v );
 
+	// spectator-only flag and queue position (retail 0x1003e9f2/0x1003ea0b)
+	v = Info_ValueForKey( configstring, "so" );
+	newInfo.spectatorOnly = atoi( v );
+	v = Info_ValueForKey( configstring, "pq" );
+	newInfo.playerQueue = atoi( v );
+
 	// always apply team colors [4] and [5] if specified, this will work in non-team games too
 	if ( cg_teamColors.string[0] && team != TEAM_SPECTATOR ) {
 		if ( allowNativeModel || ( ( team == TEAM_RED || team == TEAM_BLUE ) && team == myTeam && ( clientNum != myClientNum || cg.demoPlayback ) ) ) {
@@ -1283,8 +1309,9 @@ void CG_NewClientInfo( int clientNum ) {
 	CG_SetSkinAndModel( &newInfo, ci, v, allowNativeModel, clientNum, myClientNum, myTeam, qtrue, 
 		newInfo.modelName, sizeof( newInfo.modelName ),	newInfo.skinName, sizeof( newInfo.skinName ) );
 
-	// head model
-	v = Info_ValueForKey( configstring, "hmodel" );
+	// head model; without g_allowCustomHeadmodels the head follows the body
+	// model (retail 0x1003eb38)
+	v = Info_ValueForKey( configstring, cgs.allowCustomHeadmodels ? "hmodel" : "model" );
 	CG_SetSkinAndModel( &newInfo, ci, v, allowNativeModel, clientNum, myClientNum, myTeam, qfalse, 
 		newInfo.headModelName, sizeof( newInfo.headModelName ),	newInfo.headSkinName, sizeof( newInfo.headSkinName ) );
 
@@ -1344,190 +1371,6 @@ void CG_LoadDeferredPlayers( void ) {
 //			break;
 		}
 	}
-}
-
-/*
-=============================================================================
-
-PLAYER ANIMATION
-
-=============================================================================
-*/
-
-
-/*
-===============
-CG_SetLerpFrameAnimation
-
-may include ANIM_TOGGLEBIT
-===============
-*/
-static void CG_SetLerpFrameAnimation( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation ) {
-	animation_t	*anim;
-
-	lf->animationNumber = newAnimation;
-	newAnimation &= ~ANIM_TOGGLEBIT;
-
-	if ( newAnimation < 0 || newAnimation >= MAX_TOTALANIMATIONS ) {
-		CG_Error( "Bad animation number: %i", newAnimation );
-	}
-
-	anim = &ci->animations[ newAnimation ];
-
-	lf->animation = anim;
-	lf->animationTime = lf->frameTime + anim->initialLerp;
-
-	if ( cg_debugAnim.integer ) {
-		CG_Printf( "Anim: %i\n", newAnimation );
-	}
-}
-
-
-/*
-===============
-CG_RunLerpFrame
-
-Sets cg.snap, cg.oldFrame, and cg.backlerp
-cg.time should be between oldFrameTime and frameTime after exit
-===============
-*/
-static void CG_RunLerpFrame( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation, float speedScale ) {
-	int			f, numFrames;
-	animation_t	*anim;
-
-	// debugging tool to get no animations
-	if ( cg_animSpeed.integer == 0 ) {
-		lf->oldFrame = lf->frame = lf->backlerp = 0;
-		return;
-	}
-
-	// see if the animation sequence is switching
-	if ( newAnimation != lf->animationNumber || !lf->animation ) {
-		CG_SetLerpFrameAnimation( ci, lf, newAnimation );
-	}
-
-	// if we have passed the current frame, move it to
-	// oldFrame and calculate a new frame
-	if ( cg.time >= lf->frameTime ) {
-		lf->oldFrame = lf->frame;
-		lf->oldFrameTime = lf->frameTime;
-
-		// get the next frame based on the animation
-		anim = lf->animation;
-		if ( !anim->frameLerp ) {
-			return;		// shouldn't happen
-		}
-		if ( cg.time < lf->animationTime ) {
-			lf->frameTime = lf->animationTime;		// initial lerp
-		} else {
-			lf->frameTime = lf->oldFrameTime + anim->frameLerp;
-		}
-		f = ( lf->frameTime - lf->animationTime ) / anim->frameLerp;
-		f *= speedScale;		// adjust for haste, etc
-
-		numFrames = anim->numFrames;
-		if (anim->flipflop) {
-			numFrames *= 2;
-		}
-		if ( f >= numFrames ) {
-			f -= numFrames;
-			if ( anim->loopFrames ) {
-				f %= anim->loopFrames;
-				f += anim->numFrames - anim->loopFrames;
-			} else {
-				f = numFrames - 1;
-				// the animation is stuck at the end, so it
-				// can immediately transition to another sequence
-				lf->frameTime = cg.time;
-			}
-		}
-		if ( anim->reversed ) {
-			lf->frame = anim->firstFrame + anim->numFrames - 1 - f;
-		}
-		else if (anim->flipflop && f>=anim->numFrames) {
-			lf->frame = anim->firstFrame + anim->numFrames - 1 - (f%anim->numFrames);
-		}
-		else {
-			lf->frame = anim->firstFrame + f;
-		}
-		if ( cg.time > lf->frameTime ) {
-			lf->frameTime = cg.time;
-			if ( cg_debugAnim.integer ) {
-				CG_Printf( "Clamp lf->frameTime\n");
-			}
-		}
-	}
-
-	if ( lf->frameTime > cg.time + 200 ) {
-		lf->frameTime = cg.time;
-	}
-
-	if ( lf->oldFrameTime > cg.time ) {
-		lf->oldFrameTime = cg.time;
-	}
-	// calculate current lerp value
-	if ( lf->frameTime == lf->oldFrameTime ) {
-		lf->backlerp = 0;
-	} else {
-		lf->backlerp = 1.0 - (float)( cg.time - lf->oldFrameTime ) / ( lf->frameTime - lf->oldFrameTime );
-	}
-}
-
-
-/*
-===============
-CG_ClearLerpFrame
-===============
-*/
-static void CG_ClearLerpFrame( clientInfo_t *ci, lerpFrame_t *lf, int animationNumber ) {
-	lf->frameTime = lf->oldFrameTime = cg.time;
-	CG_SetLerpFrameAnimation( ci, lf, animationNumber );
-	lf->oldFrame = lf->frame = lf->animation->firstFrame;
-}
-
-
-/*
-===============
-CG_PlayerAnimation
-===============
-*/
-static void CG_PlayerAnimation( centity_t *cent, int *legsOld, int *legs, float *legsBackLerp,
-						int *torsoOld, int *torso, float *torsoBackLerp ) {
-	clientInfo_t	*ci;
-	int				clientNum;
-	float			speedScale;
-
-	clientNum = cent->currentState.clientNum;
-
-	if ( cg_noPlayerAnims.integer ) {
-		*legsOld = *legs = *torsoOld = *torso = 0;
-		return;
-	}
-
-	if ( cent->currentState.powerups & ( 1 << PW_HASTE ) ) {
-		speedScale = 1.5;
-	} else {
-		speedScale = 1;
-	}
-
-	ci = &cgs.clientinfo[ clientNum ];
-
-	// do the shuffle turn frames locally
-	if ( cent->pe.legs.yawing && ( cent->currentState.legsAnim & ~ANIM_TOGGLEBIT ) == LEGS_IDLE ) {
-		CG_RunLerpFrame( ci, &cent->pe.legs, LEGS_TURN, speedScale );
-	} else {
-		CG_RunLerpFrame( ci, &cent->pe.legs, cent->currentState.legsAnim, speedScale );
-	}
-
-	*legsOld = cent->pe.legs.oldFrame;
-	*legs = cent->pe.legs.frame;
-	*legsBackLerp = cent->pe.legs.backlerp;
-
-	CG_RunLerpFrame( ci, &cent->pe.torso, cent->currentState.torsoAnim, speedScale );
-
-	*torsoOld = cent->pe.torso.oldFrame;
-	*torso = cent->pe.torso.frame;
-	*torsoBackLerp = cent->pe.torso.backlerp;
 }
 
 /*
@@ -2159,100 +2002,6 @@ static void CG_PlayerPowerups( centity_t *cent, refEntity_t *torso ) {
 
 /*
 ===============
-CG_PlayerFloatSprite
-
-Float a sprite over the player's head
-===============
-*/
-static void CG_PlayerFloatSprite( const centity_t *cent, qhandle_t shader ) {
-	int				rf;
-	refEntity_t		ent;
-
-	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
-		rf = RF_THIRD_PERSON;		// only show in mirrors
-	} else {
-		rf = 0;
-	}
-
-	memset( &ent, 0, sizeof( ent ) );
-	VectorCopy( cent->lerpOrigin, ent.origin );
-	ent.origin[2] += 48;
-	ent.reType = RT_SPRITE;
-	ent.customShader = shader;
-	ent.radius = 10;
-	ent.renderfx = rf;
-	ent.shaderRGBA[0] = 255;
-	ent.shaderRGBA[1] = 255;
-	ent.shaderRGBA[2] = 255;
-	ent.shaderRGBA[3] = 255;
-	trap_R_AddRefEntityToScene( &ent );
-}
-
-
-/*
-===============
-CG_PlayerSprites
-
-Float sprites over the player's head
-===============
-*/
-static void CG_PlayerSprites( centity_t *cent ) {
-	int		team;
-
-	if ( cent->currentState.eFlags & EF_CONNECTION ) {
-		CG_PlayerFloatSprite( cent, cgs.media.connectionShader );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_TALK ) {
-		CG_PlayerFloatSprite( cent, cgs.media.balloonShader );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_AWARD_IMPRESSIVE ) {
-		CG_PlayerFloatSprite( cent, cgs.media.medalImpressive );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_AWARD_EXCELLENT ) {
-		CG_PlayerFloatSprite( cent, cgs.media.medalExcellent );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_AWARD_GAUNTLET ) {
-		CG_PlayerFloatSprite( cent, cgs.media.medalGauntlet );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_AWARD_DEFEND ) {
-		CG_PlayerFloatSprite( cent, cgs.media.medalDefend );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_AWARD_ASSIST ) {
-		CG_PlayerFloatSprite( cent, cgs.media.medalAssist );
-		return;
-	}
-
-	if ( cent->currentState.eFlags & EF_AWARD_CAP ) {
-		CG_PlayerFloatSprite( cent, cgs.media.medalCapture );
-		return;
-	}
-
-	team = cgs.clientinfo[ cent->currentState.clientNum ].team;
-	if ( !(cent->currentState.eFlags & EF_DEAD) && 
-		cg.snap->ps.persistant[PERS_TEAM] == team &&
-		cgs.gametype >= GT_TEAM) {
-		if (cg_drawFriend.integer) {
-			CG_PlayerFloatSprite( cent, cgs.media.friendShader );
-		}
-		return;
-	}
-}
-
-
-/*
-===============
 CG_PlayerShadow
 
 Returns the Z component of the surface being shadowed
@@ -2398,54 +2147,6 @@ static void CG_PlayerSplash( const centity_t *cent ) {
 
 
 /*
-===============
-CG_AddRefEntityWithPowerups
-
-Adds a piece with modifications or duplications for powerups
-Also called by CG_Missile for quad rockets, but nobody can tell...
-===============
-*/
-void CG_AddRefEntityWithPowerups( refEntity_t *ent, entityState_t *state, int team ) {
-
-	if ( state->powerups & ( 1 << PW_INVIS ) ) {
-		ent->customShader = cgs.media.invisShader;
-		trap_R_AddRefEntityToScene( ent );
-	} else {
-		/*
-		if ( state->eFlags & EF_KAMIKAZE ) {
-			if (team == TEAM_BLUE)
-				ent->customShader = cgs.media.blueKamikazeShader;
-			else
-				ent->customShader = cgs.media.redKamikazeShader;
-			trap_R_AddRefEntityToScene( ent );
-		}
-		else {*/
-			trap_R_AddRefEntityToScene( ent );
-		//}
-
-		if ( state->powerups & ( 1 << PW_QUAD ) )
-		{
-			if (team == TEAM_RED)
-				ent->customShader = cgs.media.redQuadShader;
-			else
-				ent->customShader = cgs.media.quadShader;
-			trap_R_AddRefEntityToScene( ent );
-		}
-		if ( state->powerups & ( 1 << PW_REGEN ) ) {
-			if ( ( ( cg.time / 100 ) % 10 ) == 1 ) {
-				ent->customShader = cgs.media.regenShader;
-				trap_R_AddRefEntityToScene( ent );
-			}
-		}
-		if ( state->powerups & ( 1 << PW_BATTLESUIT ) ) {
-			ent->customShader = cgs.media.battleSuitShader;
-			trap_R_AddRefEntityToScene( ent );
-		}
-	}
-}
-
-
-/*
 =================
 CG_LightVerts
 =================
@@ -2562,6 +2263,9 @@ void CG_Player( centity_t *cent ) {
 
 	// add the talk baloon or disconnect icon
 	CG_PlayerSprites( cent );
+
+	// retail 0x10042bc3: objective markers for the snapshot player
+	CG_ObjectiveMarkers( cent );
 
 	// add the shadow
 	shadow = CG_PlayerShadow( cent, &shadowPlane );
@@ -2775,7 +2479,7 @@ void CG_Player( centity_t *cent ) {
 		powerup.customSkin = 0;
 		trap_R_AddRefEntityToScene( &powerup );
 	}
-	if ( cent->currentState.powerups & ( 1 << PW_AMMOREGEN ) ) {
+	if ( cent->currentState.powerups & ( 1 << PW_ARMORREGEN ) ) {
 		memcpy(&powerup, &torso, sizeof(torso));
 		powerup.hModel = cgs.media.ammoRegenPowerupModel;
 		powerup.frame = 0;
@@ -2857,6 +2561,19 @@ void CG_Player( centity_t *cent ) {
 	VectorCopy( cent->lerpOrigin, head.lightingOrigin );
 
 	CG_PositionRotatedEntityOnTag( &head, &torso, ci->torsoModel, "tag_head");
+
+	// retail 0x10042a83: outside demos the server's head scale applies,
+	// lowering the head by 24 * (1 - g_playerheadScaleOffset)
+	if ( !cg.demoPlayback ) {
+		int i, j;
+		head.nonNormalizedAxes = qtrue;
+		head.origin[2] = (float)( head.origin[2] - ( cgs.playerHeadScaleOffset * -24.0 + 24.0 ) );
+		for ( i = 0; i < 3; i++ ) {
+			for ( j = 0; j < 3; j++ ) {
+				head.axis[i][j] *= cgs.playerHeadScale;
+			}
+		}
+	}
 
 	head.shadowPlane = shadowPlane;
 	head.renderfx = renderfx;

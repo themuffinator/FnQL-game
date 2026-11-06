@@ -91,7 +91,7 @@ qboolean G_ReadyToStart( void ) {
 	return level.warmupTime >= 0;
 }
 
-int TeamCount( int ignore, int team ) {
+int TeamCount( int ignore, team_t team ) {
 	int i, count = 0;
 	for ( i = 0; i < level.maxclients; ++i )
 		if ( i != ignore && clients[i].pers.connected == CON_CONNECTED &&

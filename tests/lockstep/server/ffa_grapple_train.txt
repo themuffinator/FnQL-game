@@ -1,0 +1,13 @@
+# G3: latch to an installed brush model, follow its train motion, release.
+fnql-lockstep 1
+client alpha name Alpha
+clientcmd 1 alpha team f
+clientcmd 10 alpha give Grappling Hook
+at 20 alpha weapon=10 pitch=5
+at 40 alpha buttons=attack
+at 240 alpha buttons=0
+clientcmd 270 alpha setviewpos -260 -320 40 180
+at 280 alpha buttons=attack
+at 400 alpha weapon=2
+at 420 alpha buttons=0
+cmd 500 map_restart 0

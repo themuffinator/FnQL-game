@@ -5,9 +5,11 @@
 // be a valid snapshot this frame
 
 #include "cg_local.h"
+#include <errno.h>
+#include <limits.h>
 
 #ifdef MISSIONPACK // bk001204
-#include "../../ui/menudef.h" // bk001205 - for Q3_ui as well
+#include "../../docs/contract/retail_menudef.h" // bk001205 - for Q3_ui as well
 
 typedef struct {
 	const char *order;
@@ -40,84 +42,6 @@ static int CG_ValidOrder(const char *p) {
 #endif
 
 /*
-=================
-CG_ParseScores
-
-=================
-*/
-static void CG_ParseScores( void ) {
-	int		i, powerups;
-
-	cg.numScores = atoi( CG_Argv( 1 ) );
-	if ( cg.numScores > MAX_CLIENTS ) {
-		cg.numScores = MAX_CLIENTS;
-	}
-
-	cg.teamScores[0] = atoi( CG_Argv( 2 ) );
-	cg.teamScores[1] = atoi( CG_Argv( 3 ) );
-
-	memset( cg.scores, 0, sizeof( cg.scores ) );
-	for ( i = 0 ; i < cg.numScores ; i++ ) {
-		//
-		cg.scores[i].client = atoi( CG_Argv( i * 14 + 4 ) );
-		cg.scores[i].score = atoi( CG_Argv( i * 14 + 5 ) );
-		cg.scores[i].ping = atoi( CG_Argv( i * 14 + 6 ) );
-		cg.scores[i].time = atoi( CG_Argv( i * 14 + 7 ) );
-		cg.scores[i].scoreFlags = atoi( CG_Argv( i * 14 + 8 ) );
-		powerups = atoi( CG_Argv( i * 14 + 9 ) );
-		cg.scores[i].accuracy = atoi(CG_Argv(i * 14 + 10));
-		cg.scores[i].impressiveCount = atoi(CG_Argv(i * 14 + 11));
-		cg.scores[i].excellentCount = atoi(CG_Argv(i * 14 + 12));
-		cg.scores[i].gauntletCount = atoi(CG_Argv(i * 14 + 13));
-		cg.scores[i].defendCount = atoi(CG_Argv(i * 14 + 14));
-		cg.scores[i].assistCount = atoi(CG_Argv(i * 14 + 15));
-		cg.scores[i].perfect = atoi(CG_Argv(i * 14 + 16));
-		cg.scores[i].captures = atoi(CG_Argv(i * 14 + 17));
-
-		if ( cg.scores[i].client < 0 || cg.scores[i].client >= MAX_CLIENTS ) {
-			cg.scores[i].client = 0;
-		}
-		cgs.clientinfo[ cg.scores[i].client ].score = cg.scores[i].score;
-		cgs.clientinfo[ cg.scores[i].client ].powerups = powerups;
-
-		cg.scores[i].team = cgs.clientinfo[cg.scores[i].client].team;
-	}
-#ifdef MISSIONPACK
-	CG_SetScoreSelection(NULL);
-#endif
-}
-
-
-/*
-=================
-CG_ParseTeamInfo
-=================
-*/
-static void CG_ParseTeamInfo( void ) {
-	int		i;
-	int		client;
-
-	numSortedTeamPlayers = atoi( CG_Argv( 1 ) );
-	if( (unsigned) numSortedTeamPlayers > TEAM_MAXOVERLAY )
-		numSortedTeamPlayers = TEAM_MAXOVERLAY;
-
-	for ( i = 0 ; i < numSortedTeamPlayers ; i++ ) {
-		client = atoi( CG_Argv( i * 6 + 2 ) );
-		if ( (unsigned) client >= MAX_CLIENTS )
-			continue;
-
-		sortedTeamPlayers[i] = client;
-
-		cgs.clientinfo[ client ].location = atoi( CG_Argv( i * 6 + 3 ) );
-		cgs.clientinfo[ client ].health = atoi( CG_Argv( i * 6 + 4 ) );
-		cgs.clientinfo[ client ].armor = atoi( CG_Argv( i * 6 + 5 ) );
-		cgs.clientinfo[ client ].curWeapon = atoi( CG_Argv( i * 6 + 6 ) );
-		cgs.clientinfo[ client ].powerups = atoi( CG_Argv( i * 6 + 7 ) );
-	}
-}
-
-
-/*
 ================
 CG_ParseServerinfo
 
@@ -131,12 +55,31 @@ void CG_ParseServerinfo( void ) {
 
 	info = CG_ConfigString( CS_SERVERINFO );
 	cgs.gametype = atoi( Info_ValueForKey( info, "g_gametype" ) );
+	/* Retail 10048967: installed HUDs select mode-specific panels here. */
+	trap_Cvar_Set( "cg_gametype", va( "%i", cgs.gametype ) );
 	trap_Cvar_Set( "ui_gametype", va( "%i", cgs.gametype ) );
 	cgs.dmflags = atoi( Info_ValueForKey( info, "dmflags" ) );
 	cgs.teamflags = atoi( Info_ValueForKey( info, "teamflags" ) );
 	cgs.fraglimit = atoi( Info_ValueForKey( info, "fraglimit" ) );
 	cgs.capturelimit = atoi( Info_ValueForKey( info, "capturelimit" ) );
 	cgs.timelimit = atoi( Info_ValueForKey( info, "timelimit" ) );
+	/* Retail 10048b03 reads g_overtime; malformed durations have no extension. */
+	{
+		const char *value = Info_ValueForKey(info,"g_overtime");
+		char *end;
+		long seconds;
+		errno = 0;
+		seconds = strtol(value,&end,10);
+		cgs.overtimeSeconds = value != end && !*end && !errno && seconds >= 0 && seconds <= INT_MAX ? (int)seconds : 0;
+	}
+	cgs.itemHeight = atoi(Info_ValueForKey(info, "g_itemHeight"));
+	cgs.weaponRespawn = atoi(Info_ValueForKey(info, "g_weaponRespawn"));
+	/* Retail 10048a77: handicapped maxima and the scoreboard handicap column. */
+	cgs.startingHealth = atoi(Info_ValueForKey(info, "g_startingHealth"));
+	cgs.timeoutCount = atoi(Info_ValueForKey(info, "g_timeoutCount"));   /* retail 0x10049457 */
+	cgs.teamSize = atoi(Info_ValueForKey(info, "teamsize"));
+	cgs.armorTiered = atoi(Info_ValueForKey(CG_ConfigString(CS_ARMOR_SETTINGS), "armor_tiered")) != 0;
+	CG_ParseAppearanceSettings();
 	cgs.maxclients = atoi( Info_ValueForKey( info, "sv_maxclients" ) );
 	mapname = Info_ValueForKey( info, "mapname" );
 	Com_sprintf( cgs.mapname, sizeof( cgs.mapname ), "maps/%s.bsp", mapname );
@@ -145,71 +88,56 @@ void CG_ParseServerinfo( void ) {
 }
 
 
+/* Retail 0x10048e40 reads CS_APPEARANCE_SETTINGS on the game state and on
+ * change: g_playerheadScale (0x10a5fd90), g_playerheadScaleOffset (0x10a5fd94)
+ * and g_playerModelScale (0x10a5fd98), beside the model overrides that
+ * FnQL-game does not apply yet. Retail takes atof of a missing key (0, which
+ * would hide every head); a missing key keeps the server default here
+ * (1.0, 1.0 and 1.1, as registered by the game) instead. */
+static float CG_AppearanceValue(const char *info, const char *key, float fallback) {
+	const char *value = Info_ValueForKey(info, key);
+	return value[0] ? (float)atof(value) : fallback;
+}
+
+void CG_ParseAppearanceSettings(void) {
+	const char *info = CG_ConfigString(CS_APPEARANCE_SETTINGS);
+	char model[sizeof(cgs.playerModelOverride)], head[sizeof(cgs.playerHeadModelOverride)];
+	int custom;
+	Q_strncpyz(model, Info_ValueForKey(info, "g_playermodelOverride"), sizeof(model));
+	Q_strncpyz(head, Info_ValueForKey(info, "g_playerheadmodelOverride"), sizeof(head));
+	custom = atoi(Info_ValueForKey(info, "g_allowCustomHeadmodels"));
+	if (strcmp(model, cgs.playerModelOverride) || strcmp(head, cgs.playerHeadModelOverride) ||
+	    custom != cgs.allowCustomHeadmodels) {
+		Q_strncpyz(cgs.playerModelOverride, model, sizeof(cgs.playerModelOverride));
+		Q_strncpyz(cgs.playerHeadModelOverride, head, sizeof(cgs.playerHeadModelOverride));
+		cgs.allowCustomHeadmodels = custom;
+		/* Retail 0x1003e440 re-reads every client after the settings change. */
+		if (cg.clientFrame) CG_ForceModelChange();
+	}
+	cgs.playerHeadScale = CG_AppearanceValue(info, "g_playerheadScale", 1.0f);
+	cgs.playerHeadScaleOffset = CG_AppearanceValue(info, "g_playerheadScaleOffset", 1.0f);
+	cgs.playerModelScale = CG_AppearanceValue(info, "g_playerModelScale", 1.1f);
+	CG_RefreshModelHeightScales();	/* retail 0x1003e4b0 */
+}
+
+/* Published by the QL engine at 0x2a9/0x2ab; shared parser is gated by G3. */
+void CG_ParsePmoveSettings(void) {
+    pmoveSettings_t settings;
+    BG_PmoveSettingsFromInfo(CG_ConfigString(CS_PMOVE_SETTINGS), &settings);
+    BG_WeaponReloadFromInfo(CG_ConfigString(CS_WEAPON_SETTINGS), &settings);
+    if (memcmp(&settings, &cgs.pmoveSettings, sizeof(settings))) {
+        cgs.pmoveSettings = settings;
+        cg.lastPredictedCommand = 0;
+        cg.stateTail = cg.stateHead;
+    }
+}
+
 void CG_ParseSysteminfo( void ) {
 	const char	*info;
 
 	info = CG_ConfigString( CS_SYSTEMINFO );
 
-	cgs.pmove_fixed = ( atoi( Info_ValueForKey( info, "pmove_fixed" ) ) ) ? qtrue : qfalse;
-	cgs.pmove_msec = atoi( Info_ValueForKey( info, "pmove_msec" ) );
-	if ( cgs.pmove_msec < 8 ) {
-		cgs.pmove_msec = 8;
-	} else if ( cgs.pmove_msec > 33 ) {
-		cgs.pmove_msec = 33;
-	}
 
-	cgs.synchronousClients = ( atoi( Info_ValueForKey( info, "g_synchronousClients" ) ) ) ? qtrue : qfalse;
-}
-
-
-/*
-==================
-CG_ParseWarmup
-==================
-*/
-static void CG_ParseWarmup( void ) {
-	const char	*info;
-	int			warmup;
-
-	info = CG_ConfigString( CS_WARMUP );
-
-	warmup = atoi( info );
-	cg.warmupCount = -1;
-
-	if ( warmup ) {
-		cg.timelimitWarnings |= 1 | 2 | 4;
-		cg.fraglimitWarnings |= 1 | 2 | 4;
-	}
-
-	if ( cg.clientFrame == 0 ) {
-		if ( warmup == 0 && cgs.gametype != GT_SINGLE_PLAYER ) {
-			if ( cg.snap && ( cg.snap->ps.persistant[PERS_TEAM] != TEAM_SPECTATOR || cg.snap->ps.pm_flags & PMF_FOLLOW ) ) {
-				// force sound playback in CG_WarmupEvents()
-				cg.warmup = cg.time;
-				cg.warmupCount = -2; // special value to silent FIGHT sound for demo playback
-			}
-			return;
-		}
-	}
-
-	if ( warmup == 0 && cg.warmup ) {
-
-	} else if ( warmup > 0 && cg.warmup <= 0 ) {
-#ifdef MISSIONPACK
-		if (cgs.gametype >= GT_CTF && cgs.gametype <= GT_HARVESTER) {
-			trap_S_StartLocalSound( cgs.media.countPrepareTeamSound, CHAN_ANNOUNCER );
-		} else
-#endif
-		{
-			if ( cg.soundPlaying != cgs.media.countPrepareSound ) {
-				CG_AddBufferedSound( -1 );
-				CG_AddBufferedSound( cgs.media.countPrepareSound );
-				cg.soundTime = cg.time + 1; // play in next frame
-			}
-		}
-	}
-
-	cg.warmup = warmup;
 }
 
 
@@ -237,7 +165,12 @@ void CG_SetConfigValues( void ) {
 		cgs.flagStatus = s[0] - '0';
 	}
 #endif
-	CG_ParseWarmup();
+	CG_InitMatchClocks();
+	CG_ClearObituaries();
+	CG_ClearDuelSlots();
+	CG_ClearTimedItems();
+	CG_InitStandings();
+	CG_InitPregame();
 }
 
 
@@ -247,38 +180,7 @@ CG_ShaderStateChanged
 =====================
 */
 void CG_ShaderStateChanged(void) {
-	char originalShader[MAX_QPATH];
-	char newShader[MAX_QPATH];
-	char timeOffset[16];
-	const char *o;
-	char *n,*t;
-
-	o = CG_ConfigString( CS_SHADERSTATE );
-	while (o && *o) {
-		n = strchr(o, '=');
-		if (n) {
-			strncpy(originalShader, o, n-o);
-			originalShader[n-o] = '\0';
-			n++;
-			t = strchr(n, ':');
-			if (t) {
-				strncpy(newShader, n, t-n);
-				newShader[t-n] = '\0';
-			} else {
-				break;
-			}
-			t++;
-			o = strchr(t, '@');
-			if (o) {
-				strncpy(timeOffset, t, o-t);
-				timeOffset[o-t] = 0;
-				o++;
-				trap_R_RemapShader( originalShader, newShader, timeOffset );
-			}
-		} else {
-			break;
-		}
-	}
+	/* QL applies remaps through the remapShader server command. */
 }
 
 
@@ -300,21 +202,31 @@ static void CG_ConfigStringModified( void ) {
 
 	// look up the individual string that was modified
 	str = CG_ConfigString( num );
+	CG_MatchClockConfigChanged(num);
+	CG_StandingsConfigChanged(num);
+	CG_PregameConfigChanged(num);
 
 	// do something with it if necessary
 	if ( num == CS_MUSIC ) {
 		CG_StartMusic();
+	} else if (num == CS_PMOVE_SETTINGS || num == CS_WEAPON_SETTINGS) {
+		CG_ParsePmoveSettings();
+	} else if (num == CS_SETTINGS_MASK) {
+		CG_UpdatePlayerPresentationSettings();
+	} else if (num == CS_ARMOR_SETTINGS) {
+		cgs.armorTiered = atoi(Info_ValueForKey(str, "armor_tiered")) != 0;
+	} else if (num == CS_APPEARANCE_SETTINGS) {
+		CG_ParseAppearanceSettings();
 	} else if ( num == CS_SYSTEMINFO ) {
 		CG_ParseSysteminfo();
 	} else if ( num == CS_SERVERINFO ) {
 		CG_ParseServerinfo();
-	} else if ( num == CS_WARMUP ) {
-		CG_ParseWarmup();
 	} else if ( num == CS_SCORES1 ) {
 		cgs.scores1 = atoi( str );
 	} else if ( num == CS_SCORES2 ) {
 		cgs.scores2 = atoi( str );
 	} else if ( num == CS_LEVEL_START_TIME ) {
+		CG_RaceLevelTimeChanged(cgs.levelStartTime, atoi(str));
 		cgs.levelStartTime = atoi( str );
 	} else if ( num == CS_VOTE_TIME ) {
 		cgs.voteTime = atoi( str );
@@ -327,23 +239,10 @@ static void CG_ConfigStringModified( void ) {
 		cgs.voteModified = qtrue;
 	} else if ( num == CS_VOTE_STRING ) {
 		Q_strncpyz( cgs.voteString, str, sizeof( cgs.voteString ) );
-#ifdef MISSIONPACK
-		trap_S_StartLocalSound( cgs.media.voteNow, CHAN_ANNOUNCER );
-#endif //MISSIONPACK
-	} else if ( num >= CS_TEAMVOTE_TIME && num <= CS_TEAMVOTE_TIME + 1) {
-		cgs.teamVoteTime[num-CS_TEAMVOTE_TIME] = atoi( str );
-		cgs.teamVoteModified[num-CS_TEAMVOTE_TIME] = qtrue;
-	} else if ( num >= CS_TEAMVOTE_YES && num <= CS_TEAMVOTE_YES + 1) {
-		cgs.teamVoteYes[num-CS_TEAMVOTE_YES] = atoi( str );
-		cgs.teamVoteModified[num-CS_TEAMVOTE_YES] = qtrue;
-	} else if ( num >= CS_TEAMVOTE_NO && num <= CS_TEAMVOTE_NO + 1) {
-		cgs.teamVoteNo[num-CS_TEAMVOTE_NO] = atoi( str );
-		cgs.teamVoteModified[num-CS_TEAMVOTE_NO] = qtrue;
-	} else if ( num >= CS_TEAMVOTE_STRING && num <= CS_TEAMVOTE_STRING + 1) {
-		Q_strncpyz( cgs.teamVoteString[num-CS_TEAMVOTE_STRING], str, sizeof( cgs.teamVoteString[0] ) );
-#ifdef MISSIONPACK
-		trap_S_StartLocalSound( cgs.media.voteNow, CHAN_ANNOUNCER );
-#endif
+		// retail 0x10049c5b: only a new, non-empty vote is announced
+		if ( cgs.voteString[0] ) {
+			CG_AddBufferedSound( CG_QLVoice( "vote_now" ) );
+		}
 	} else if ( num == CS_INTERMISSION ) {
 		cg.intermissionStarted = atoi( str );
 	} else if ( num >= CS_MODELS && num < CS_MODELS+MAX_MODELS ) {
@@ -366,9 +265,6 @@ static void CG_ConfigStringModified( void ) {
 			cgs.flagStatus = str[0] - '0';
 		}
 #endif
-	}
-	else if ( num == CS_SHADERSTATE ) {
-		CG_ShaderStateChanged();
 	}
 		
 }
@@ -474,11 +370,19 @@ static void CG_MapRestart( void ) {
 	cg.rewardTime = 0;
 	cg.rewardStack = 0;
 	cg.intermissionStarted = qfalse;
+	cg.matchEnded = qfalse;
+	CG_ResetRace(qtrue, qfalse);
+	CG_InitMatchClocks();
+	CG_ClearObituaries();
+	CG_ClearDuelSlots();
+	CG_ClearTimedItems();
+	CG_InitStandings();
 	cg.levelShot = qfalse;
 
 	cgs.voteTime = 0;
 
 	cg.mapRestart = qtrue;
+	cg.zoomTime = 0; // retail map_restart 1004a351; retain the held/toggled state
 
 	CG_StartMusic();
 
@@ -488,12 +392,7 @@ static void CG_MapRestart( void ) {
 
 	// we really should clear more parts of cg here and stop sounds
 
-	// play the "fight" sound if this is a restart without warmup
-	if ( cg.warmup == 0 /* && cgs.gametype == GT_TOURNAMENT */ ) {
-		// force sound playback in CG_WarmupEvents()
-		cg.warmup = cg.time;
-		cg.warmupCount = -1;
-	}
+	CG_PregameRestart();
 
 #ifdef MISSIONPACK
 	if (cg_singlePlayerActive.integer) {
@@ -1022,8 +921,7 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
-	if ( !strcmp( cmd, "cp" ) ) {
-		CG_CenterPrint( CG_Argv(1), SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
+	if ( CG_MatchNoticeCommand(cmd) ) {
 		return;
 	}
 
@@ -1034,42 +932,60 @@ static void CG_ServerCommand( void ) {
 
 	if ( !strcmp( cmd, "print" ) ) {
 		CG_Printf( "%s", CG_Argv(1) );
+		// retail 0x1004b0fb: server prints also reach the chat area
+		CG_ChatAreaAdd( CG_Argv(1), 0, 0 );
 #ifdef MISSIONPACK
 		cmd = CG_Argv(1);			// yes, this is obviously a hack, but so is the way we hear about
 									// votes passing or failing
+		// retail 0x1004b09d..0x1004b0f1 queues the QL vote voices
 		if ( !Q_stricmpn( cmd, "vote failed", 11 ) || !Q_stricmpn( cmd, "team vote failed", 16 )) {
-			trap_S_StartLocalSound( cgs.media.voteFailed, CHAN_ANNOUNCER );
+			CG_AddBufferedSound( CG_QLVoice( "vote_failed" ) );
 		} else if ( !Q_stricmpn( cmd, "vote passed", 11 ) || !Q_stricmpn( cmd, "team vote passed", 16 ) ) {
-			trap_S_StartLocalSound( cgs.media.votePassed, CHAN_ANNOUNCER );
+			CG_AddBufferedSound( CG_QLVoice( "vote_passed" ) );
 		}
 #endif
 		return;
 	}
 
-	if ( !strcmp( cmd, "chat" ) ) {
-		if ( !cg_teamChatsOnly.integer ) {
-			trap_S_StartLocalSound( cgs.media.talkSound, CHAN_LOCAL_SOUND );
-			Q_strncpyz( text, CG_Argv(1), MAX_SAY_TEXT );
-			CG_RemoveChatEscapeChar( text );
-			id = CG_Argv( 2 );
-			if ( *id >= '0' && *id <= '9' )
-				CG_Printf( "(%i) %s\n", atoi( id ), text );
-			else
-				CG_Printf( "%s\n", text );
+	/* Retail 0x1004b11b-0x1004b5b1: "chat" and "tchat" carry a two-digit
+	 * client number before the text ("%02d ..."), muted senders are dropped,
+	 * the beeps are opt-in and lines are cut to 149 characters. Chat text
+	 * starts three bytes in, team chat two. "bchat" always beeps and adds
+	 * its own seconds to the chat-area lifetime. */
+	if ( !strcmp( cmd, "chat" ) || !strcmp( cmd, "tchat" ) ) {
+		qboolean team = cmd[0] == 't';
+		const char *payload;
+		size_t skip = team ? 2 : 3;
+		int client;
+		if ( !team && cg_teamChatsOnly.integer ) {
+			return;
 		}
+		payload = CG_Argv(1);
+		client = atoi( payload );
+		if ( client < 0 || client >= MAX_CLIENTS || CG_ClientMuted( client ) ) {
+			return;
+		}
+		if ( team ? cg_teamChatBeep.integer : cg_chatbeep.integer ) {
+			trap_S_StartLocalSound( cgs.media.talkSound, CHAN_LOCAL_SOUND );
+		}
+		Q_strncpyz( text, strlen( payload ) > skip ? payload + skip : "", 150 );
+		CG_RemoveChatEscapeChar( text );
+		CG_Printf( "%s\n", text );
+		CG_ChatAreaAdd( text, team ? 1 : 0, 0 );
 		return;
 	}
 
-	if ( !strcmp( cmd, "tchat" ) ) {
+	if ( !strcmp( cmd, "bchat" ) ) {
 		trap_S_StartLocalSound( cgs.media.talkSound, CHAN_LOCAL_SOUND );
-		Q_strncpyz( text, CG_Argv(1), MAX_SAY_TEXT );
+		Q_strncpyz( text, CG_Argv(1), 150 );
 		CG_RemoveChatEscapeChar( text );
-		CG_AddToTeamChat( text );
-		id = CG_Argv( 2 );
-		if ( *id >= '0' && *id <= '9' )
-			CG_Printf( "(%i) %s\n", atoi( id ), text );
-		else
-			CG_Printf( "%s\n", text );
+		CG_Printf( "%s\n", text );
+		CG_ChatAreaAdd( text, 0, atoi( CG_Argv(2) ) * 1000 );
+		return;
+	}
+
+	if ( !strcmp( cmd, "clearChat" ) ) {
+		CG_ClearChatArea();
 		return;
 	}
 
@@ -1090,15 +1006,10 @@ static void CG_ServerCommand( void ) {
 	}
 #endif
 
-	if ( !strcmp( cmd, "scores" ) ) {
-		CG_ParseScores();
+	if ( CG_ParseScoreCommand(cmd) || CG_ParseRaceCommand(cmd) ) {
 		return;
 	}
 
-	if ( !strcmp( cmd, "tinfo" ) ) {
-		CG_ParseTeamInfo();
-		return;
-	}
 
 	if ( !strcmp( cmd, "map_restart" ) ) {
 		CG_MapRestart();

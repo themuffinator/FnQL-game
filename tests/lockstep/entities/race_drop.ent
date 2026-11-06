@@ -1,0 +1,43 @@
+// Hand-authored gravity-only race course on the installed Campgrounds BSP.
+// Joining spawns above three floating points; no movement input is needed.
+// This column has a platform at z=256 and player clip above z=832. Keep both
+// possible spawn choices and the trigger contact heights in the open column.
+// The paused bot supplies race's two-player minimum without firing at us.
+{
+"classname" "worldspawn"
+"message" "FnQL cgame race event gate"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-400 320 250"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-625 320 770"
+"angle" "0"
+"nobots" "1"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-575 320 770"
+"nohumans" "1"
+}
+{
+"classname" "race_point"
+"origin" "-600 320 560"
+"target" "split"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-600 320 380"
+"targetname" "split"
+"target" "finish"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-600 320 200"
+"targetname" "finish"
+"spawnflags" "1"
+}

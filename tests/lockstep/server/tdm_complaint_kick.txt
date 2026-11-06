@@ -1,0 +1,31 @@
+# G3: TDM, cheats, 1700 frames. Second confirmed complaint kicks and
+# temporarily bans the offender; pending prompt cancellation precedes -1.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client delta name Delta
+clientcmd 1 alpha team r
+clientcmd 2 charlie team b
+clientcmd 3 bravo team r
+clientcmd 4 delta team b
+cmd 5 g_friendlyFire 1
+cmd 6 g_friendlyFireDampen 1
+cmd 7 g_damage_rg 200
+cmd 8 g_complaintLimit 2
+cmd 20 allready
+clientcmd 1010 alpha give Railgun
+clientcmd 1011 alpha setviewpos -260 320 40 180
+at 1020 alpha weapon=7
+clientcmd 1090 bravo setviewpos -700 320 40 0
+at 1100 alpha buttons=attack
+at 1101 alpha buttons=0
+clientcmd 1105 bravo vote yes
+at 1200 bravo buttons=attack
+at 1201 bravo buttons=0
+clientcmd 1340 bravo setviewpos -700 320 40 0
+at 1350 alpha buttons=attack
+at 1351 alpha buttons=0
+clientcmd 1355 bravo vote yes
+clientcmd 1360 bravo vote yes
+cmd 1500 map_restart 0

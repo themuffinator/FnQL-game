@@ -10,6 +10,26 @@
 #include "../game/bg_public.h"
 #include "ui_shared.h"
 
+enum { UI_BLUETEAM1 = 1024, UI_BLUETEAM2 = 1025, UI_BLUETEAM3 = 1026, UI_BLUETEAM4 = 1027, UI_BLUETEAM5 = 1028, UI_BLUETEAMNAME = 1029, UI_CLANLOGO = 1030, UI_CLANNAME = 1031, UI_EFFECTS = 1032, UI_REDTEAM1 = 1033, UI_REDTEAM2 = 1034, UI_REDTEAM3 = 1035, UI_REDTEAM4 = 1036, UI_REDTEAM5 = 1037, UI_REDTEAMNAME = 1038 };
+
+enum { UI_PLAYERLOGO=1100, UI_PLAYERLOGO_METAL, UI_PLAYERLOGO_NAME, UI_OPPONENTLOGO, UI_OPPONENTLOGO_METAL, UI_OPPONENTLOGO_NAME };
+void UI_QLGameTypes(void);
+int UI_QLArenaTypeBits(const char *types);
+int UI_QLMapCount(void);
+int UI_QLMapIndex(int row);
+void UI_QLSelectMap(int row);
+qboolean UI_QLScript(const char *name);
+
+/* Retail registers ui_smallFont/ui_bigFont with 0x801: archive plus the
+ * QL engine-managed bit (FnQL CVAR_PROTECTED). */
+#define UI_CVAR_PROTECTED 0x0800
+/* Retail cvar-table change callbacks (0x10011240, 0x10011630, 0x10011660,
+ * 0x10011690). */
+void UI_QLSliderColorChanged(vmCvar_t *cvar);
+void UI_QLTeamModelChanged(vmCvar_t *cvar);
+void UI_QLEnemyModelChanged(vmCvar_t *cvar);
+void UI_QLAnnouncerChanged(vmCvar_t *cvar);
+
 // global display context
 
 #define EXTERN_UI_CVAR
@@ -27,7 +47,7 @@
 #define	MAX_EDIT_LINE			256
 
 #define MAX_MENUDEPTH			8
-#define MAX_MENUITEMS			96
+#define MAX_MENUITEMS			1024
 
 #define MTYPE_NULL				0
 #define MTYPE_SLIDER			1	
@@ -414,6 +434,9 @@ typedef struct {
 
 	qhandle_t		headModel;
 	qhandle_t		headSkin;
+    qboolean tintColors;
+    byte partColors[3][4]; // lower, upper, head; module-private preview state
+    qboolean normalizeHeight; // retail playerInfo +0x478: set for every model but orbb
 
 	animation_t		animations[MAX_TOTALANIMATIONS];
 
@@ -487,7 +510,7 @@ typedef struct {
 
 // new ui stuff
 #define UI_NUMFX 7
-#define MAX_HEADS 64
+#define MAX_HEADS 256
 #define MAX_ALIASES 64
 #define MAX_HEADNAME  32
 #define MAX_TEAMS 64
@@ -671,6 +694,7 @@ typedef struct {
 	int playerIndex;
 	int playerNumber; 
 	qboolean teamLeader;
+	int playerClientNums[MAX_CLIENTS];
 	char playerNames[MAX_CLIENTS][MAX_NAME_LENGTH];
 	char teamNames[MAX_CLIENTS][MAX_NAME_LENGTH];
 	int teamClientNums[MAX_CLIENTS];
@@ -796,7 +820,7 @@ void UI_SPSkillMenu( const char *arenaInfo );
 void UI_SPSkillMenu_Cache( void );
 
 //
-// ui_syscalls.c
+// ui_native.c: retail structured imports
 //
 void			trap_Print( const char *string );
 void			trap_Error( const char *string );
@@ -1015,5 +1039,18 @@ typedef struct postGameInfo_s {
 } postGameInfo_t;
 
 
+
+void UI_QLSetCvar(const char *name, const char *value);
+void UI_QLRefreshModelBright(qboolean team);
+void UI_ComputeCanvas(int width, int height, float *xscale, float *yscale, float *bias);
+float UI_TextPointSize(float scale);
+void UI_QLCycleBot(int direction);
+
+qboolean UI_QLVisible(int flags);
+void UI_QLPaletteColor(int index, vec4_t color);
+qboolean UI_QLOwnerDraw(int id, rectDef_t *rect, float scale, vec4_t color, int style, qhandle_t shader);
+void Text_Paint(float x, float y, float scale, vec4_t color, const char *text, float adjust, int limit, int style);
+void Text_PaintCenter(float x, float y, float scale, vec4_t color, const char *text, float adjust);
+int Text_Height(const char *text, float scale, int limit);
 
 #endif

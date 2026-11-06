@@ -95,6 +95,7 @@ void CG_SetInitialSnapshot( snapshot_t *snap ) {
 		// check for events
 		CG_CheckEvents( cent );
 	}
+	CG_UpdateTeamInfoFromSnapshot(cg.snap);
 }
 
 
@@ -146,6 +147,7 @@ static void CG_TransitionSnapshot( void ) {
 		cent->snapShotTime = cg.snap->serverTime;
 	}
 
+	CG_UpdateTeamInfoFromSnapshot(cg.snap);
 	cg.nextSnap = NULL;
 
 	// check for playerstate transition events

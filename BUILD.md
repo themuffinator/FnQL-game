@@ -17,8 +17,10 @@ meson setup build/win32-x86
 ninja -C build/win32-x86
 ```
 
-Output: `build/win32-x86/fnql_qagamex86.dll`. It links the CRT statically and
-exports exactly `dllEntry` and `FnQL_GetModuleInfo`.
+Outputs: `build/win32-x86/fnql_qagamex86.dll`, `fnql_cgamex86.dll` and
+`fnql_uix86.dll`. Each links the CRT statically and exports `dllEntry` and
+`FnQL_GetModuleInfo`. See [native UI validation](docs/UI.md) for the UI
+behavioral and windowed hosting gates.
 
 ## Linux (i386)
 
@@ -53,6 +55,26 @@ meson test -C build/win32-x86
   needs no retail assets. The `tdm_drops`, `tdm_drop_timeout` and
   `ctf_dropflag` G3 scenarios exercise real pickups, expiry, spectators,
   timeout decay, flag passing and throwing against the retail qagame.
+- `combat-rules` adds twenty-nine strict retail self-check/differential pairs:
+  damaged-health drops enabled/disabled (armor, overkill, self-damage,
+  pickup physics and expiry), submerged lightning enabled/disabled and
+  infinite-ammo replenishment, and grappling with capsule/box traces
+  (world/player latches, ticks, obstruction, weapon changes and restart),
+  loadout selection enabled/disabled, and team-kill complaints through
+  forgiveness, expiry, admin protection, disconnect and a temporary-ban kick,
+  plus thin-ceiling rocket splash with force, probe distance, angle and radius
+  dampening controls. Delayed hitscan adds window/depth/trace variants;
+  moving trains, live ammo toggles, jump-pad contact and rail headshot/body
+  damage have focused pairs. Together they cover 24,600 scenario frames per provider.
+  Run `meson test -C build/win32-x86 --suite combat-rules`.
+- `game-session` and `game-complaint` (suite `unit`) cover retail session
+  serialization, old FnQL-game session migration, malformed state, complaint
+  policy boundaries, affirmative response bytes and temporary-ban failures.
+- `game-laghax` checks interpolation, stance bounds, rewind limits, reset,
+  restoration and invalid settings. FnQL's lockstep engine must support the
+  `delay` input field for the delayed-command runtime gates.
+- `server-lockstep-nowarmup-*` (suite `differential`) checks `g_doWarmup 0`
+  in TDM, Clan Arena and Freeze Tag, including countdown join firing locks.
 - `game-flagphysics` (suite `unit`) covers push/teleport trajectories,
   sound throttling, missing destinations and capture callbacks that remove
   a flag. `ctf_flagphysics0` and `ctf_flagphysics1` compare both settings
@@ -117,16 +139,18 @@ meson test -C build/win32-x86
   factories. Run `meson test -C build/win32-x86 --suite round-modes` from
   the x86 compiler environment. These are zero-divergence gates; the
   separate `factories` suite remains only a hosting smoke check.
-- `objective-modes` contains 30 strict server scenarios, each paired with a
+- `objective-modes` contains 37 strict server scenarios, each paired with a
   retail-twice self-check. Attack & Defend covers alternating turns, first
   touch/capture/elimination scoring, dropped flags, deferred spawns, timeouts,
   limits and rolling score history. Domination covers capture contention,
   assists/defense, regeneration, owned-point spawns and limits. Harvester
   covers skull caps, collection/drops/expiry, captures and restart. Overload
   covers friendly/enemy damage, destruction, respawn, regeneration, limits
-  and timeout/restart. Run `meson test -C build/win32-x86 --suite objective-modes`.
+  and timeout/restart. One Flag CTF adds carrier visibility/pings, captures,
+  death/manual drops and bonuses, expiry, disconnect, timeout and capturelimit.
+  Run `meson test -C build/win32-x86 --suite objective-modes`.
   Fixtures are hand-authored entities on the installed campgrounds BSP;
-  Overload uses a small custom factory. No retail map data is distributed.
+  Overload and One Flag use small custom factories. No retail map data is distributed.
   `game-domination` separately tests malformed capture settings, timer overflow,
   the five-point registry and bounded owned-point spawn selection.
   The four score-limit scenarios continue through automatic stock-map rotation.
@@ -140,6 +164,13 @@ meson test -C build/win32-x86
 - `retail-cgame-probe` (suite `interop`) runs when `-Dfnql-client=<path to
   x86 fnql.exe>` is set. A windowed FnQL client hosts FnQL-game's qagame and
   runs the retail cgame against it.
+- `interop-modes` extends that startup/render gate to the other twelve base
+  gametypes, using stock maps with the required objectives. One Flag CTF and
+  Overload use hand-authored factory fixtures; Overload explicitly uses
+  `devmap` because retail arena metadata excludes that mode. Each probe checks
+  the selected gametype, module identity, CS_ACTIVE, a connected bot, no engine/module errors, and an engine
+  screenshot. These are startup interoperability checks, not full-match or
+  authenticated retail-client tests. They run windowed without input grabs.
 - `pmove-lockstep` (G3a, suite `parity`) builds `pmove_lockstep.exe` (Windows
   x86 MSVC only) and runs it against the retail `qagamex86.dll` from your
   install's `bin.pk3`. It skips when no install is found or when the module is
@@ -147,10 +178,12 @@ meson test -C build/win32-x86
   position and velocity against retail over 3,408 evaluations. Run one scenario with
   `python scripts/pmove_lockstep.py --harness build/win32-x86/pmove_lockstep.exe
   --scenario <name> --verbose`.
-- `retail-client-join` (G5b, its own suite `retail-client`, with
+- `retail-client-join` and `retail-client-join-unpure` (G5b, suite `retail-client`, with
   `-Dfnql-dedicated`) launches your retail Quake Live through Steam, windowed,
-  and connects it to an FnQL dedicated server running FnQL-game. Steam must be
-  running. It skips while a retail client is already open, and it restores
+  and connect it to pure and unpure FnQL dedicated servers running FnQL-game.
+  They require successful Steam session validation, a bot and a final status
+  query showing the retail client still connected. Steam must be signed in.
+  The probe skips while a retail client is already open, and it restores
   any retail config or log the client rewrote.
 - `retail-cgame-prediction` and `retail-cgame-prediction-pql` (G4a, suite
   `interop`, with `-Dfnql-client`) drive a scripted movement course. They fail

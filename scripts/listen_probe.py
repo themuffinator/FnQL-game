@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -49,6 +50,11 @@ def main() -> int:
     parser.add_argument("--module", type=Path, default=ROOT / "build" / "win32-x86" / MODULE_NAME)
     parser.add_argument("--map", default="campgrounds")
     parser.add_argument("--factory", default="ffa")
+    parser.add_argument("--factories", type=Path, help="additional hand-authored factory fixture")
+    parser.add_argument("--expect-gametype", type=int, choices=range(13),
+                        help="require the selected retail gametype value")
+    parser.add_argument("--cheats", action="store_true",
+                        help="use devmap for fixtures outside retail arena mode metadata")
     parser.add_argument("--port", type=int, default=27993)
     parser.add_argument("--timeout", type=float, default=150.0)
     parser.add_argument("--keep", action="store_true", help="keep the scratch home (log, screenshot)")
@@ -58,6 +64,8 @@ def main() -> int:
         raise SystemExit("pass --client <fnql.exe> or set FNQL_CLIENT_EXE")
     client = Path(args.client).resolve()
     retail = find_retail_install(args.retail)
+    if args.factories and not args.factories.is_file():
+        parser.error("--factories needs an existing file")
 
     scratch = ROOT / ".tmp"
     scratch.mkdir(exist_ok=True)
@@ -66,18 +74,31 @@ def main() -> int:
         game_dir = home / "baseq3"
         game_dir.mkdir()
         shutil.copy2(args.module, game_dir / MODULE_NAME)
+        if args.factories:
+            scripts_dir = game_dir / "scripts"
+            scripts_dir.mkdir()
+            shutil.copy2(args.factories, scripts_dir / "listen.factories")
         (game_dir / "probe.cfg").write_text("\n".join([
-            f"map {args.map} {args.factory}", "wait 1000", "addbot sarge 3", "wait 400",
-            "screenshotJPEG", "wait 60", "vminfo", "echo probe: done", "quit", ""]), encoding="ascii")
+            f"{'devmap' if args.cheats else 'map'} {args.map} {args.factory}",
+            "wait 1000", "addbot sarge 3", "wait 400",
+            "screenshotJPEG", "wait 60", "vminfo", "g_gametype", "echo probe: done", "quit", ""]), encoding="ascii")
         command = [str(client),
                    "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
                    "+set", "r_fullscreen", "0", "+set", "r_mode", "-1",
                    "+set", "r_customwidth", "1024", "+set", "r_customheight", "640",
+                   "+set", "in_mouse", "0", "+set", "in_nograb", "1", "+set", "in_joystick", "0",
+                   "+set", "com_steamIntegration", "0",
                    "+set", "s_initsound", "0", "+set", "logfile", "2", "+set", "developer", "1",
                    "+set", "cl_allowDownload", "0", "+set", "net_port", str(args.port),
                    "+set", "vm_gameProvider", "fnql", "+exec", "probe.cfg"]
-        process = subprocess.Popen(command, cwd=client.parent, stdin=subprocess.DEVNULL,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        startup = None
+        if sys.platform == "win32":
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = 4  # SW_SHOWNOACTIVATE
+        process = subprocess.Popen(command, cwd=home, stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   startupinfo=startup)
         deadline = time.monotonic() + args.timeout
         while process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.5)
@@ -91,6 +112,11 @@ def main() -> int:
         failures = ["client did not quit before the timeout"] if timed_out else []
         failures += [f"missing: {line!r}" for line in REQUIRED if line not in log]
         failures += [f"forbidden: {line!r}" for line in FORBIDDEN if line in log]
+        if args.expect_gametype is not None:
+            selected = re.search(r'"g_gametype" is:"([^"\^]*)', log)
+            if not selected or selected.group(1) != str(args.expect_gametype):
+                failures.append(f"expected g_gametype {args.expect_gametype}, got "
+                                + (selected.group(1) if selected else "no cvar report"))
         shots = sorted((game_dir / "screenshots").glob("*.jpg")) if (game_dir / "screenshots").is_dir() else []
         if not shots:
             failures.append("no screenshot was written")
