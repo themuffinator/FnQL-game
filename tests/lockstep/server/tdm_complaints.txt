@@ -1,0 +1,113 @@
+# G3: TDM, cheats, 4500 frames. Team-kill complaint lifecycle and the
+# retail-inert nonfatal damage threshold. Cases deliberately respawn.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client delta name Delta
+clientcmd 1 alpha team r
+clientcmd 2 charlie team b
+clientcmd 3 bravo team r
+clientcmd 4 delta team b
+cmd 5 g_friendlyFire 1
+cmd 6 g_friendlyFireDampen 1
+cmd 7 g_damage_rg 200
+cmd 20 allready
+clientcmd 1010 alpha give Railgun
+clientcmd 1011 alpha setviewpos -260 320 40 180
+at 1020 alpha weapon=7
+clientcmd 1021 alpha give ammo
+clientcmd 1090 bravo setviewpos -700 320 40 0
+clientcmd 1091 bravo give health
+at 1100 alpha buttons=attack
+at 1101 alpha buttons=0
+clientcmd 1105 bravo vote no
+at 1200 bravo buttons=attack
+at 1201 bravo buttons=0
+cmd 1240 g_complaintDamageThreshold 10
+cmd 1241 g_damage_rg 10
+clientcmd 1250 bravo setviewpos -700 320 40 0
+clientcmd 1251 bravo give health
+at 1270 alpha buttons=attack
+at 1271 alpha buttons=0
+clientcmd 1275 bravo vote yes
+cmd 1300 g_damage_rg 200
+clientcmd 1340 bravo setviewpos -700 320 40 0
+clientcmd 1341 bravo give health
+at 1350 alpha buttons=attack
+at 1351 alpha buttons=0
+clientcmd 1355 bravo vote 1
+at 1450 bravo buttons=attack
+at 1451 bravo buttons=0
+clientcmd 1590 bravo setviewpos -700 320 40 0
+clientcmd 1591 bravo give health
+at 1600 alpha buttons=attack
+at 1601 alpha buttons=0
+clientcmd 1605 bravo vote Y
+at 1700 bravo buttons=attack
+at 1701 bravo buttons=0
+clientcmd 1840 bravo setviewpos -700 320 40 0
+clientcmd 1841 bravo give health
+at 1850 alpha buttons=attack
+at 1851 alpha buttons=0
+clientcmd 1855 bravo vote yes
+at 1950 bravo buttons=attack
+at 1951 bravo buttons=0
+clientcmd 2090 bravo setviewpos -700 320 40 0
+clientcmd 2091 bravo give health
+at 2100 alpha buttons=attack
+at 2101 alpha buttons=0
+clientcmd 2105 bravo vote x1
+at 2200 bravo buttons=attack
+at 2201 bravo buttons=0
+clientcmd 2340 bravo setviewpos -700 320 40 0
+clientcmd 2341 bravo give health
+at 2350 alpha buttons=attack
+at 2351 alpha buttons=0
+clientcmd 2355 bravo vote xY
+at 2450 bravo buttons=attack
+at 2451 bravo buttons=0
+clientcmd 2590 bravo setviewpos -700 320 40 0
+clientcmd 2591 bravo give health
+at 2600 alpha buttons=attack
+at 2601 alpha buttons=0
+at 2700 bravo buttons=attack
+at 2701 bravo buttons=0
+clientcmd 3230 bravo vote yes
+cmd 3300 addadmin 0
+clientcmd 3340 bravo setviewpos -700 320 40 0
+clientcmd 3341 bravo give health
+at 3350 alpha buttons=attack
+at 3351 alpha buttons=0
+clientcmd 3355 bravo vote yes
+cmd 3400 demote 0
+at 3450 bravo buttons=attack
+at 3451 bravo buttons=0
+clientcmd 3590 bravo setviewpos -700 320 40 0
+clientcmd 3591 bravo give health
+at 3600 alpha buttons=attack
+at 3601 alpha buttons=0
+cmd 3603 addadmin 0
+clientcmd 3605 bravo vote yes
+cmd 3610 demote 0
+clientcmd 3615 bravo vote no
+at 3700 bravo buttons=attack
+at 3701 bravo buttons=0
+cmd 3800 g_complaintLimit 0
+clientcmd 3840 bravo setviewpos -700 320 40 0
+clientcmd 3841 bravo give health
+at 3850 alpha buttons=attack
+at 3851 alpha buttons=0
+clientcmd 3855 bravo vote yes
+at 3950 bravo buttons=attack
+at 3951 bravo buttons=0
+cmd 4000 g_complaintLimit 5
+clientcmd 4090 bravo setviewpos -700 320 40 0
+clientcmd 4091 bravo give health
+at 4100 alpha buttons=attack
+at 4101 alpha buttons=0
+cmd 4110 kick 0
+clientcmd 4115 bravo vote yes
+at 4200 bravo buttons=attack
+at 4201 bravo buttons=0
+cmd 4400 map_restart 0

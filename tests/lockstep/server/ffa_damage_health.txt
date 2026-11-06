@@ -1,0 +1,44 @@
+# G3: ffa, cheats, 1600 frames, g_dropDamagedHealth 0 and 1.
+# Nonlethal and lethal damage, armor, sub-five remainder, self damage,
+# ordinary weapon expiry, and restart. Drops use health lost, not overkill.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+at 0 bravo weapon=2
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+clientcmd 25 alpha give Railgun
+at 40 alpha weapon=7
+at 60 alpha buttons=attack
+at 62 alpha buttons=0
+at 110 alpha buttons=attack
+at 112 alpha buttons=0
+at 180 bravo buttons=attack
+at 182 bravo buttons=0
+clientcmd 200 bravo setviewpos -700 320 40 0
+clientcmd 205 bravo give armor
+at 230 alpha buttons=attack
+at 232 alpha buttons=0
+clientcmd 260 alpha dropweapon
+clientcmd 300 alpha give Rocket Launcher
+at 320 alpha weapon=5
+clientcmd 350 alpha setviewpos -260 320 40 180
+at 352 alpha pitch=89
+at 360 alpha buttons=attack
+at 362 alpha buttons=0
+clientcmd 410 alpha give health
+cmd 420 dmflags 4
+at 450 alpha buttons=attack
+at 452 alpha buttons=0
+cmd 480 dmflags 0
+clientcmd 520 alpha setviewpos -260 320 40 180
+at 521 alpha pitch=0
+clientcmd 522 bravo setviewpos -700 320 40 0
+at 530 alpha weapon=2
+at 560 alpha buttons=attack
+at 566 alpha buttons=0
+clientcmd 1300 alpha score
+cmd 1400 map_restart 0
+clientcmd 1450 alpha score

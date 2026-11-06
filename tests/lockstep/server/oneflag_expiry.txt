@@ -1,0 +1,16 @@
+# G3: neutral carrier pings, timeout, manual-drop expiry and disconnect.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+cmd 20 allready
+clientcmd 1100 alpha setviewpos -480 320 40 0
+clientcmd 1250 alpha timeout
+clientcmd 1300 alpha timein
+clientcmd 1600 alpha dropflag
+clientcmd 1601 alpha setviewpos -400 -320 40 0
+clientcmd 2900 bravo setviewpos -480 320 40 0
+clientcmd 3100 bravo disconnect
+clientcmd 3200 alpha score
+cmd 3300 map_restart 0

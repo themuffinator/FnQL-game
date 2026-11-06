@@ -1,0 +1,33 @@
+# G3: FFA, 1100 frames, g_loadout 0/1. Primary selection made while
+# spectating/alive/dead, invalid byte, disabled choice and session restart.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+at 0 alpha weaponprimary=7
+clientcmd 20 alpha team f
+clientcmd 21 bravo team f
+at 40 alpha weapon=7
+clientcmd 100 alpha kill
+at 120 alpha weaponprimary=5
+at 180 alpha buttons=attack
+at 181 alpha buttons=0
+at 200 alpha weapon=5
+clientcmd 260 alpha kill
+at 280 alpha weaponprimary=255
+at 340 alpha buttons=attack
+at 341 alpha buttons=0
+cmd 400 g_disableLoadout 32
+clientcmd 410 alpha kill
+at 490 alpha buttons=attack
+at 491 alpha buttons=0
+at 530 alpha weaponprimary=1
+clientcmd 550 alpha kill
+at 630 alpha buttons=attack
+at 631 alpha buttons=0
+cmd 700 g_disableLoadout 0
+at 720 alpha weaponprimary=8
+clientcmd 750 alpha kill
+at 830 alpha buttons=attack
+at 831 alpha buttons=0
+cmd 900 map_restart 0
+clientcmd 1000 alpha score

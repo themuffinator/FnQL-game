@@ -2233,6 +2233,7 @@ static void Cmd_Vote_f( gentity_t *ent ) {
 	if ( level.intermissiontime ) {
 		G_MapVote( ent );
 	} else {
+		G_ComplaintVote( ent );
 		G_CastVote( ent );
 	}
 }

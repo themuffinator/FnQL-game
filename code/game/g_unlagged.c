@@ -16,6 +16,7 @@ void G_ResetHistory( gentity_t *ent ) {
 	gclient_t	*client;
 
 	client = ent->client;
+	G_ResetLagHax(ent);
 	dt = 1000 / sv_fps.integer;
 
 	// fill up the history with data (assume the current position)
@@ -41,6 +42,7 @@ void G_StoreHistory( gentity_t *ent ) {
 	gclient_t	*client;
 
 	client = ent->client;
+	G_StoreLagHax(ent);
 
 	client->historyHead++;
 	if ( client->historyHead >= NUM_CLIENT_HISTORY ) {
@@ -176,6 +178,7 @@ Decide what time to shift everyone back to, and do it
 */
 void G_DoTimeShiftFor( gentity_t *ent ) {	
 	int time;
+	if ( g_unlagged.integer == 1 ) return; // retail brackets the complete shot
 
 	// don't time shift for mistakes or bots
 	if ( !ent->inuse || !ent->client || (ent->r.svFlags & SVF_BOT) ) {
@@ -259,6 +262,7 @@ Put everyone except for this client back where they were
 ==================
 */
 void G_UndoTimeShiftFor( gentity_t *ent ) {
+	if ( g_unlagged.integer == 1 ) return;
 
 	// don't un-time shift for mistakes or bots
 	if ( !ent->inuse || !ent->client || (ent->r.svFlags & SVF_BOT) ) {

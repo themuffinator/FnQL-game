@@ -1,14 +1,20 @@
 #ifdef EXTERN_UI_CVAR
 	#define UI_CVAR( vmCvar, cvarName, defaultString, cvarFlags ) extern vmCvar_t vmCvar;
+	#define UI_CVAR_CB( vmCvar, cvarName, defaultString, cvarFlags, onChange ) extern vmCvar_t vmCvar;
 #endif
 
 #ifdef DECLARE_UI_CVAR
 	#define UI_CVAR( vmCvar, cvarName, defaultString, cvarFlags ) vmCvar_t vmCvar;
+	#define UI_CVAR_CB( vmCvar, cvarName, defaultString, cvarFlags, onChange ) vmCvar_t vmCvar;
 #endif
 
 #ifdef UI_CVAR_LIST
-	#define UI_CVAR( vmCvar, cvarName, defaultString, cvarFlags ) { & vmCvar, cvarName, defaultString, cvarFlags },
+	#define UI_CVAR( vmCvar, cvarName, defaultString, cvarFlags ) { & vmCvar, cvarName, defaultString, cvarFlags, NULL },
+	#define UI_CVAR_CB( vmCvar, cvarName, defaultString, cvarFlags, onChange ) { & vmCvar, cvarName, defaultString, cvarFlags, onChange },
 #endif
+
+UI_CVAR( ui_serverFilterType, "ui_serverFilterType", "0", CVAR_ARCHIVE )
+UI_CVAR( ui_cvGameType, "ui_cvGameType", "-1", 0 )
 
 UI_CVAR( ui_ffa_fraglimit, "ui_ffa_fraglimit", "20", CVAR_ARCHIVE )
 UI_CVAR( ui_ffa_timelimit, "ui_ffa_timelimit", "0", CVAR_ARCHIVE )
@@ -44,8 +50,7 @@ UI_CVAR( ui_browserShowFull, "ui_browserShowFull", "1", CVAR_ARCHIVE )
 UI_CVAR( ui_browserShowEmpty, "ui_browserShowEmpty", "1", CVAR_ARCHIVE )
 
 UI_CVAR( ui_brassTime, "cg_brassTime", "2500", CVAR_ARCHIVE )
-UI_CVAR( ui_drawCrosshair, "cg_drawCrosshair", "4", CVAR_ARCHIVE )
-UI_CVAR( ui_drawCrosshairNames, "cg_drawCrosshairNames", "1", CVAR_ARCHIVE )
+UI_CVAR( ui_drawCrosshair, "cg_drawCrosshair", "2", CVAR_ARCHIVE )
 UI_CVAR( ui_marks, "cg_marks", "1", CVAR_ARCHIVE )
 
 UI_CVAR( ui_server1, "server1", "", CVAR_ARCHIVE )
@@ -118,15 +123,42 @@ UI_CVAR( ui_scoreSkillBonus, "ui_scoreSkillBonus", "0", CVAR_ARCHIVE )
 UI_CVAR( ui_scoreShutoutBonus, "ui_scoreShutoutBonus", "0", CVAR_ARCHIVE )
 UI_CVAR( ui_fragLimit, "ui_fragLimit", "10", 0 )
 UI_CVAR( ui_captureLimit, "ui_captureLimit", "5", 0 )
-UI_CVAR( ui_smallFont, "ui_smallFont", "0.25", CVAR_ARCHIVE )
-UI_CVAR( ui_bigFont, "ui_bigFont", "0.4", CVAR_ARCHIVE )
+UI_CVAR( ui_smallFont, "ui_smallFont", "0.25", CVAR_ARCHIVE | UI_CVAR_PROTECTED )
+UI_CVAR( ui_bigFont, "ui_bigFont", "0.4", CVAR_ARCHIVE | UI_CVAR_PROTECTED )
 UI_CVAR( ui_findPlayer, "ui_findPlayer", "Sarge", CVAR_ARCHIVE )
 UI_CVAR( ui_Q3Model, "ui_q3model", "0", CVAR_ARCHIVE )
 UI_CVAR( ui_hudFiles, "cg_hudFiles", "ui/hud.txt", CVAR_ARCHIVE )
 UI_CVAR( ui_recordSPDemo, "ui_recordSPDemo", "0", CVAR_ARCHIVE )
-UI_CVAR( ui_teamArenaFirstRun, "ui_teamArenaFirstRun", "0", CVAR_ARCHIVE )
-UI_CVAR( ui_realWarmUp, "g_warmup", "20", CVAR_ARCHIVE )
+UI_CVAR( ui_realWarmUp, "g_warmup", "10", CVAR_ARCHIVE )
 UI_CVAR( ui_realCaptureLimit, "capturelimit", "8", CVAR_SERVERINFO | CVAR_ARCHIVE | CVAR_NORESTART )
 UI_CVAR( ui_serverStatusTimeOut, "ui_serverStatusTimeOut", "7000", CVAR_ARCHIVE )
 
+/* Retail cvar table (uix86.dll 0x1002afd8, 130 rows of {cvar, name,
+ * default, change callback, flags}; walked by 0x100118a0). The rows below
+ * are the retail entries the baseline lacked, with retail defaults and flags.
+ * Callbacks run only when a later update changes the modification count. */
+UI_CVAR_CB( ui_cgAnnouncer, "cg_announcer", "1", CVAR_TEMP, UI_QLAnnouncerChanged )
+UI_CVAR( ui_bloomPreset, "ui_bloomPreset", "Default", CVAR_ARCHIVE )
+UI_CVAR( ui_enemyCrosshairNames, "cg_enemyCrosshairNames", "1", CVAR_ARCHIVE )
+UI_CVAR_CB( ui_teamColor, "ui_teamColor", "0", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_teamHeadColor, "ui_teamHeadColor", "96", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_teamUpperColor, "ui_teamUpperColor", "96", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_teamLowerColor, "ui_teamLowerColor", "96", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_enemyColor, "ui_enemyColor", "0", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_enemyHeadColor, "ui_enemyHeadColor", "27", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_enemyUpperColor, "ui_enemyUpperColor", "27", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_enemyLowerColor, "ui_enemyLowerColor", "27", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_screenDamage, "ui_screenDamage", "0", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_screenDamageTeam, "ui_screenDamage_Team", "0", CVAR_ARCHIVE, UI_QLSliderColorChanged )
+UI_CVAR_CB( ui_forceTeamModel, "ui_forceTeamModel", "", CVAR_TEMP, UI_QLTeamModelChanged )
+UI_CVAR_CB( ui_forceTeamSkin, "ui_forceTeamSkin", "", CVAR_TEMP, UI_QLTeamModelChanged )
+UI_CVAR( ui_forceTeamModelBright, "ui_forceTeamModelBright", "0", CVAR_ROM )
+UI_CVAR_CB( ui_forceEnemyModel, "ui_forceEnemyModel", "", CVAR_TEMP, UI_QLEnemyModelChanged )
+UI_CVAR_CB( ui_forceEnemySkin, "ui_forceEnemySkin", "", CVAR_TEMP, UI_QLEnemyModelChanged )
+UI_CVAR( ui_forceEnemyModelBright, "ui_forceEnemyModelBright", "0", CVAR_ROM )
+UI_CVAR( ui_gibs, "ui_gibs", "1", CVAR_ROM )
+UI_CVAR( ui_mainmenu, "ui_mainmenu", "1", CVAR_ROM )
+UI_CVAR( ui_priv, "ui_priv", "0", CVAR_ROM )
+
 #undef UI_CVAR
+#undef UI_CVAR_CB

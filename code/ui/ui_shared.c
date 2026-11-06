@@ -54,9 +54,10 @@ itemDef_t *Menu_SetNextCursorItem(menuDef_t *menu);
 static qboolean Menu_OverActiveItem(menuDef_t *menu, float x, float y);
 
 #ifdef CGAME
-#define MEM_POOL_SIZE  128 * 1024
+/* HUD plus both installed per-mode scoreboards exceed the old Q3 HUD pool. */
+#define MEM_POOL_SIZE  (1024 * 1024)
 #else
-#define MEM_POOL_SIZE  1024 * 1024
+#define MEM_POOL_SIZE  4 * 1024 * 1024
 #endif
 
 static char		memoryPool[MEM_POOL_SIZE];
@@ -71,7 +72,8 @@ UI_Alloc
 void *UI_Alloc( int size ) {
 	char	*p; 
 
-	if ( allocPoint + size > MEM_POOL_SIZE ) {
+	if ( size < 0 || size > MEM_POOL_SIZE - 15 ||
+         ((size + 15) & ~15) > MEM_POOL_SIZE - allocPoint ) {
 		outOfMemory = qtrue;
 		if (DC->Print) {
 			DC->Print("UI_Alloc: Failure. Out of memory!\n");
@@ -454,9 +456,10 @@ String_Parse
 */
 qboolean String_Parse(char **p, const char **out) {
 	char *token;
+	char *start = *p;
 
 	token = COM_ParseExt(p, qfalse);
-	if (token && token[0] != 0) {
+	if (token && (token[0] != 0 || (*p && start && *p > start && (*p)[-1] == '"'))) {
 		*(out) = String_Alloc(token);
 		return qtrue;
 	}
@@ -484,7 +487,7 @@ PC_Script_Parse
 =================
 */
 qboolean PC_Script_Parse(int handle, const char **out) {
-	char script[1024];
+	char script[8192];
 	pc_token_t token;
 
 	memset(script, 0, sizeof(script));
@@ -501,17 +504,21 @@ qboolean PC_Script_Parse(int handle, const char **out) {
 		if (!trap_PC_ReadToken(handle, &token))
 			return qfalse;
 
-		if (Q_stricmp(token.string, "}") == 0) {
+		if (token.type != TT_STRING && Q_stricmp(token.string, "}") == 0) {
 			*out = String_Alloc(script);
 			return qtrue;
 		}
 
-		if (token.string[1] != '\0') {
-			Q_strcat(script, 1024, va("\"%s\"", token.string));
+        if (strlen(script) + strlen(token.string) + 4 >= sizeof(script)) {
+            PC_SourceError(handle, "menu script exceeds buffer");
+            return qfalse;
+        }
+		if (token.type == TT_STRING || token.string[1] != '\0') {
+			Q_strcat(script, sizeof(script), va("\"%s\"", token.string));
 		} else {
-			Q_strcat(script, 1024, token.string);
+			Q_strcat(script, sizeof(script), token.string);
 		}
-		Q_strcat(script, 1024, " ");
+		Q_strcat(script, sizeof(script), " ");
 	}
 	return qfalse; 	// bk001105 - LCC   missing return value
 }
@@ -685,6 +692,14 @@ void Item_SetScreenCoords(itemDef_t *item, float x, float y) {
   if (item == NULL) {
     return;
   }
+#ifdef CGAME
+  if (item->widescreenSet && item->parent && DC->xscale > 0) {
+    menuDef_t *menu = item->parent;
+    int parentSide = menu->widescreen == WIDESCREEN_LEFT ? -1 : menu->widescreen == WIDESCREEN_RIGHT ? 1 : 0;
+    int itemSide = item->widescreen == WIDESCREEN_LEFT ? -1 : item->widescreen == WIDESCREEN_RIGHT ? 1 : 0;
+    x += (itemSide - parentSide) * DC->bias / DC->xscale;
+  }
+#endif
 
   if (item->window.border != 0) {
     x += item->window.borderSize;
@@ -755,6 +770,15 @@ void Menu_PostParse(menuDef_t *menu) {
 		menu->window.rect.w = 640;
 		menu->window.rect.h = 480;
 	}
+#ifdef CGAME
+    /* cgame's ordinary 640-wide canvas is centered. Anchor the authored
+     * menu at the physical left/right edge without stretching its contents. */
+    if (DC->xscale > 0) {
+        float offset = DC->bias / DC->xscale;
+        if (menu->widescreen == WIDESCREEN_LEFT) menu->window.rect.x -= offset;
+        if (menu->widescreen == WIDESCREEN_RIGHT) menu->window.rect.x += offset;
+    }
+#endif
 	Menu_UpdatePosition(menu);
 }
 
@@ -1007,15 +1031,20 @@ void Menus_CloseByName(const char *p) {
   menuDef_t *menu = Menus_FindByName(p);
   if (menu != NULL) {
 		Menu_RunCloseScript(menu);
-		menu->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS);
+		menu->window.flags &= ~(WINDOW_VISIBLE | WINDOW_HASFOCUS | WINDOW_FORCED);
   }
 }
 
 void Menus_CloseAll() {
   int i;
+  g_waitingForKey = g_editingField = qfalse;
+  g_bindItem = g_editItem = itemCapture = NULL;
+  captureFunc = NULL;
+  captureData = NULL;
+  openMenuCount = 0;
   for (i = 0; i < menuCount; i++) {
 		Menu_RunCloseScript(&Menus[i]);
-		Menus[i].window.flags &= ~(WINDOW_HASFOCUS | WINDOW_VISIBLE);
+		Menus[i].window.flags &= ~(WINDOW_HASFOCUS | WINDOW_VISIBLE | WINDOW_FORCED);
   }
 }
 
@@ -1078,6 +1107,33 @@ void Script_Close(itemDef_t *item, char **args) {
   if (String_Parse(args, &name)) {
     Menus_CloseByName(name);
   }
+}
+
+/* Retail toggle 0x10016580 alternates by its own per-menu flag, not by
+ * current visibility: open on the first toggle, close on the next. */
+static void Script_Toggle(itemDef_t *item, char **args) {
+  const char *name;
+  menuDef_t *menu;
+  (void)item;
+  if (!String_Parse(args, &name) || (menu = Menus_FindByName(name)) == NULL) {
+    return;
+  }
+  if (menu->toggled) {
+    Menus_CloseByName(name);
+    menu->toggled = qfalse;
+  } else {
+    Menus_ActivateByName(name);
+    menu->toggled = qtrue;
+  }
+}
+
+/* Retail activateAdvert asks the advert service for a cell. Advertising is
+ * an unavailable online service, so the verb is consumed without effect
+ * instead of falling through to the module's unknown-script handler. */
+static void Script_ActivateAdvert(itemDef_t *item, char **args) {
+  int cell;
+  (void)item;
+  Int_Parse(args, &cell);
 }
 
 void Menu_TransitionItemByName(menuDef_t *menu, const char *p, rectDef_t rectFrom, rectDef_t rectTo, int time, float amt) {
@@ -1222,6 +1278,8 @@ commandDef_t commandList[] =
   {"open", &Script_Open},                       // menu
 	{"conditionalopen", &Script_ConditionalOpen},	// menu
   {"close", &Script_Close},                     // menu
+  {"toggle", &Script_Toggle},                   // menu (retail)
+  {"activateAdvert", &Script_ActivateAdvert},   // advert cell (retail; inert)
   {"setasset", &Script_SetAsset},               // works on this
   {"setbackground", &Script_SetBackground},     // works on this
   {"setitemcolor", &Script_SetItemColor},       // group/name
@@ -1241,12 +1299,13 @@ int scriptCommandCount = sizeof(commandList) / sizeof(commandDef_t);
 
 
 void Item_RunScript(itemDef_t *item, const char *s) {
-  char script[1024], *p;
+  char script[8192], *p;
   int i;
   qboolean bRan;
   memset(script, 0, sizeof(script));
   if (item && s && s[0]) {
-    Q_strcat(script, 1024, s);
+    if (strlen(s) >= sizeof(script)) { Com_Printf("menu script exceeds buffer\n"); return; }
+    Q_strcat(script, sizeof(script), s);
     p = script;
     while (1) {
       const char *command;
@@ -1276,44 +1335,32 @@ void Item_RunScript(itemDef_t *item, const char *s) {
 }
 
 
-qboolean Item_EnableShowViaCvar(itemDef_t *item, int flag) {
-  char script[1024], *p;
-  memset(script, 0, sizeof(script));
-  if (item && item->enableCvar && *item->enableCvar && item->cvarTest && *item->cvarTest) {
-		char buff[1024];
-	  DC->getCVarString(item->cvarTest, buff, sizeof(buff));
-
-    Q_strcat(script, 1024, item->enableCvar);
-    p = script;
-    while (1) {
-      const char *val;
-      // expect value then ; or NULL, NULL ends list
-      if (!String_Parse(&p, &val)) {
-				return (item->cvarFlags & flag) ? qfalse : qtrue;
-      }
-
-      if (val[0] == ';' && val[1] == '\0') {
-        continue;
-      }
-
-			// enable it if any of the values are true
-			if (item->cvarFlags & flag) {
-        if (Q_stricmp(buff, val) == 0) {
-					return qtrue;
-				}
-			} else {
-				// disable it if any of the values are true
-        if (Q_stricmp(buff, val) == 0) {
-					return qfalse;
-				}
-			}
-
-    }
-		return (item->cvarFlags & flag) ? qfalse : qtrue;
-  }
-	return qtrue;
+static int Item_AllCvarFlags(const itemDef_t *item) {
+    int flags = item->cvarFlags, slot;
+    for (slot = 0; slot < ITEM_EXTRA_CVAR_SLOTS; ++slot) flags |= item->extraCvarFlags[slot];
+    return flags;
 }
-
+static qboolean Item_CvarCondition(const char *test, const char *values, int flags, int flag) {
+    char value[1024], script[1024], *cursor;
+    const char *token;
+    int mask = flag == CVAR_SHOW ? CVAR_SHOW | CVAR_HIDE : CVAR_ENABLE | CVAR_DISABLE;
+    if (!(flags & mask) || !test || !values) return qtrue;
+    DC->getCVarString(test, value, sizeof(value));
+    Q_strncpyz(script, values, sizeof(script)); cursor = script;
+    while (String_Parse(&cursor, &token)) {
+        if (!strcmp(token, ";")) continue;
+        if (!Q_stricmp(value, token)) return (flags & flag) ? qtrue : qfalse;
+    }
+    return (flags & flag) ? qfalse : qtrue;
+}
+qboolean Item_EnableShowViaCvar(itemDef_t *item, int flag) {
+    int slot;
+    if (!item || !Item_CvarCondition(item->cvarTest, item->enableCvar, item->cvarFlags, flag)) return qfalse;
+    for (slot = 0; slot < ITEM_EXTRA_CVAR_SLOTS; ++slot)
+        if (!Item_CvarCondition(item->extraCvarTest[slot], item->extraEnableCvar[slot], item->extraCvarFlags[slot], flag))
+            return qfalse;
+    return qtrue;
+}
 
 // will optionaly set focus to this item 
 qboolean Item_SetFocus(itemDef_t *item, float x, float y) {
@@ -1331,11 +1378,11 @@ qboolean Item_SetFocus(itemDef_t *item, float x, float y) {
 	parent = (menuDef_t*)item->parent; 
       
 	// items can be enabled and disabled based on cvars
-	if (item->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
+	if (Item_AllCvarFlags(item) & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
 		return qfalse;
 	}
 
-	if (item->cvarFlags & (CVAR_SHOW | CVAR_HIDE) && !Item_EnableShowViaCvar(item, CVAR_SHOW)) {
+	if (Item_AllCvarFlags(item) & (CVAR_SHOW | CVAR_HIDE) && !Item_EnableShowViaCvar(item, CVAR_SHOW)) {
 		return qfalse;
 	}
 
@@ -1621,11 +1668,11 @@ void Item_MouseEnter(itemDef_t *item, float x, float y) {
 		// in the text rect?
 
 		// items can be enabled and disabled based on cvars
-		if (item->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
+		if (Item_AllCvarFlags(item) & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
 			return;
 		}
 
-		if (item->cvarFlags & (CVAR_SHOW | CVAR_HIDE) && !Item_EnableShowViaCvar(item, CVAR_SHOW)) {
+		if (Item_AllCvarFlags(item) & (CVAR_SHOW | CVAR_HIDE) && !Item_EnableShowViaCvar(item, CVAR_SHOW)) {
 			return;
 		}
 
@@ -1697,6 +1744,17 @@ qboolean Item_OwnerDraw_HandleKey(itemDef_t *item, int key) {
   return qfalse;
 }
 
+void Item_ListBox_Select(itemDef_t *item, int index) {
+    if (index < 0 || index >= DC->feederCount(item->special)) return;
+    /* Retail FEEDER_HEADS lists model/skin pairs. The two forced-model
+     * lists share that feeder and select their own item cvar. */
+    if (item->special == FEEDER_HEADS && item->cvar) {
+        qhandle_t image;
+        const char *model = DC->feederItemText(item->special, index, 0, &image);
+        if (model && *model) DC->setCVar(item->cvar, model);
+    } else DC->feederSelection(item->special, index);
+}
+
 qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolean force) {
 	listBoxDef_t *listPtr = (listBoxDef_t*)item->typeData;
 	int count = DC->feederCount(item->special);
@@ -1720,7 +1778,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 						listPtr->startPos = listPtr->cursorPos - viewmax + 1;
 					}
 					item->cursorPos = listPtr->cursorPos;
-					DC->feederSelection(item->special, item->cursorPos);
+					Item_ListBox_Select(item, item->cursorPos);
 				}
 				else {
 					listPtr->startPos--;
@@ -1743,7 +1801,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 						listPtr->startPos = listPtr->cursorPos - viewmax + 1;
 					}
 					item->cursorPos = listPtr->cursorPos;
-					DC->feederSelection(item->special, item->cursorPos);
+					Item_ListBox_Select(item, item->cursorPos);
 				}
 				else {
 					listPtr->startPos++;
@@ -1769,7 +1827,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 						listPtr->startPos = listPtr->cursorPos - viewmax + 1;
 					}
 					item->cursorPos = listPtr->cursorPos;
-					DC->feederSelection(item->special, item->cursorPos);
+					Item_ListBox_Select(item, item->cursorPos);
 				}
 				else {
 					listPtr->startPos--;
@@ -1792,7 +1850,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 						listPtr->startPos = listPtr->cursorPos - viewmax + 1;
 					}
 					item->cursorPos = listPtr->cursorPos;
-					DC->feederSelection(item->special, item->cursorPos);
+					Item_ListBox_Select(item, item->cursorPos);
 				}
 				else {
 					listPtr->startPos++;
@@ -1837,7 +1895,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 				lastListBoxClickTime = DC->realTime + DOUBLE_CLICK_DELAY;
 				if (item->cursorPos != listPtr->cursorPos) {
 					item->cursorPos = listPtr->cursorPos;
-					DC->feederSelection(item->special, item->cursorPos);
+					Item_ListBox_Select(item, item->cursorPos);
 				}
 			}
 			return qtrue;
@@ -1866,7 +1924,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 					listPtr->startPos = listPtr->cursorPos - viewmax + 1;
 				}
 				item->cursorPos = listPtr->cursorPos;
-				DC->feederSelection(item->special, item->cursorPos);
+				Item_ListBox_Select(item, item->cursorPos);
 			}
 			else {
 				listPtr->startPos -= viewmax;
@@ -1890,7 +1948,7 @@ qboolean Item_ListBox_HandleKey(itemDef_t *item, int key, qboolean down, qboolea
 					listPtr->startPos = listPtr->cursorPos - viewmax + 1;
 				}
 				item->cursorPos = listPtr->cursorPos;
-				DC->feederSelection(item->special, item->cursorPos);
+				Item_ListBox_Select(item, item->cursorPos);
 			}
 			else {
 				listPtr->startPos += viewmax;
@@ -1925,11 +1983,51 @@ int Item_Multi_CountSettings(itemDef_t *item) {
 	return multiPtr->count;
 }
 
+/* Presets are data: compare/apply cvars directly, never execute their text. */
+static int Item_PresetIndex(itemDef_t *item) {
+    multiDef_t *list = item->typeData;
+    int i, j;
+    char value[MAX_STRING_CHARS], selected[MAX_STRING_CHARS];
+    if (!list || !item->cvar) return -1;
+    DC->getCVarString(item->cvar, selected, sizeof(selected));
+    for (i = 0; i < list->count; ++i) {
+        itemDef_t *preset = Menu_FindItemByName(item->parent, list->cvarStr[i]);
+        multiDef_t *pairs;
+        if (Q_stricmp(selected, list->cvarList[i])) continue;
+        if (!preset || preset->type != ITEM_TYPE_PRESET || !(pairs = preset->typeData)) continue;
+        for (j = 0; j < pairs->count; ++j) {
+            char *endA, *endB;
+            double a, b;
+            DC->getCVarString(pairs->cvarList[j], value, sizeof(value));
+            if (!strcmp(value, pairs->cvarStr[j])) continue;
+            a = strtod(value, &endA); b = strtod(pairs->cvarStr[j], &endB);
+            /* Retail 0x10015909 compares numeric presets within 0.001. */
+            if (!*value || !*pairs->cvarStr[j] || *endA || *endB || !isfinite(a) || !isfinite(b) || fabs(a - b) > .001) break;
+        }
+        if (j == pairs->count) return i;
+        /* Retail 0x100156b0 validates the selected name. Matching another
+         * preset never silently selects it after a manual settings edit. */
+        DC->setCVar(item->cvar, "Custom");
+        break;
+    }
+    return -1;
+}
+static void Item_ApplyPreset(itemDef_t *item, int index) {
+    multiDef_t *list = item->typeData, *pairs;
+    itemDef_t *preset;
+    int j;
+    if (!list || index < 0 || index >= list->count) return;
+    preset = Menu_FindItemByName(item->parent, list->cvarStr[index]);
+    if (!preset || preset->type != ITEM_TYPE_PRESET || !(pairs = preset->typeData)) return;
+    for (j = 0; j < pairs->count; ++j) DC->setCVar(pairs->cvarList[j], pairs->cvarStr[j]);
+    DC->setCVar(item->cvar, list->cvarList[index]);
+}
 int Item_Multi_FindCvarByValue(itemDef_t *item) {
 	char buff[1024];
 	float value = 0;
 	int i;
 	multiDef_t *multiPtr = (multiDef_t*)item->typeData;
+	if (item->type == ITEM_TYPE_PRESETLIST) return Item_PresetIndex(item);
 	if (multiPtr) {
 		if (multiPtr->strDef) {
 	    DC->getCVarString(item->cvar, buff, sizeof(buff));
@@ -1956,6 +2054,10 @@ const char *Item_Multi_Setting(itemDef_t *item) {
 	float value = 0;
 	int i;
 	multiDef_t *multiPtr = (multiDef_t*)item->typeData;
+	if (item->type == ITEM_TYPE_PRESETLIST) {
+        int index = Item_PresetIndex(item);
+        return index >= 0 ? multiPtr->cvarList[index] : "Custom";
+    }
 	if (multiPtr) {
 		if (multiPtr->strDef) {
 	    DC->getCVarString(item->cvar, buff, sizeof(buff));
@@ -1984,10 +2086,13 @@ qboolean Item_Multi_HandleKey(itemDef_t *item, int key) {
 			if (key == K_MOUSE1 || key == K_ENTER || key == K_MOUSE2 || key == K_MOUSE3) {
 				int current = Item_Multi_FindCvarByValue(item) + 1;
 				int max = Item_Multi_CountSettings(item);
+				if (max <= 0) return qfalse;
 				if ( current < 0 || current >= max ) {
 					current = 0;
 				}
-				if (multiPtr->strDef) {
+				if (item->type == ITEM_TYPE_PRESETLIST) {
+                    Item_ApplyPreset(item, current);
+                } else if (multiPtr->strDef) {
 					DC->setCVar(item->cvar, multiPtr->cvarStr[current]);
 				} else {
 					float value = multiPtr->cvarValue[current];
@@ -2228,6 +2333,21 @@ static void Scroll_ListBox_ThumbFunc(void *p) {
 	}
 }
 
+/* Retail: a click on the track (Item_Slider_HandleKey 0x10019315) always
+ * stores "%f"; a thumb drag (Scroll_Slider_ThumbFunc 0x10018ee3..0x10018f8f)
+ * stores ceil()'d "%d" for cvarInt items, "%f" when precision is 0 (the
+ * default) and "%.Nf" otherwise. The clamp is a robustness bound. */
+static void Item_SetSliderValue(itemDef_t *item, float value, qboolean drag) {
+    editFieldDef_t *limits = item->typeData;
+    char text[64];
+    if (!limits || !item->cvar) return;
+    value = Com_Clamp(limits->minVal, limits->maxVal, value);
+    if (!drag || (!item->integerCvar && item->precision <= 0)) snprintf(text, sizeof(text), "%f", (double)value);
+    else if (item->integerCvar) snprintf(text, sizeof(text), "%d", (int)ceil((double)value));
+    else snprintf(text, sizeof(text), "%.*f", item->precision, (double)value);
+    DC->setCVar(item->cvar, text);
+}
+
 static void Scroll_Slider_ThumbFunc(void *p) {
 	float x, value, cursorx;
 	scrollInfo_t *si = (scrollInfo_t*)p;
@@ -2250,7 +2370,7 @@ static void Scroll_Slider_ThumbFunc(void *p) {
 	value /= SLIDER_WIDTH;
 	value *= (editDef->maxVal - editDef->minVal);
 	value += editDef->minVal;
-	DC->setCVar(si->item->cvar, va("%f", value));
+	Item_SetSliderValue(si->item, value, qtrue);
 }
 
 void Item_StartCapture(itemDef_t *item, int key) {
@@ -2283,7 +2403,8 @@ void Item_StartCapture(itemDef_t *item, int key) {
 			}
 			break;
 		}
-		case ITEM_TYPE_SLIDER:
+		case ITEM_TYPE_SLIDER_COLOR:
+    case ITEM_TYPE_SLIDER:
 		{
 			flags = Item_Slider_OverSlider(item, DC->cursorx, DC->cursory);
 			if (flags & WINDOW_LB_THUMB) {
@@ -2334,7 +2455,7 @@ qboolean Item_Slider_HandleKey(itemDef_t *item, int key, qboolean down) {
 					// vm fuckage
 					// value = (((float)(DC->cursorx - x)/ SLIDER_WIDTH) * (editDef->maxVal - editDef->minVal));
 					value += editDef->minVal;
-					DC->setCVar(item->cvar, va("%f", value));
+					Item_SetSliderValue(item, value, qfalse);
 					return qtrue;
 				}
 			}
@@ -2387,6 +2508,7 @@ qboolean Item_HandleKey(itemDef_t *item, int key, qboolean down) {
     case ITEM_TYPE_YESNO:
       return Item_YesNo_HandleKey(item, key);
       break;
+    case ITEM_TYPE_PRESETLIST:
     case ITEM_TYPE_MULTI:
       return Item_Multi_HandleKey(item, key);
       break;
@@ -2396,6 +2518,7 @@ qboolean Item_HandleKey(itemDef_t *item, int key, qboolean down) {
     case ITEM_TYPE_BIND:
 			return Item_Bind_HandleKey(item, key, down);
       break;
+    case ITEM_TYPE_SLIDER_COLOR:
     case ITEM_TYPE_SLIDER:
       return Item_Slider_HandleKey(item, key, down);
       break;
@@ -2682,7 +2805,9 @@ void Menu_HandleKey(menuDef_t *menu, int key, qboolean down) {
 						item->cursorPos = 0;
 						g_editingField = qtrue;
 						g_editItem = item;
-						DC->setOverstrikeMode(qtrue);
+						/* Retail Menu_HandleKey 0x10019dd5/0x10019e26 starts
+						 * editing in insert mode (cursor '|'), not overstrike. */
+						DC->setOverstrikeMode(qfalse);
 					}
 				} else {
 					if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory)) {
@@ -2720,7 +2845,7 @@ void Menu_HandleKey(menuDef_t *menu, int key, qboolean down) {
 					item->cursorPos = 0;
 					g_editingField = qtrue;
 					g_editItem = item;
-					DC->setOverstrikeMode(qtrue);
+					DC->setOverstrikeMode(qfalse);
 				} else {
 						Item_Action(item);
 				}
@@ -2805,7 +2930,7 @@ void Item_TextColor(itemDef_t *item, vec4_t *newColor) {
 	}
 
 	if (item->enableCvar && *item->enableCvar && item->cvarTest && *item->cvarTest) {
-		if (item->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
+		if (Item_AllCvarFlags(item) & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
 			memcpy(newColor, &parent->disableColor, sizeof(vec4_t));
 		}
 	}
@@ -2871,8 +2996,9 @@ void Item_Text_AutoWrapped_Paint(itemDef_t *item) {
 			if (*p == '\0') {
 				break;
 			}
-			//
-			y += height + 5;
+			/* Retail Item_Text_AutoWrapped_Paint 0x1001a5e7..0x1001a603
+			 * advances by 1.3 line heights (0x10029508), not height + 5. */
+			y = (float)((double)y + height * 1.3);
 			p = newLinePtr;
 			len = 0;
 			newLine = 0;
@@ -2961,6 +3087,16 @@ void Item_Text_Paint(itemDef_t *item) {
 	Item_SetTextExtents(item, &width, &height, textPtr);
 
 	if (*textPtr == '\0') {
+		return;
+	}
+
+	/* Retail parity (Item_SetTextExtents 0x10019f73 -> textWidth 0x10003e60):
+	 * the centring width is measured from item->text; for a cvar caption
+	 * without text, retail's measure returns its uninitialised local, which
+	 * holds the display-context pointer, so a CENTER or RIGHT caption lands
+	 * hundreds of millions of units off-screen and is never seen (for example
+	 * the controls slider values). Such captions are not painted here. */
+	if (item->text == NULL && (item->textalignment == ITEM_ALIGN_CENTER || item->textalignment == ITEM_ALIGN_RIGHT)) {
 		return;
 	}
 
@@ -3094,7 +3230,6 @@ void Item_Multi_Paint(itemDef_t *item) {
 
 typedef struct {
 	char	*command;
-	int		id;
 	int		defaultbind1;
 	int		defaultbind2;
 	int		bind1;
@@ -3109,71 +3244,103 @@ typedef struct
 } configcvar_t;
 
 
+/* Retail binding table (uix86.dll 0x1002a0d0, 81 rows of 0x18 bytes:
+ * command, default key 1/2, live key 1/2). Order and default keys follow
+ * retail; the default keys are only staged until saveControls applies them.
+ * Retail's sentinels 0 and -2 name no key and are stored as -1 here. */
 static bind_t g_bindings[] = 
 {
-	{"+scores",			 K_TAB,				-1,		-1, -1},
-	{"+button2",		 K_ENTER,			-1,		-1, -1},
-	{"+speed", 			 K_SHIFT,			-1,		-1,	-1},
-	{"+forward", 		 K_UPARROW,		-1,		-1, -1},
-	{"+back", 			 K_DOWNARROW,	-1,		-1, -1},
-	{"+moveleft", 	 ',',					-1,		-1, -1},
-	{"+moveright", 	 '.',					-1,		-1, -1},
-	{"+moveup",			 K_SPACE,			-1,		-1, -1},
-	{"+movedown",		 'c',					-1,		-1, -1},
-	{"+left", 			 K_LEFTARROW,	-1,		-1, -1},
-	{"+right", 			 K_RIGHTARROW,	-1,		-1, -1},
-	{"+strafe", 		 K_ALT,				-1,		-1, -1},
-	{"+lookup", 		 K_PGDN,				-1,		-1, -1},
-	{"+lookdown", 	 K_DEL,				-1,		-1, -1},
-	{"+mlook", 			 '/',					-1,		-1, -1},
-	{"centerview", 	 K_END,				-1,		-1, -1},
-	{"+zoom", 			 -1,						-1,		-1, -1},
-	{"weapon 1",		 '1',					-1,		-1, -1},
-	{"weapon 2",		 '2',					-1,		-1, -1},
-	{"weapon 3",		 '3',					-1,		-1, -1},
-	{"weapon 4",		 '4',					-1,		-1, -1},
-	{"weapon 5",		 '5',					-1,		-1, -1},
-	{"weapon 6",		 '6',					-1,		-1, -1},
-	{"weapon 7",		 '7',					-1,		-1, -1},
-	{"weapon 8",		 '8',					-1,		-1, -1},
-	{"weapon 9",		 '9',					-1,		-1, -1},
-	{"weapon 10",		 '0',					-1,		-1, -1},
-	{"weapon 11",		 -1,					-1,		-1, -1},
-	{"weapon 12",		 -1,					-1,		-1, -1},
-	{"weapon 13",		 -1,					-1,		-1, -1},
-	{"+attack", 		 K_CTRL,				-1,		-1, -1},
-	{"weapprev",		 '[',					-1,		-1, -1},
-	{"weapnext", 		 ']',					-1,		-1, -1},
-	{"+button3", 		 K_MOUSE3,			-1,		-1, -1},
-	{"+button4", 		 K_MOUSE4,			-1,		-1, -1},
-	{"prevTeamMember", 'w',					-1,		-1, -1},
-	{"nextTeamMember", 'r',					-1,		-1, -1},
-	{"nextOrder", 't',					-1,		-1, -1},
-	{"confirmOrder", 'y',					-1,		-1, -1},
-	{"denyOrder", 'n',					-1,		-1, -1},
-	{"taskOffense", 'o',					-1,		-1, -1},
-	{"taskDefense", 'd',					-1,		-1, -1},
-	{"taskPatrol", 'p',					-1,		-1, -1},
-	{"taskCamp", 'c',					-1,		-1, -1},
-	{"taskFollow", 'f',					-1,		-1, -1},
-	{"taskRetrieve", 'v',					-1,		-1, -1},
-	{"taskEscort", 'e',					-1,		-1, -1},
-	{"taskOwnFlag", 'i',					-1,		-1, -1},
-	{"taskSuicide", 'k',					-1,		-1, -1},
-	{"tauntKillInsult", K_F1,			-1,		-1, -1},
-	{"tauntPraise", K_F2,			-1,		-1, -1},
-	{"tauntTaunt", K_F3,			-1,		-1, -1},
-	{"tauntDeathInsult", K_F4,			-1,		-1, -1},
-	{"tauntGauntlet", K_F5,			-1,		-1, -1},
-	{"scoresUp", K_KP_PGUP,			-1,		-1, -1},
-	{"scoresDown", K_KP_PGDN,			-1,		-1, -1},
-	// bk001205 - this one below was:  '-1' 
-	{"messagemode",  -1,					-1,		-1, -1},
-	{"messagemode2", -1,						-1,		-1, -1},
-	{"messagemode3", -1,						-1,		-1, -1},
-	{"messagemode4", -1,						-1,		-1, -1}
+	{"+scores", K_TAB, -1, -1, -1},
+	{"+button2", K_MOUSE3, -1, -1, -1},
+	{"+speed", K_SHIFT, -1, -1, -1},
+	{"+forward", 'w', -1, -1, -1},
+	{"+back", 's', -1, -1, -1},
+	{"+moveleft", 'a', -1, -1, -1},
+	{"+moveright", 'd', -1, -1, -1},
+	{"+moveup", K_SPACE, -1, -1, -1},
+	{"+movedown", 'c', -1, -1, -1},
+	{"+left", K_LEFTARROW, -1, -1, -1},
+	{"+right", K_RIGHTARROW, -1, -1, -1},
+	{"+lookup", K_PGDN, -1, -1, -1},
+	{"+lookdown", K_DEL, -1, -1, -1},
+	{"centerview", K_END, -1, -1, -1},
+	{"+zoom", K_MOUSE2, -1, -1, -1},
+	{"weapon 1", '1', -1, -1, -1},
+	{"weapon 2", '2', -1, -1, -1},
+	{"weapon 3", '3', -1, -1, -1},
+	{"weapon 4", '4', -1, -1, -1},
+	{"weapon 5", '5', -1, -1, -1},
+	{"weapon 6", '6', -1, -1, -1},
+	{"weapon 7", '7', -1, -1, -1},
+	{"weapon 8", '8', -1, -1, -1},
+	{"weapon 9", '9', -1, -1, -1},
+	{"weapon 10", K_MOUSE4, -1, -1, -1},
+	{"weapon 11", -1, -1, -1, -1},
+	{"weapon 12", -1, -1, -1, -1},
+	{"weapon 13", -1, -1, -1, -1},
+	{"weapon 14", -1 /* retail stores 0, not a key */, -1, -1, -1},
+	{"weapon toggle", 'f', -1, -1, -1},
+	{"+attack", K_MOUSE1, -1, -1, -1},
+	{"weapprev", '[', -1, -1, -1},
+	{"weapnext", ']', -1, -1, -1},
+	{"+button3", 'g', -1, -1, -1},
+	{"prevTeamMember", -1, -1, -1, -1},
+	{"nextTeamMember", -1, -1, -1, -1},
+	{"nextOrder", -1, -1, -1, -1},
+	{"confirmOrder", -1, -1, -1, -1},
+	{"denyOrder", -1, -1, -1, -1},
+	{"taskOffense", -1, -1, -1, -1},
+	{"taskDefense", -1, -1, -1, -1},
+	{"taskPatrol", -1, -1, -1, -1},
+	{"taskCamp", -1, -1, -1, -1},
+	{"taskFollow", -1, -1, -1, -1},
+	{"taskRetrieve", -1, -1, -1, -1},
+	{"taskEscort", -1, -1, -1, -1},
+	{"taskOwnFlag", -1, -1, -1, -1},
+	{"taskSuicide", -1, -1, -1, -1},
+	{"tauntKillInsult", -1, -1, -1, -1},
+	{"tauntPraise", -1, -1, -1, -1},
+	{"tauntTaunt", -1, -1, -1, -1},
+	{"tauntDeathInsult", -1, -1, -1, -1},
+	{"tauntGauntlet", -1, -1, -1, -1},
+	{"forfeit", -1 /* retail stores -2, not a key */, -1, -1, -1},
+	{"readyup", K_F3, -1, -1, -1},
+	{"scoresUp", -1, -1, -1, -1},
+	{"scoresDown", -1, -1, -1, -1},
+	{"dropflag", K_UPARROW, -1, -1, -1},
+	{"droppowerup", K_DOWNARROW, -1, -1, -1},
+	{"droprune", K_RIGHTARROW, -1, -1, -1},
+	{"dropweapon", K_LEFTARROW, -1, -1, -1},
+	{"messagemode", 't', -1, -1, -1},
+	{"messagemode2", 'y', -1, -1, -1},
+	{"+chat", 'h', -1, -1, -1},
+	{"screenshot", -1, -1, -1, -1},
+	{"+acc", 'p', -1, -1, -1},
+	{"togglechathistory", -1, -1, -1, -1},
+	{"screenshotJPEG", K_F11, -1, -1, -1},
+	{"+pstats", -1, -1, -1, -1},
+	{"kill", 'k', -1, -1, -1},
+	{"+voice", 'v', -1, -1, -1},
+	{"follow 0", K_KP_INS, -1, -1, -1},
+	{"follow 1", K_KP_END, -1, -1, -1},
+	{"follow 2", K_KP_DOWNARROW, -1, -1, -1},
+	{"follow 3", K_KP_PGDN, -1, -1, -1},
+	{"follow 4", K_KP_LEFTARROW, -1, -1, -1},
+	{"follow 5", K_KP_5, -1, -1, -1},
+	{"follow 6", K_KP_RIGHTARROW, -1, -1, -1},
+	{"follow 7", K_KP_HOME, -1, -1, -1},
+	{"follow 8", K_KP_UPARROW, -1, -1, -1},
+	{"follow 9", K_KP_PGUP, -1, -1, -1},
+	/* FnQL-game additions with no retail row. ingame_controls.menu binds
+	 * messagemode3/4, which retail cannot resolve. */
+	{"+strafe", -1, -1, -1, -1},
+	{"+mlook", -1, -1, -1, -1},
+	{"+button4", -1, -1, -1, -1},
+	{"messagemode3", -1, -1, -1, -1},
+	{"messagemode4", -1, -1, -1, -1},
 };
 
+typedef char bindKeyCheck[(K_MOUSE1 == 178 && K_F3 == 147 && K_KP_INS == 170 && K_KP_HOME == 160 && K_UPARROW == 132) ? 1 : -1];
 
 static const int g_bindCount = sizeof(g_bindings) / sizeof(bind_t);
 
@@ -3286,7 +3453,7 @@ void Controls_SetConfig(qboolean restart)
 	//trap_Cvar_SetValue( "in_joystick", s_controls.joyenable.curvalue );
 	//trap_Cvar_SetValue( "joy_threshold", s_controls.joythreshold.curvalue );
 	//trap_Cvar_SetValue( "cl_freelook", s_controls.freelook.curvalue );
-	DC->executeText(EXEC_APPEND, "in_restart\n");
+	if (restart) DC->executeText(EXEC_APPEND, "in_restart\n");
 	//trap_Cmd_ExecuteText( EXEC_APPEND, "in_restart\n" );
 }
 
@@ -3383,7 +3550,13 @@ void Item_Slider_Paint(itemDef_t *item) {
 		x = item->window.rect.x;
 	}
 	DC->setColor(newColor);
-	DC->drawHandlePic( x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.sliderBar );
+    if (item->type == ITEM_TYPE_SLIDER_COLOR) {
+        /* Retail 0x1001b6f2/0x1001b72c uses the installed fx_base gradient,
+         * without tinting it; only the thumb takes the widget color. */
+        DC->setColor(NULL);
+        DC->drawHandlePic(x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.fxBasePic);
+        DC->setColor(newColor);
+    } else DC->drawHandlePic( x, y, SLIDER_WIDTH, SLIDER_HEIGHT, DC->Assets.sliderBar );
 
 	x = Item_Slider_ThumbPosition(item);
 	DC->drawHandlePic( x - (SLIDER_THUMB_WIDTH / 2), y - 2, SLIDER_THUMB_WIDTH, SLIDER_THUMB_HEIGHT, DC->Assets.sliderThumb );
@@ -3392,15 +3565,12 @@ void Item_Slider_Paint(itemDef_t *item) {
 
 void Item_Bind_Paint(itemDef_t *item) {
 	vec4_t newColor, lowLight;
-	float value;
 	int maxChars = 0;
 	menuDef_t *parent = (menuDef_t*)item->parent;
 	editFieldDef_t *editPtr = (editFieldDef_t*)item->typeData;
 	if (editPtr) {
 		maxChars = editPtr->maxPaintChars;
 	}
-
-	value = (item->cvar) ? DC->getCVarValue(item->cvar) : 0;
 
 	if (item->window.flags & WINDOW_HASFOCUS) {
 		if (g_bindItem == item) {
@@ -3424,7 +3594,8 @@ void Item_Bind_Paint(itemDef_t *item) {
 		BindingFromName(item->cvar);
 		DC->drawText(item->textRect.x + item->textRect.w + 8, item->textRect.y, item->textscale, newColor, g_nameBind1, 0, maxChars, item->textStyle);
 	} else {
-		DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, (value != 0) ? "FIXME" : "FIXME", 0, maxChars, item->textStyle);
+		BindingFromName(item->cvar);
+		DC->drawText(item->textRect.x, item->textRect.y, item->textscale, newColor, g_nameBind1, 0, maxChars, item->textStyle);
 	}
 }
 
@@ -3435,6 +3606,10 @@ qboolean Display_KeyBindPending() {
 qboolean Item_Bind_HandleKey(itemDef_t *item, int key, qboolean down) {
 	int			id;
 	int			i;
+
+    if (!down || (key & K_CHAR_FLAG)) return qtrue;
+    if (g_waitingForKey && g_bindItem) item = g_bindItem;
+    if (!item || !item->cvar || BindingIDFromName(item->cvar) < 0) return qfalse;
 
 	if (Rect_ContainsPoint(&item->window.rect, DC->cursorx, DC->cursory) && !g_waitingForKey)
 	{
@@ -3458,11 +3633,14 @@ qboolean Item_Bind_HandleKey(itemDef_t *item, int key, qboolean down) {
 		{
 			case K_ESCAPE:
 				g_waitingForKey = qfalse;
+				g_bindItem = NULL;
 				return qtrue;
 	
 			case K_BACKSPACE:
 				id = BindingIDFromName(item->cvar);
 				if (id != -1) {
+					if (g_bindings[id].bind1 >= 0) DC->setBinding(g_bindings[id].bind1, "");
+					if (g_bindings[id].bind2 >= 0) DC->setBinding(g_bindings[id].bind2, "");
 					g_bindings[id].bind1 = -1;
 					g_bindings[id].bind2 = -1;
 				}
@@ -3515,14 +3693,17 @@ qboolean Item_Bind_HandleKey(itemDef_t *item, int key, qboolean down) {
 			g_bindings[id].bind2 = key;
 		}
 		else {
-			DC->setBinding( g_bindings[id].bind1, "" );
-			DC->setBinding( g_bindings[id].bind2, "" );
+			if (g_bindings[id].bind1 >= 0) DC->setBinding( g_bindings[id].bind1, "" );
+			if (g_bindings[id].bind2 >= 0) DC->setBinding( g_bindings[id].bind2, "" );
 			g_bindings[id].bind1 = key;
 			g_bindings[id].bind2 = -1;
 		}						
 	}
 
-	Controls_SetConfig(qtrue);	
+	Controls_SetConfig(qtrue);
+	/* Retail Item_Bind_HandleKey 0x1001bbb8..0x1001bbbe ends a successful
+	 * binding by clearing only the waiting flag; the item stays the bind
+	 * item, so its focus pulse keeps the red low-light until the next bind. */
 	g_waitingForKey = qfalse;
 
 	return qtrue;
@@ -3692,22 +3873,36 @@ void Item_ListBox_Paint(itemDef_t *item) {
 		}
 	} else {
 		// draw scrollbar to right side of the window
+		/* Retail Item_ListBox_Paint (uix86 0x1001c31e..0x1001c47f) skips the
+		 * vertical up arrow, bar, down arrow and thumb when the list box was
+		 * parsed with "notselectable" (0x1001e0a0); the horizontal branch draws
+		 * its scrollbar unconditionally. The scoreboard lists are
+		 * notselectable, so retail shows no scrollbar beside them. */
+		const qboolean drawScrollbar = !listPtr->notselectable;
 		x = item->window.rect.x + item->window.rect.w - SCROLLBAR_SIZE - 1;
 		y = item->window.rect.y + 1;
-		DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowUp);
+		if (drawScrollbar) {
+			DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowUp);
+		}
 		y += SCROLLBAR_SIZE - 1;
 
 		listPtr->endPos = listPtr->startPos;
 		size = item->window.rect.h - (SCROLLBAR_SIZE * 2);
-		DC->drawHandlePic(x, y, SCROLLBAR_SIZE, size+1, DC->Assets.scrollBar);
+		if (drawScrollbar) {
+			DC->drawHandlePic(x, y, SCROLLBAR_SIZE, size+1, DC->Assets.scrollBar);
+		}
 		y += size - 1;
-		DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowDown);
+		if (drawScrollbar) {
+			DC->drawHandlePic(x, y, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarArrowDown);
+		}
 		// thumb
 		thumb = Item_ListBox_ThumbDrawPosition(item);//Item_ListBox_ThumbPosition(item);
 		if (thumb > y - SCROLLBAR_SIZE - 1) {
 			thumb = y - SCROLLBAR_SIZE - 1;
 		}
-		DC->drawHandlePic(x, thumb, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarThumb);
+		if (drawScrollbar) {
+			DC->drawHandlePic(x, thumb, SCROLLBAR_SIZE, SCROLLBAR_SIZE, DC->Assets.scrollBarThumb);
+		}
 
 		// adjust size for item painting
 		size = item->window.rect.h - 2;
@@ -3741,6 +3936,23 @@ void Item_ListBox_Paint(itemDef_t *item) {
 			y = item->window.rect.y + 1;
 			for (i = listPtr->startPos; i < count; i++) {
 				const char *text;
+				float *rowColor = item->window.foreColor;
+				if (listPtr->hasElementColor) rowColor = listPtr->elementColor;
+				if (listPtr->hasSelectedColor && i == item->cursorPos) rowColor = listPtr->selectedColor;
+				/* Retail Item_ListBox_Paint 0x1001c691..0x1001c7a1 paints the row
+				 * background before its text: the selected row's outline image or
+				 * colour, otherwise the alternate-row fill on odd rows. The box is
+				 * (x + 2, y + 6, w - 16 - 6, elementHeight) (constants 0x100292f0,
+				 * 0x10029300, 0x10029320). */
+				if (i == item->cursorPos) {
+					if (item->outlineImage) {
+						DC->drawHandlePic(x + 2, y + 6, item->window.rect.w - SCROLLBAR_SIZE - 6, listPtr->elementHeight, item->outlineImage);
+					} else {
+						DC->fillRect(x + 2, y + 6, item->window.rect.w - SCROLLBAR_SIZE - 6, listPtr->elementHeight, item->window.outlineColor);
+					}
+				} else if (listPtr->hasAltRowColor && ((int)i & 1)) {
+					DC->fillRect(x + 2, y + 6, item->window.rect.w - SCROLLBAR_SIZE - 6, listPtr->elementHeight, listPtr->altRowColor);
+				}
 				// always draw at least one
 				// which may overdraw the box if it is too small for the element
 
@@ -3749,9 +3961,12 @@ void Item_ListBox_Paint(itemDef_t *item) {
 					for (j = 0; j < listPtr->numColumns; j++) {
 						text = DC->feederItemText(item->special, i, j, &optionalImage);
 						if (optionalImage >= 0) {
-							DC->drawHandlePic(x + 4 + listPtr->columnInfo[j].pos, y - 1 + listPtr->elementHeight / 2, listPtr->columnInfo[j].width, listPtr->columnInfo[j].width, optionalImage);
+							/* Retail column icons (cgame 0x1005fa5c, uix86 0x1001c85c) sit at
+							 * y + elementHeight * 0.5 - 2 for every list box. */
+							float iconY = y + listPtr->elementHeight * 0.5f - 2;
+							DC->drawHandlePic(x + 4 + listPtr->columnInfo[j].pos, iconY, listPtr->columnInfo[j].width, listPtr->columnInfo[j].width, optionalImage);
 						} else if (text) {
-							DC->drawText(x + 4 + listPtr->columnInfo[j].pos, y + listPtr->elementHeight, item->textscale, item->window.foreColor, text, 0, listPtr->columnInfo[j].maxChars, item->textStyle);
+							DC->drawText(x + 4 + listPtr->columnInfo[j].pos, y + listPtr->elementHeight, item->textscale, rowColor, text, 0, listPtr->columnInfo[j].maxChars, item->textStyle);
 						}
 					}
 				} else {
@@ -3759,13 +3974,10 @@ void Item_ListBox_Paint(itemDef_t *item) {
 					if (optionalImage >= 0) {
 						//DC->drawHandlePic(x + 4 + listPtr->elementHeight, y, listPtr->columnInfo[j].width, listPtr->columnInfo[j].width, optionalImage);
 					} else if (text) {
-						DC->drawText(x + 4, y + listPtr->elementHeight, item->textscale, item->window.foreColor, text, 0, 0, item->textStyle);
+						DC->drawText(x + 4, y + listPtr->elementHeight, item->textscale, rowColor, text, 0, 0, item->textStyle);
 					}
 				}
 
-				if (i == item->cursorPos) {
-					DC->fillRect(x + 2, y + 2, item->window.rect.w - SCROLLBAR_SIZE - 4, listPtr->elementHeight, item->window.outlineColor);
-				}
 
 				size -= listPtr->elementHeight;
 				if (size < listPtr->elementHeight) {
@@ -3820,7 +4032,7 @@ void Item_OwnerDraw_Paint(itemDef_t *item) {
 			LerpColor(item->window.foreColor,lowLight,color,0.5+0.5*sin(DC->realTime / PULSE_DIVISOR));
 		}
 
-		if (item->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
+		if (Item_AllCvarFlags(item) & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(item, CVAR_ENABLE)) {
 		  memcpy(color, parent->disableColor, sizeof(vec4_t)); // bk001207 - FIXME: Com_Memcpy
 		}
 	
@@ -3953,15 +4165,16 @@ void Item_Paint(itemDef_t *item) {
     }
   }
 
-	if (item->window.ownerDrawFlags && DC->ownerDrawVisible) {
-		if (!DC->ownerDrawVisible(item->window.ownerDrawFlags)) {
+	if ((item->window.ownerDrawFlags || item->window.ownerDrawFlags2) && (DC->ownerDrawVisibleEx || DC->ownerDrawVisible)) {
+		qboolean visible = DC->ownerDrawVisibleEx ? DC->ownerDrawVisibleEx(item->window.ownerDrawFlags,item->window.ownerDrawFlags2) : DC->ownerDrawVisible(item->window.ownerDrawFlags);
+		if (!visible) {
 			item->window.flags &= ~WINDOW_VISIBLE;
 		} else {
 			item->window.flags |= WINDOW_VISIBLE;
 		}
 	}
 
-	if (item->cvarFlags & (CVAR_SHOW | CVAR_HIDE)) {
+	if (Item_AllCvarFlags(item) & (CVAR_SHOW | CVAR_HIDE)) {
 		if (!Item_EnableShowViaCvar(item, CVAR_SHOW)) {
 			return;
 		}
@@ -3974,6 +4187,8 @@ void Item_Paint(itemDef_t *item) {
   if (!(item->window.flags & WINDOW_VISIBLE)) {
     return;
   }
+
+  if (DC->setTextFont) DC->setTextFont(item->textFont);
 
   // paint the rect first.. 
   Window_Paint(&item->window, parent->fadeAmount , parent->fadeClamp, parent->fadeCycle);
@@ -4018,18 +4233,22 @@ void Item_Paint(itemDef_t *item) {
     case ITEM_TYPE_YESNO:
       Item_YesNo_Paint(item);
       break;
+    case ITEM_TYPE_PRESETLIST:
     case ITEM_TYPE_MULTI:
       Item_Multi_Paint(item);
       break;
     case ITEM_TYPE_BIND:
       Item_Bind_Paint(item);
       break;
+    case ITEM_TYPE_SLIDER_COLOR:
     case ITEM_TYPE_SLIDER:
       Item_Slider_Paint(item);
       break;
     default:
       break;
   }
+
+  if (DC->setTextFont) DC->setTextFont(0);
 
 }
 
@@ -4097,7 +4316,7 @@ void Menu_SetFeederSelection(menuDef_t *menu, int feeder, int index, const char 
 					listPtr->startPos = 0;
 				}
 				menu->items[i]->cursorPos = index;
-				DC->feederSelection(menu->items[i]->special, menu->items[i]->cursorPos);
+				Item_ListBox_Select(menu->items[i], menu->items[i]->cursorPos);
 				return;
 			}
 		}
@@ -4138,6 +4357,7 @@ void Item_Init(itemDef_t *item) {
 	memset(item, 0, sizeof(itemDef_t));
 	item->textscale = 0.55f;
 	Window_Init(&item->window);
+	/* Retail item init (itemDef 0x1002001a..0x10020072) leaves precision 0. */
 }
 
 void Menu_HandleMouseMove(menuDef_t *menu, float x, float y) {
@@ -4174,11 +4394,11 @@ void Menu_HandleMouseMove(menuDef_t *menu, float x, float y) {
       }
 
 			// items can be enabled and disabled based on cvars
-			if (menu->items[i]->cvarFlags & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(menu->items[i], CVAR_ENABLE)) {
+			if (Item_AllCvarFlags(menu->items[i]) & (CVAR_ENABLE | CVAR_DISABLE) && !Item_EnableShowViaCvar(menu->items[i], CVAR_ENABLE)) {
 				continue;
 			}
 
-			if (menu->items[i]->cvarFlags & (CVAR_SHOW | CVAR_HIDE) && !Item_EnableShowViaCvar(menu->items[i], CVAR_SHOW)) {
+			if (Item_AllCvarFlags(menu->items[i]) & (CVAR_SHOW | CVAR_HIDE) && !Item_EnableShowViaCvar(menu->items[i], CVAR_SHOW)) {
 				continue;
 			}
 
@@ -4219,6 +4439,10 @@ void Menu_Paint(menuDef_t *menu, qboolean forcePaint) {
 	if (menu == NULL) {
 		return;
 	}
+#ifdef UI
+    /* Retail Menu_Paint 0x1001d82e yields presentation to the web UI. */
+    if (DC->getCVarValue("web_browserActive")) return;
+#endif
 
 	if (!(menu->window.flags & WINDOW_VISIBLE) &&  !forcePaint) {
 		return;
@@ -4231,12 +4455,20 @@ void Menu_Paint(menuDef_t *menu, qboolean forcePaint) {
 	if (forcePaint) {
 		menu->window.flags |= WINDOW_FORCED;
 	}
+    for (i = 0; i < menu->itemCount; ++i) {
+        if (menu->items[i]->type == ITEM_TYPE_PRESETLIST) Item_PresetIndex(menu->items[i]);
+    }
 
 	// draw the background if necessary
 	if (menu->fullScreen) {
 		// implies a background shader
 		// FIXME: make sure we have a default shader if fullscreen is set with no background
-		DC->drawHandlePic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, menu->window.background );
+        if (menu->backgroundSize.w > 0 && menu->backgroundSize.h > 0 && DC->glconfig.vidHeight > 0) {
+            float visibleWidth = DC->glconfig.vidWidth * menu->backgroundSize.h / DC->glconfig.vidHeight;
+            float crop = .5f * (1 - visibleWidth / menu->backgroundSize.w);
+            DC->drawStretchPic(0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight,
+                crop, 0, 1 - crop, 1, menu->window.background);
+        } else DC->drawHandlePic(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, menu->window.background);
 	} else if (menu->window.background) {
 		// this allows a background shader without being full screen
 		//UI_DrawHandlePic(menu->window.rect.x, menu->window.rect.y, menu->window.rect.w, menu->window.rect.h, menu->backgroundShader);
@@ -4269,16 +4501,18 @@ void Item_ValidateTypeData(itemDef_t *item) {
 
 	if (item->type == ITEM_TYPE_LISTBOX) {
 		item->typeData = UI_Alloc(sizeof(listBoxDef_t));
+		if (!item->typeData) return;
 		memset(item->typeData, 0, sizeof(listBoxDef_t));
-	} else if (item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD || item->type == ITEM_TYPE_YESNO || item->type == ITEM_TYPE_BIND || item->type == ITEM_TYPE_SLIDER || item->type == ITEM_TYPE_TEXT) {
+	} else if (item->type == ITEM_TYPE_EDITFIELD || item->type == ITEM_TYPE_NUMERICFIELD || item->type == ITEM_TYPE_YESNO || item->type == ITEM_TYPE_BIND || item->type == ITEM_TYPE_SLIDER_COLOR || item->type == ITEM_TYPE_SLIDER || item->type == ITEM_TYPE_TEXT) {
 		item->typeData = UI_Alloc(sizeof(editFieldDef_t));
+		if (!item->typeData) return;
 		memset(item->typeData, 0, sizeof(editFieldDef_t));
 		if (item->type == ITEM_TYPE_EDITFIELD) {
 			if (!((editFieldDef_t *) item->typeData)->maxPaintChars) {
 				((editFieldDef_t *) item->typeData)->maxPaintChars = MAX_EDITFIELD;
 			}
 		}
-	} else if (item->type == ITEM_TYPE_MULTI) {
+	} else if ((item->type == ITEM_TYPE_MULTI || item->type == ITEM_TYPE_PRESET || item->type == ITEM_TYPE_PRESETLIST)) {
 		item->typeData = UI_Alloc(sizeof(multiDef_t));
 	} else if (item->type == ITEM_TYPE_MODEL) {
 		item->typeData = UI_Alloc(sizeof(modelDef_t));
@@ -4591,17 +4825,17 @@ qboolean ItemParse_columns( itemDef_t *item, int handle ) {
 		return qfalse;
 	listPtr = (listBoxDef_t*)item->typeData;
 	if (PC_Int_Parse(handle, &num)) {
-		if (num > MAX_LB_COLUMNS) {
-			num = MAX_LB_COLUMNS;
-		}
-		listPtr->numColumns = num;
+		if (num < 0 || num > 64) return qfalse;
+		listPtr->numColumns = num < MAX_LB_COLUMNS ? num : MAX_LB_COLUMNS;
 		for (i = 0; i < num; i++) {
 			int pos, width, maxChars;
 
 			if (PC_Int_Parse(handle, &pos) && PC_Int_Parse(handle, &width) && PC_Int_Parse(handle, &maxChars)) {
-				listPtr->columnInfo[i].pos = pos;
-				listPtr->columnInfo[i].width = width;
-				listPtr->columnInfo[i].maxChars = maxChars;
+				if (i < MAX_LB_COLUMNS) {
+					listPtr->columnInfo[i].pos = pos;
+					listPtr->columnInfo[i].width = width;
+					listPtr->columnInfo[i].maxChars = maxChars;
+				}
 			} else {
 				return qfalse;
 			}
@@ -4679,6 +4913,10 @@ qboolean ItemParse_textscale( itemDef_t *item, int handle ) {
 		return qfalse;
 	}
 	return qtrue;
+}
+
+qboolean ItemParse_font(itemDef_t *item, int handle) {
+    return PC_Int_Parse(handle, &item->textFont);
 }
 
 qboolean ItemParse_textstyle( itemDef_t *item, int handle ) {
@@ -4838,13 +5076,22 @@ qboolean ItemParse_cvar( itemDef_t *item, int handle ) {
 	if (!PC_String_Parse(handle, &item->cvar)) {
 		return qfalse;
 	}
-	if (item->typeData) {
+	if (item->typeData && (item->type == ITEM_TYPE_TEXT || item->type == ITEM_TYPE_EDITFIELD ||
+        item->type == ITEM_TYPE_NUMERICFIELD || item->type == ITEM_TYPE_YESNO ||
+        item->type == ITEM_TYPE_BIND || item->type == ITEM_TYPE_SLIDER || item->type == ITEM_TYPE_SLIDER_COLOR)) {
 		editPtr = (editFieldDef_t*)item->typeData;
 		editPtr->minVal = -1;
 		editPtr->maxVal = -1;
 		editPtr->defVal = -1;
 	}
 	return qtrue;
+}
+
+static qboolean ItemParse_cvara(itemDef_t *item, int handle) {
+    if (!ItemParse_cvar(item, handle)) return qfalse;
+    /* Retail 0x1001ee70 adds CVAR_ARCHIVE without changing an existing value. */
+    if (DC->registerCvar && item->cvar) DC->registerCvar(NULL, item->cvar, "", CVAR_ARCHIVE);
+    return qtrue;
 }
 
 qboolean ItemParse_maxChars( itemDef_t *item, int handle ) {
@@ -4934,7 +5181,8 @@ qboolean ItemParse_cvarStrList( itemDef_t *item, int handle ) {
 			multiPtr->cvarList[multiPtr->count] = String_Alloc(token.string);
 			pass = 1;
 		} else {
-			multiPtr->cvarStr[multiPtr->count] = String_Alloc(token.string);
+			multiPtr->cvarStr[multiPtr->count] = String_Alloc(
+                item->type == ITEM_TYPE_PRESET && !Q_stricmp(token.string, "NULL") ? "" : token.string);
 			pass = 0;
 			multiPtr->count++;
 			if (multiPtr->count >= MAX_MULTI_CVARS) {
@@ -5016,6 +5264,12 @@ qboolean ItemParse_ownerdrawFlag( itemDef_t *item, int handle ) {
 	item->window.ownerDrawFlags |= i;
 	return qtrue;
 }
+static qboolean ItemParse_ownerdrawFlag2(itemDef_t *item, int handle) {
+    int flags;
+    if (!PC_Int_Parse(handle,&flags)) return qfalse;
+    item->window.ownerDrawFlags2 |= flags;
+    return qtrue;
+}
 
 qboolean ItemParse_enableCvar( itemDef_t *item, int handle ) {
 	if (PC_Script_Parse(handle, &item->enableCvar)) {
@@ -5050,7 +5304,100 @@ qboolean ItemParse_hideCvar( itemDef_t *item, int handle ) {
 }
 
 
+/* Retail menu grammar (pak00.pk3): independent cvar gates in slots 2..4. */
+static qboolean ItemParse_cvarTestSlot(itemDef_t *item, int handle, int slot) {
+    return PC_String_Parse(handle, &item->extraCvarTest[slot - 2]);
+}
+static qboolean ItemParse_cvarGateSlot(itemDef_t *item, int handle, int slot, int flag) {
+    if (!PC_Script_Parse(handle, &item->extraEnableCvar[slot - 2])) return qfalse;
+    item->extraCvarFlags[slot - 2] = flag;
+    return qtrue;
+}
+qboolean ItemParse_cvarTest2(itemDef_t *item, int handle) { return ItemParse_cvarTestSlot(item, handle, 2); }
+static qboolean ItemParse_cvarTest3(itemDef_t *item, int handle) { return ItemParse_cvarTestSlot(item, handle, 3); }
+static qboolean ItemParse_cvarTest4(itemDef_t *item, int handle) { return ItemParse_cvarTestSlot(item, handle, 4); }
+qboolean ItemParse_precision(itemDef_t *item, int handle) {
+    int value;
+    if (!PC_Int_Parse(handle, &value)) return qfalse;
+    item->precision = value < 0 ? 0 : value > 6 ? 6 : value;
+    return qtrue;
+}
+qboolean ItemParse_cvarInt(itemDef_t *item, int handle) {
+    item->integerCvar = qtrue;
+    return ItemParse_cvarFloat(item, handle);
+}
+/* enableCvar2/disableCvar2 are FnQL-game extensions; retail has only the
+ * show/hide forms for slots 2..4. */
+qboolean ItemParse_enableCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_ENABLE); }
+qboolean ItemParse_disableCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_DISABLE); }
+qboolean ItemParse_showCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_SHOW); }
+qboolean ItemParse_hideCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_HIDE); }
+static qboolean ItemParse_showCvar3(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 3, CVAR_SHOW); }
+static qboolean ItemParse_hideCvar3(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 3, CVAR_HIDE); }
+static qboolean ItemParse_showCvar4(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 4, CVAR_SHOW); }
+static qboolean ItemParse_hideCvar4(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 4, CVAR_HIDE); }
+/* Retail outlineimage: art drawn behind the selected list row. */
+static qboolean ItemParse_outlineimage(itemDef_t *item, int handle) {
+    const char *name;
+    if (!PC_String_Parse(handle, &name)) return qfalse;
+    item->outlineImage = DC->registerShaderNoMip(name);
+    return qtrue;
+}
+/* Retail scoreboard metadata. The fallback ad is a local shader; cellId
+ * has no effect without an advertising service. */
+static qboolean ItemParse_cellId(itemDef_t *item, int handle) {
+    int cell; (void)item;
+    return PC_Int_Parse(handle, &cell);
+}
+static qboolean ItemParse_elementcolor(itemDef_t *item, int handle) {
+    listBoxDef_t *list;
+    Item_ValidateTypeData(item);
+    if (item->type != ITEM_TYPE_LISTBOX || !item->typeData) return qfalse;
+    list = item->typeData; list->hasElementColor = qtrue;
+    return PC_Color_Parse(handle, &list->elementColor);
+}
+static qboolean ItemParse_selectedcolor(itemDef_t *item, int handle) {
+    listBoxDef_t *list;
+    Item_ValidateTypeData(item);
+    if (item->type != ITEM_TYPE_LISTBOX || !item->typeData) return qfalse;
+    list = item->typeData; list->hasSelectedColor = qtrue;
+    return PC_Color_Parse(handle, &list->selectedColor);
+}
+static qboolean ItemParse_altrowcolor(itemDef_t *item, int handle) {
+    listBoxDef_t *list;
+    Item_ValidateTypeData(item);
+    if (item->type != ITEM_TYPE_LISTBOX || !item->typeData) return qfalse;
+    list = item->typeData; list->hasAltRowColor = qtrue;
+    return PC_Color_Parse(handle, &list->altRowColor);
+}
+static qboolean ItemParse_widescreen(itemDef_t *item, int handle) {
+    int mode;
+    if (!PC_Int_Parse(handle,&mode) || mode < WIDESCREEN_STRETCH || mode > WIDESCREEN_RIGHT) return qfalse;
+    item->widescreen = mode; item->widescreenSet = qtrue;
+    return qtrue;
+}
 keywordHash_t itemParseKeywords[] = {
+    {"defaultContent", ItemParse_background, NULL},
+    {"cellId", ItemParse_cellId, NULL},
+    {"elementcolor", ItemParse_elementcolor, NULL},
+    {"selectedcolor", ItemParse_selectedcolor, NULL},
+    {"altrowcolor", ItemParse_altrowcolor, NULL},
+    {"widescreen", ItemParse_widescreen, NULL},
+    {"cvarTest2", ItemParse_cvarTest2, NULL},
+    {"precision", ItemParse_precision, NULL},
+    {"cvarInt", ItemParse_cvarInt, NULL},
+    {"enableCvar2", ItemParse_enableCvar2, NULL},
+    {"disableCvar2", ItemParse_disableCvar2, NULL},
+    {"showCvar2", ItemParse_showCvar2, NULL},
+    {"hideCvar2", ItemParse_hideCvar2, NULL},
+    {"cvarTest3", ItemParse_cvarTest3, NULL},
+    {"cvarTest4", ItemParse_cvarTest4, NULL},
+    {"showCvar3", ItemParse_showCvar3, NULL},
+    {"hideCvar3", ItemParse_hideCvar3, NULL},
+    {"showCvar4", ItemParse_showCvar4, NULL},
+    {"hideCvar4", ItemParse_hideCvar4, NULL},
+    {"outlineimage", ItemParse_outlineimage, NULL},
+
 	{"name", ItemParse_name, NULL},
 	{"text", ItemParse_text, NULL},
 	{"group", ItemParse_group, NULL},
@@ -5084,6 +5431,7 @@ keywordHash_t itemParseKeywords[] = {
 	{"textaligny", ItemParse_textaligny, NULL},
 	{"textscale", ItemParse_textscale, NULL},
 	{"textstyle", ItemParse_textstyle, NULL},
+	{"font", ItemParse_font, NULL},
 	{"backcolor", ItemParse_backcolor, NULL},
 	{"forecolor", ItemParse_forecolor, NULL},
 	{"bordercolor", ItemParse_bordercolor, NULL},
@@ -5103,9 +5451,13 @@ keywordHash_t itemParseKeywords[] = {
 	{"focusSound", ItemParse_focusSound, NULL},
 	{"cvarFloat", ItemParse_cvarFloat, NULL},
 	{"cvarStrList", ItemParse_cvarStrList, NULL},
+    {"cvara", ItemParse_cvara, NULL},
+    {"cvarPreset", ItemParse_cvarStrList, NULL},
+    {"cvarPresetList", ItemParse_cvarStrList, NULL},
 	{"cvarFloatList", ItemParse_cvarFloatList, NULL},
 	{"addColorRange", ItemParse_addColorRange, NULL},
 	{"ownerdrawFlag", ItemParse_ownerdrawFlag, NULL},
+	{"ownerdrawFlag2", ItemParse_ownerdrawFlag2, NULL},
 	{"enableCvar", ItemParse_enableCvar, NULL},
 	{"cvarTest", ItemParse_cvarTest, NULL},
 	{"disableCvar", ItemParse_disableCvar, NULL},
@@ -5217,6 +5569,15 @@ qboolean MenuParse_name( itemDef_t *item, int handle ) {
 		//menu->window.flags |= WINDOW_HASFOCUS;
 	}
 	return qtrue;
+}
+
+/* Retail ui/menudef.h: stretch=0, left=1, center=2, right=3. */
+qboolean MenuParse_widescreen(itemDef_t *item, int handle) {
+    menuDef_t *menu = (menuDef_t *)item;
+    int mode;
+    if (!PC_Int_Parse(handle, &mode) || mode < 0 || mode > 3) return qfalse;
+    menu->widescreen = mode;
+    return qtrue;
 }
 
 qboolean MenuParse_fullscreen( itemDef_t *item, int handle ) {
@@ -5475,20 +5836,29 @@ qboolean MenuParse_itemDef( itemDef_t *item, int handle ) {
 	menuDef_t *menu = (menuDef_t*)item;
 	if (menu->itemCount < MAX_MENUITEMS) {
 		menu->items[menu->itemCount] = UI_Alloc(sizeof(itemDef_t));
+        if (!menu->items[menu->itemCount]) return qfalse;
 		Item_Init(menu->items[menu->itemCount]);
 		if (!Item_Parse(handle, menu->items[menu->itemCount])) {
 			return qfalse;
 		}
 		Item_InitControls(menu->items[menu->itemCount]);
 		menu->items[menu->itemCount++]->parent = menu;
-	}
+	} else {
+        PC_SourceError(handle, "too many menu items");
+        return qfalse;
+    }
 	return qtrue;
 }
 
+qboolean MenuParse_backgroundSize(itemDef_t *item, int handle) {
+    return PC_Rect_Parse(handle, &((menuDef_t *)item)->backgroundSize);
+}
 keywordHash_t menuParseKeywords[] = {
+    {"backgroundSize", MenuParse_backgroundSize, NULL},
 	{"font", MenuParse_font, NULL},
 	{"name", MenuParse_name, NULL},
 	{"fullscreen", MenuParse_fullscreen, NULL},
+	{"widescreen", MenuParse_widescreen, NULL},
 	{"rect", MenuParse_rect, NULL},
 	{"style", MenuParse_style, NULL},
 	{"visible", MenuParse_visible, NULL},
@@ -5762,3 +6132,11 @@ static qboolean Menu_OverActiveItem(menuDef_t *menu, float x, float y) {
 	return qfalse;
 }
 
+
+/* Native UI export: non-fullscreen popups also count as visible. */
+qboolean UI_MenusVisible(void) {
+    int i;
+    for (i = 0; i < menuCount; ++i)
+        if (Menus[i].window.flags & (WINDOW_VISIBLE | WINDOW_FORCED)) return qtrue;
+    return qfalse;
+}

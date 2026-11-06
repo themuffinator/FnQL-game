@@ -78,8 +78,9 @@ contract.
 - `code/game/`: qagame.
   - `g_native.[ch]` is the retail ABI boundary.
   - `fnql_module.h` is the identity contract shared with FnQL.
-- `code/cgame/`, `code/ui/`, `code/q3_ui/`: baseline client modules, not yet
-  ported (milestones 7 and 8).
+- `code/cgame/`: native client module (milestone 7).
+- `code/ui/`: the sole native UI module (milestone 8); `ui_native.[ch]` owns
+  its 97-slot retail boundary. The obsolete `code/q3_ui/` tree is removed.
 - `version/fnql_game_version.h`: the canonical version.
 - `scripts/`: gates and tooling.
 - `docs/`: plan, contract, baseline, licensing.

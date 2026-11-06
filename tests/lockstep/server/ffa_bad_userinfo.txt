@@ -1,0 +1,35 @@
+# G3: bad-userinfo enforcement after normalization; either color is valid.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo color1 4
+client charlie name Charlie color2 5
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+cmd 10 g_kickBadUserinfo 0
+userinfo 11 alpha name ^0
+userinfo 12 alpha name Alpha
+cmd 13 g_kickBadUserinfo 1
+userinfo 20 bravo name ^0
+userinfo 30 charlie name ^0
+cmd 40 g_kickBadUserinfo 0
+userinfo 50 alpha name ^0
+userinfo 60 alpha name Alpha
+cmd 70 g_kickBadUserinfo 1
+userinfo 80 alpha name ^0
+userinfo 100 bravo name Green
+userinfo 120 charlie name Blue
+userinfo 130 alpha name Alpha
+userinfo 140 alpha name ^0
+cmd 160 map_restart 0
+userinfo 180 bravo name ^1Ranger
+userinfo 190 charlie name ^2rANGER
+userinfo 200 bravo name "(2) ranger"
+userinfo 220 bravo name 123456789012345678901234567890123456789012345
+userinfo 230 charlie name 123456789012345678901234567890123456789012345
+userinfo 240 charlie name ^aAlias
+userinfo 250 bravo name Alias
+userinfo 260 bravo name ^AAlias
+userinfo 280 charlie name Unique
+userinfo 290 bravo name ^AAlias
+cmd 360 map_restart 0

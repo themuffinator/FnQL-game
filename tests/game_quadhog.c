@@ -16,6 +16,7 @@ or (at your option) any later version.
 level_locals_t level;
 gentity_t g_entities[MAX_GENTITIES];
 vmCvar_t g_gametype, g_quadHog, g_quadHogIdle, g_quadHogPingRate;
+vmCvar_t g_neutralFlagPingRate;
 vec3_t vec3_origin;
 static gclient_t clients[2];
 static gitem_t quadItem = { "item_quad" };

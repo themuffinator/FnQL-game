@@ -2360,7 +2360,7 @@ void PmoveSingle (pmove_t *pmove) {
 	// update the viewangles
 	PM_UpdateViewAngles( pm->ps, &pm->cmd );
 
-	// mirror the command for retail follow/demo HUD widgets and prediction
+	// mirror the loadout choice for the server, follow/demo HUDs and prediction
 	if ( pm->cmd.weaponPrimary >= 1 && pm->cmd.weaponPrimary < WP_NUM_WEAPONS ) {
 		pm->ps->weaponPrimary = pm->cmd.weaponPrimary;
 	}

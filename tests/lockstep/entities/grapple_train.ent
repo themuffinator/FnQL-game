@@ -1,0 +1,34 @@
+// Hand-authored mover placement. The installed BSP supplies brush model *10.
+{
+"classname" "worldspawn"
+"message" "FnQL grapple mover replay"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-260 -320 40"
+"angle" "180"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-260 -320 160"
+}
+{
+"classname" "func_train"
+"model" "*10"
+"target" "hook_a"
+"speed" "80"
+}
+{
+"classname" "path_corner"
+"targetname" "hook_a"
+"target" "hook_b"
+"origin" "1200 -128 -450"
+"wait" "2"
+}
+{
+"classname" "path_corner"
+"targetname" "hook_b"
+"target" "hook_a"
+"origin" "1200 64 -450"
+"wait" "1"
+}

@@ -9,7 +9,7 @@
 // needs to be larger than PACKET_BACKUP
 
 
-#define	MAX_ENTITIES_IN_SNAPSHOT	256
+#define	MAX_ENTITIES_IN_SNAPSHOT	384
 
 // snapshots are a view of the server at a given time
 
@@ -26,6 +26,7 @@ typedef struct {
 
 	playerState_t	ps;						// complete information about the current player at this time
 
+	byte            nativePlayerStateTail[0x250 - sizeof(playerState_t)];
 	int				numEntities;			// all of the entities that need to be presented
 	entityState_t	entities[MAX_ENTITIES_IN_SNAPSHOT];	// at the time of this snapshot
 
@@ -215,3 +216,9 @@ typedef enum {
 } cgameExport_t;
 
 //----------------------------------------------
+
+typedef struct {
+    int clientNum;
+    unsigned int identityTransport, identityLow, identityHigh;
+    char displayName[40], cleanName[40];
+} cgameClientIdentity_t;

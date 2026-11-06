@@ -1,0 +1,29 @@
+# G3: corrosion, ffa, cheats, 500 frames; g_lightningDischarge 0/1.
+# Two immersed players, a dry observer, ammo depletion and a dry shot.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+at 0 alpha weapon=6
+at 0 bravo weapon=2
+at 0 charlie weapon=2
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+clientcmd 20 alpha give Lightning Gun
+clientcmd 22 alpha setviewpos -100 -300 -160 90
+clientcmd 24 bravo setviewpos -100 -400 -160 90
+clientcmd 26 charlie setviewpos 0 -300 64 0
+at 50 alpha buttons=attack
+at 52 alpha buttons=0
+clientcmd 100 alpha pstats
+clientcmd 101 bravo pstats
+clientcmd 102 charlie pstats
+at 180 alpha buttons=attack
+at 182 alpha buttons=0
+clientcmd 220 alpha give Lightning Gun
+clientcmd 222 alpha setviewpos -100 -300 64 90
+at 230 alpha weapon=6
+at 260 alpha buttons=attack
+at 262 alpha buttons=0
+clientcmd 300 alpha score

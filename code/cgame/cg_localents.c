@@ -105,6 +105,11 @@ void CG_BloodTrail( localEntity_t *le ) {
 	vec3_t	newOrigin;
 	localEntity_t	*blood;
 
+	// retail 0x1001d6a0: only the gore DLC leaves a trail (cg_gore.c)
+	if ( CG_GoreBloodTrail( le ) || !cgs.media.bloodTrailShader ) {
+		return;
+	}
+
 	step = 150;
 	t = step * ( (cg.time - cg.frametime + step ) / step );
 	t2 = step * ( cg.time / step );
@@ -137,10 +142,17 @@ void CG_FragmentBounceMark( localEntity_t *le, trace_t *trace ) {
 	int			radius;
 
 	if ( le->leMarkType == LEMT_BLOOD ) {
-
-		radius = 16 + (rand()&31);
-		CG_ImpactMark( cgs.media.bloodMarkShader, trace->endpos, trace->plane.normal, random()*360,
-			1,1,1,1, qtrue, radius, qfalse );
+		// retail 0x1001da41: gore DLC spray marks (cg_gore.c), else none
+		if ( !CG_GoreBloodMark( trace ) && cgs.media.bloodMarkShader ) {
+			radius = 16 + (rand()&31);
+			CG_ImpactMark( cgs.media.bloodMarkShader, trace->endpos, trace->plane.normal, random()*360,
+				1,1,1,1, qtrue, radius, qfalse );
+		}
+	} else if ( le->leMarkType == LEMT_ICE ) {
+		CG_IceFragmentMark(trace);
+	} else if ( le->leMarkType == LEMT_ELECTRO ) {
+		CG_ElectroFragmentMark( le, trace );
+		return;
 	} else if ( le->leMarkType == LEMT_BURN ) {
 
 		radius = 8 + (rand()&15);
@@ -161,8 +173,12 @@ CG_FragmentBounceSound
 */
 void CG_FragmentBounceSound( localEntity_t *le, trace_t *trace ) {
 	if ( le->leBounceSoundType == LEBS_BLOOD ) {
-		// half the gibs will make splat sounds
-		if ( rand() & 1 ) {
+		// retail 0x1001ec25: every gore DLC gib impact sounds (cg_gore.c)
+		sfxHandle_t impact = CG_GoreImpactSound();
+		if ( impact ) {
+			trap_S_StartSound( trace->endpos, ENTITYNUM_WORLD, CHAN_AUTO, impact );
+		} else if ( rand() & 1 ) {
+			// half the gibs will make splat sounds
 			int r = rand()&3;
 			sfxHandle_t	s;
 
@@ -177,6 +193,9 @@ void CG_FragmentBounceSound( localEntity_t *le, trace_t *trace ) {
 		}
 	} else if ( le->leBounceSoundType == LEBS_BRASS ) {
 
+	} else if ( le->leBounceSoundType == LEBS_ELECTRO ) {
+		CG_ElectroFragmentBounce( le, trace );
+		return;
 	}
 
 	// don't allow a fragment to make multiple bounce sounds,
@@ -270,6 +289,8 @@ static void CG_AddFragment( localEntity_t *le ) {
 		// add a blood trail
 		if ( le->leBounceSoundType == LEBS_BLOOD ) {
 			CG_BloodTrail( le );
+		} else if ( le->leBounceSoundType == LEBS_ICE ) {
+			CG_ThawTrail(le);
 		}
 
 		return;
@@ -637,7 +658,7 @@ void CG_AddKamikaze( localEntity_t *le ) {
 		memset(&shockwave, 0, sizeof(shockwave));
 		shockwave.hModel = cgs.media.kamikazeShockWave;
 		shockwave.reType = RT_MODEL;
-		shockwave.shaderTime = re->shaderTime;
+		shockwave.u.shaderTime = re->u.shaderTime;
 		VectorCopy(re->origin, shockwave.origin);
 
 		c = (float)(t - KAMI_SHOCKWAVE_STARTTIME) / (float)(KAMI_SHOCKWAVE_ENDTIME - KAMI_SHOCKWAVE_STARTTIME);
@@ -706,7 +727,7 @@ void CG_AddKamikaze( localEntity_t *le ) {
 		memset(&shockwave, 0, sizeof(shockwave));
 		shockwave.hModel = cgs.media.kamikazeShockWave;
 		shockwave.reType = RT_MODEL;
-		shockwave.shaderTime = re->shaderTime;
+		shockwave.u.shaderTime = re->u.shaderTime;
 		VectorCopy(re->origin, shockwave.origin);
 
 		test[0] = le->angles.trBase[0];
@@ -930,6 +951,10 @@ void CG_AddLocalEntities( void ) {
 
 		case LE_SCALE_FADE:			// rocket trails
 			CG_AddScaleFade( le );
+			break;
+
+		case LE_QL_GIB_FLASH:		// electro gib light
+			CG_AddGibFlash( le );
 			break;
 
 		case LE_SCOREPLUM:

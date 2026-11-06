@@ -173,14 +173,14 @@ static qboolean G_NativeEntitiesOnSameTeam( const gentity_t *a, const gentity_t 
 
 // Slot 12, 0x10052dc0: the snapshot builder includes the target player for
 // this viewer regardless of PVS.  Teammates always see each other, a
-// spectator sees everyone, One Flag CTF shows bots to everyone, and Red
+// spectator sees everyone, One Flag CTF shows neutral carriers to everyone, and Red
 // Rover's infection shows everyone to everyone.
 static qboolean QDECL G_NativeCanClientSeeClient( int viewerClientNum, int targetClientNum ) {
 	if ( viewerClientNum < 0 || viewerClientNum >= MAX_CLIENTS
 		|| targetClientNum < 0 || targetClientNum >= MAX_CLIENTS ) {
 		return qfalse;
 	}
-	if ( g_gametype.integer == GT_1FCTF && ( g_entities[ targetClientNum ].r.svFlags & SVF_BOT ) ) {
+	if ( g_gametype.integer == GT_1FCTF && ( g_entities[ targetClientNum ].s.powerups & ( 1 << PW_NEUTRALFLAG ) ) ) {
 		return qtrue;
 	}
 	if ( g_gametype.integer >= GT_TEAM && G_NativeClientNumsOnSameTeam( viewerClientNum, targetClientNum ) ) {

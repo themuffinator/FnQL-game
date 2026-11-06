@@ -1,0 +1,30 @@
+# G3: ffa, cheats, 800 frames. Wall latch/release, player latch/ticks,
+# obstruction and switching weapons while the hook is latched.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+at 0 alpha weapon=10
+at 0 bravo weapon=2
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha give Grappling Hook
+clientcmd 22 alpha setviewpos -400 -320 40 270
+clientcmd 24 bravo setviewpos -700 320 40 0
+at 50 alpha buttons=attack
+at 90 alpha buttons=0
+clientcmd 140 alpha setviewpos -260 320 40 180
+clientcmd 142 bravo setviewpos -700 320 40 0
+at 180 alpha buttons=attack
+at 230 alpha buttons=0
+clientcmd 280 alpha setviewpos -400 -320 40 270
+at 310 alpha buttons=attack
+at 340 alpha weapon=2
+at 360 alpha buttons=0
+at 420 alpha weapon=10
+clientcmd 450 alpha setviewpos -400 -320 40 270
+at 480 alpha buttons=attack
+clientcmd 490 alpha setviewpos -700 320 40 0
+at 520 alpha buttons=0
+clientcmd 600 alpha pstats
+clientcmd 602 bravo score
+cmd 700 map_restart 0

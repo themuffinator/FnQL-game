@@ -566,7 +566,7 @@ player_die
 
 Retail qagamex86 0x10047200.  Freeze tag's freezing, red rover's
 infection and round checks dispatch to the mode controller. Team-kill
-complaints remain a separate compatibility task.
+complaints use the independently implemented complaint controller.
 ==================
 */
 void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int meansOfDeath ) {
@@ -693,6 +693,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		client->lastKiller = attacker->s.number;
 
 		if ( attacker != self && OnSameTeam( self, attacker ) ) {
+			G_ComplaintKill(self, attacker, meansOfDeath);
 			AddScore( attacker, self->r.currentOrigin, -1 );
 			attacker->client->stats.teamKills++;
 			client->stats.teamKilled++;
@@ -1240,10 +1241,9 @@ dflags		these flags are used to control how T_Damage works
 	DAMAGE_NO_KNOCKBACK		do not affect velocity, just view angles
 	DAMAGE_NO_PROTECTION	kills godmode, armor, everything
 
-Follows retail qagamex86 0x10048c30.  The gametype hooks (Clan Arena,
-Attack and Defend, Red Rover and Freeze Tag damage rules), the team damage
-complaints, the stats records and regeneration interrupts arrive with match
-flow and the special modes (docs/PLAN.md M5, M6).
+Follows retail qagamex86 0x10048c30, including the mode-specific damage
+rules, match statistics and regeneration interrupts. Nonfatal friendly
+damage does not trigger complaints in retail (see g_complaint.c).
 ============
 */
 
@@ -1321,9 +1321,10 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	} else if ( client && targ == attacker && ( mod == MOD_PLASMA || mod == MOD_PLASMA_SPLASH ) ) {
 		knockback = (int)( g_knockback_pg_self.value * damage );
 	} else {
-		// retail also cuts MOD_GRAPPLE knockback to 0.2 when a hook field
-		// (+0x370) is set; that field is not identified yet
 		knockback = (int)( G_KnockbackScale( mod ) * damage );
+		// Retail 0x10048e44: the hook's periodic-damage timestamp (+0x370)
+		// distinguishes its weaker sustained pull from the initial impact.
+		if ( mod == MOD_GRAPPLE && inflictor->wait != 0.0f ) knockback = (int)( knockback * 0.2 );
 	}
 	if ( knockback > g_max_knockback.integer ) {
 		knockback = g_max_knockback.integer;
@@ -1588,6 +1589,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			targ->s.armor = client->ps.stats[STAT_ARMOR];
 		}
 
+		// Retail 0x10049a2b: armor and overkill do not become health pickups.
+		if ( client && take > 0 ) {
+			G_DropDamagedHealth( targ, attacker, take + ( targ->health < 0 ? targ->health : 0 ) );
+		}
+
 		// vampiric damage heals the attacker, up to twice their max health
 		if ( g_vampiricDamage.value != 0.0f && attacker->client && client && attacker != targ
 			&& !OnSameTeam( targ, attacker ) && attacker->health > 0 && client->ps.pm_type != PM_DEAD
@@ -1700,8 +1706,8 @@ damage to everyone in reach but the attacker.  Damage falls off from the
 edge of the target's box, and an entity exactly at the radius is still hit.
 ============
 */
-qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore,
-						 const trace_t *trace, const vec3_t dir ) {
+static qboolean RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore,
+						 const trace_t *trace, const vec3_t dir, const vec3_t throughPoint ) {
 	gentity_t	*attacker = inflictor->parent;
 	gentity_t	*ent;
 	int			entityList[MAX_GENTITIES];
@@ -1735,6 +1741,8 @@ qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *i
 	}
 
 	for ( e = 0 ; e < numListedEntities ; e++ ) {
+		const float *kickOrigin = origin;
+		float damageRadius = inflictor->splashRadius;
 		ent = &g_entities[entityList[ e ]];
 
 		if ( ent == ignore || !ent->takedamage ) {
@@ -1745,11 +1753,19 @@ qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *i
 		if ( dist > inflictor->splashRadius ) {
 			continue;
 		}
-		if ( !CanDamage( ent, splashPoint ) ) {
-			continue;
-		}
-		if ( inflictor->s.weapon == WP_ROCKET_LAUNCHER && !CanDamage( ent, rocketPoint ) ) {
-			continue;
+		if ( throughPoint ) {
+			// Retail 0x1004a3e0 uses either ordinary sight probe, then a
+			// smaller radius and the far side of the ceiling as a fallback.
+			// Falloff still measures from the original explosion; only the
+			// knockback direction starts at the far-side point.
+			if ( !CanDamage(ent, splashPoint) && !CanDamage(ent, rocketPoint) ) {
+				damageRadius = (float)((double)damageRadius * g_dmgThroughSurfaceDampening.value);
+				if ( !(damageRadius > 0.0f) || dist > damageRadius || !CanDamage(ent, (float *)throughPoint) ) continue;
+				kickOrigin = throughPoint;
+			}
+		} else {
+			if ( !CanDamage( ent, splashPoint ) ) continue;
+			if ( inflictor->s.weapon == WP_ROCKET_LAUNCHER && !CanDamage( ent, rocketPoint ) ) continue;
 		}
 
 		if ( attacker && LogAccuracyHit( ent, attacker ) ) {
@@ -1758,7 +1774,7 @@ qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *i
 
 		// push the center of mass higher than the origin so players
 		// get knocked into the air more
-		VectorSubtract( ent->r.currentOrigin, origin, kick );
+		VectorSubtract( ent->r.currentOrigin, kickOrigin, kick );
 		kickZ = ( ent == attacker ) ? g_knockback_z_self.integer : g_knockback_z.integer;
 		kick[2] = (float)( (double)kickZ + kick[2] );
 
@@ -1766,10 +1782,49 @@ qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *i
 			G_Damage( ent, inflictor, attacker, kick, (float *)origin, inflictor->damage, 0, inflictor->methodOfDeath );
 		} else {
 			G_Damage( ent, inflictor, attacker, kick, (float *)origin,
-				(int)( ( 1.0 - (double)dist / inflictor->splashRadius ) * inflictor->splashDamage ),
+				(int)( ( 1.0 - (double)dist / damageRadius ) * inflictor->splashDamage ),
 				DAMAGE_RADIUS, inflictor->splashMethodOfDeath );
 		}
 	}
 
 	return hitClient;
+}
+
+qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore,
+	const trace_t *trace, const vec3_t dir ) {
+	return RadiusDamage(origin, inflictor, ignore, trace, dir, NULL);
+}
+
+qboolean G_RadiusDamageThroughSurface( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore,
+	const trace_t *trace, const vec3_t dir, const vec3_t throughPoint ) {
+	return RadiusDamage(origin, inflictor, ignore, trace, dir, throughPoint);
+}
+
+// Retail 0x1004a7a0: only wet entities within sight and strictly inside the
+// radius conduct a discharge. Unlike missile splash this includes the shooter.
+qboolean G_LightningDischarge( gentity_t *attacker, vec3_t origin, float damage, float radius ) {
+	int nearby[MAX_GENTITIES], count, index, axis;
+	vec3_t mins, maxs, kick;
+	qboolean hit = qfalse;
+
+	if ( !g_lightningDischarge.integer || !( trap_PointContents( origin, -1 ) & MASK_WATER ) ) return qfalse;
+	if ( radius < 1.0f ) radius = 1.0f;
+	for ( axis = 0; axis < 3; axis++ ) {
+		mins[axis] = origin[axis] - radius;
+		maxs[axis] = origin[axis] + radius;
+	}
+	count = trap_EntitiesInBox( mins, maxs, nearby, MAX_GENTITIES );
+	for ( index = 0; index < count; index++ ) {
+		gentity_t *target = &g_entities[nearby[index]];
+		float distance, points;
+		if ( !target->takedamage || !target->waterlevel ) continue;
+		distance = G_BoxDistance( target, origin );
+		if ( distance >= radius || !CanDamage( target, origin ) ) continue;
+		points = (float)( ( 1.0 - (double)distance / radius ) * damage );
+		if ( LogAccuracyHit( target, attacker ) ) hit = qtrue;
+		VectorSubtract( target->r.currentOrigin, origin, kick );
+		kick[2] = (float)( (double)kick[2] + ( target == attacker ? g_knockback_z_self.integer : g_knockback_z.integer ) );
+		G_Damage( target, NULL, attacker, kick, origin, (int)points, DAMAGE_RADIUS, MOD_LIGHTNING_DISCHARGE );
+	}
+	return hit;
 }

@@ -10,10 +10,39 @@ CG_AdjustFrom640
 Adjusted for resolution and screen aspect ratio
 ================
 */
+/*
+Retail 0x100122b0 reads a placement mode (0x10aa6938, set by 0x100123c0)
+that the spectator overlays change around their painters: 1 (item timers,
+red team vitals) pins the 4:3 frame to the left edge of a wide screen, 2
+centres it and 3 (blue team vitals) pins it to the right edge. Mode 0 keeps
+this module's centred layout. Only the horizontal bias depends on the mode.
+*/
+static int cg_screenPlacement;
+
+int CG_SetScreenPlacement( int placement ) {
+	const int previous = cg_screenPlacement;
+	cg_screenPlacement = placement >= CG_PLACE_DEFAULT && placement <= CG_PLACE_RIGHT ? placement : CG_PLACE_DEFAULT;
+	return previous;
+}
+
+float CG_ScreenXBias( void ) {
+	if ( cgs.screenXBias <= 0 ) {
+		return cgs.screenXBias;
+	}
+	switch ( cg_screenPlacement ) {
+	case CG_PLACE_LEFT:
+		return 0;
+	case CG_PLACE_RIGHT:
+		return cgs.screenXBias * 2;
+	default:
+		return cgs.screenXBias;
+	}
+}
+
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h ) 
 {
 	// scale for screen sizes
-	*x = *x * cgs.screenXScale + cgs.screenXBias;
+	*x = *x * cgs.screenXScale + CG_ScreenXBias();
 	*y = *y * cgs.screenYScale + cgs.screenYBias;
 	*w *= cgs.screenXScale;
 	*h *= cgs.screenYScale;
@@ -491,8 +520,23 @@ static void CG_LoadFont( font_t *fnt, const char *fontName )
 
 void CG_LoadFonts( void ) 
 {
-	CG_LoadFont( &bigchars, "gfx/2d/bigchars.cfg" );
-	CG_LoadFont( &numbers, "gfx/2d/numbers.cfg" );
+    int i;
+    CG_LoadFont(&bigchars, "gfx/2d/bigchars.cfg");
+    /* Retail has the charset atlas but not baseq3a's custom metric files. */
+    if (!bigchars.shaderCount) {
+        bigchars.shaderCount = 1;
+        bigchars.shader[0] = cgs.media.charsetShader;
+        for (i = 0; i < 256; ++i) {
+            font_metric_t *m = &bigchars.metrics[i];
+            m->tc_prop[0] = m->tc_mono[0] = (i & 15) / 16.0f;
+            m->tc_prop[1] = m->tc_mono[1] = (i >> 4) / 16.0f;
+            m->tc_prop[2] = m->tc_mono[2] = m->tc_mono[0] + 1.0f / 16;
+            m->tc_prop[3] = m->tc_mono[3] = m->tc_mono[1] + 1.0f / 16;
+            m->space2 = m->width = 1;
+        }
+    }
+    CG_LoadFont(&numbers, "gfx/2d/numbers.cfg");
+    if (!numbers.shaderCount) numbers = bigchars;
 }
 
 

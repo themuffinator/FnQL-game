@@ -16,6 +16,7 @@
 #define CONTENTS_NOTTEAM1		0x0080
 #define CONTENTS_NOTTEAM2		0x0100
 #define CONTENTS_NOBOTCLIP		0x0200
+#define CONTENTS_HEADSHOT		0x0400	// retail engine point-trace hit metadata
 
 #define	CONTENTS_AREAPORTAL		0x8000
 
@@ -63,3 +64,5 @@
 // 0x100309a0) plays EV_FOOTSTEP_SNOW and EV_FOOTSTEP_WOOD for these bits
 #define SURF_SNOWSTEPS			0x80000
 #define SURF_WOODSTEPS			0x100000
+// Retail missile impact 0x1005c3ab: permits rocket splash through a thin ceiling.
+#define SURF_DMGTHROUGH			0x200000

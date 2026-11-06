@@ -73,3 +73,21 @@ void G_QuadHogTimer( gentity_t *player, int msec ) {
 	player->client->quadHogPingResidual = elapsed > INT_MAX ? INT_MAX : elapsed < 0 ? 0 : (int)elapsed;
 	if ( player->client->quadHogPingResidual >= g_quadHogPingRate.integer ) G_QuadHogPing( player );
 }
+
+// Retail 0x1004f293 / 0x10034777: neutral carriers ping their team number
+// immediately on pickup and then on command time, sharing the Quad Hog clock.
+void G_NeutralFlagPing( gentity_t *player ) {
+	gentity_t *event = G_TempEntity( player->client->ps.origin, EV_POI );
+	event->r.svFlags |= SVF_BROADCAST;
+	event->s.powerups = g_neutralFlagPingRate.integer;
+	event->s.generic1 = player->client->ps.persistant[PERS_TEAM];
+	player->client->quadHogPingResidual = 0;
+}
+
+void G_NeutralFlagTimer( gentity_t *player, int msec ) {
+	long long elapsed;
+	if ( !player->client->ps.powerups[PW_NEUTRALFLAG] ) return;
+	elapsed = (long long)player->client->quadHogPingResidual + msec;
+	player->client->quadHogPingResidual = elapsed > INT_MAX ? INT_MAX : elapsed < 0 ? 0 : (int)elapsed;
+	if ( player->client->quadHogPingResidual >= g_neutralFlagPingRate.integer ) G_NeutralFlagPing( player );
+}

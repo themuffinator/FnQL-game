@@ -6,7 +6,7 @@
 
 // for the voice chats
 #ifdef MISSIONPACK // bk001205
-#include "../../ui/menudef.h"
+#include "../../docs/contract/retail_menudef.h"
 #endif
 //==========================================================================
 
@@ -55,290 +55,6 @@ const char	*CG_PlaceString( int rank ) {
 }
 
 
-/*
-=============
-CG_Obituary
-=============
-*/
-static void CG_Obituary( entityState_t *ent ) {
-	int			mod;
-	int			target, attacker;
-	char		*message;
-	char		*message2;
-	const char	*targetInfo;
-	const char	*attackerInfo;
-	char		targetName[32];
-	char		attackerName[32];
-	gender_t	gender;
-	clientInfo_t	*ci;
-	qboolean	following;
-
-	target = ent->otherEntityNum;
-	attacker = ent->otherEntityNum2;
-	mod = ent->eventParm;
-
-	if ( target < 0 || target >= MAX_CLIENTS ) {
-		CG_Error( "CG_Obituary: target out of range" );
-	}
-	ci = &cgs.clientinfo[target];
-
-	if ( attacker < 0 || attacker >= MAX_CLIENTS ) {
-		attacker = ENTITYNUM_WORLD;
-		attackerInfo = NULL;
-	} else {
-		attackerInfo = CG_ConfigString( CS_PLAYERS + attacker );
-	}
-
-	targetInfo = CG_ConfigString( CS_PLAYERS + target );
-	if ( !targetInfo[0] )
-	{
-		return;
-	}
-	Q_strncpyz( targetName, Info_ValueForKey( targetInfo, "n" ), sizeof(targetName) - 2);
-	strcat( targetName, S_COLOR_WHITE );
-
-	following = cg.snap->ps.pm_flags & PMF_FOLLOW;
-
-	message2 = "";
-
-	// check for single client messages
-
-	switch( mod ) {
-	case MOD_SUICIDE:
-		message = "suicides";
-		break;
-	case MOD_FALLING:
-		message = "cratered";
-		break;
-	case MOD_CRUSH:
-		message = "was squished";
-		break;
-	case MOD_WATER:
-		message = "sank like a rock";
-		break;
-	case MOD_SLIME:
-		message = "melted";
-		break;
-	case MOD_LAVA:
-		message = "does a back flip into the lava";
-		break;
-	case MOD_TARGET_LASER:
-		message = "saw the light";
-		break;
-	case MOD_TRIGGER_HURT:
-		message = "was in the wrong place";
-		break;
-	default:
-		message = NULL;
-		break;
-	}
-
-	if (attacker == target) {
-		gender = ci->gender;
-		switch (mod) {
-#ifdef MISSIONPACK
-		case MOD_KAMIKAZE:
-			message = "goes out with a bang";
-			break;
-#endif
-		case MOD_GRENADE_SPLASH:
-			if ( gender == GENDER_FEMALE )
-				message = "tripped on her own grenade";
-			else if ( gender == GENDER_NEUTER )
-				message = "tripped on its own grenade";
-			else
-				message = "tripped on his own grenade";
-			break;
-		case MOD_ROCKET_SPLASH:
-			if ( gender == GENDER_FEMALE )
-				message = "blew herself up";
-			else if ( gender == GENDER_NEUTER )
-				message = "blew itself up";
-			else
-				message = "blew himself up";
-			break;
-		case MOD_PLASMA_SPLASH:
-			if ( gender == GENDER_FEMALE )
-				message = "melted herself";
-			else if ( gender == GENDER_NEUTER )
-				message = "melted itself";
-			else
-				message = "melted himself";
-			break;
-		case MOD_BFG_SPLASH:
-			message = "should have used a smaller gun";
-			break;
-#ifdef MISSIONPACK
-		case MOD_PROXIMITY_MINE:
-			if( gender == GENDER_FEMALE ) {
-				message = "found her prox mine";
-			} else if ( gender == GENDER_NEUTER ) {
-				message = "found its prox mine";
-			} else {
-				message = "found his prox mine";
-			}
-			break;
-#endif
-		default:
-			if ( gender == GENDER_FEMALE )
-				message = "killed herself";
-			else if ( gender == GENDER_NEUTER )
-				message = "killed itself";
-			else
-				message = "killed himself";
-			break;
-		}
-	}
-
-	if ( message ) {
-		CG_Printf( "%s %s.\n", targetName, message);
-		// switch to first killer if not following anyone
-		if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR && cg_followKiller.integer ) {
-			if ( !cg.followTime && attacker != cg.snap->ps.clientNum && attacker < MAX_CLIENTS ) {
-				cg.followClient = attacker;
-				cg.followTime = cg.time;
-			}
-		}
-		return;
-	}
-
-	// check for kill messages from the current clientNum
-	if ( attacker == cg.snap->ps.clientNum ) {
-		char	*s;
-
-		if ( cgs.gametype < GT_TEAM ) {
-			s = va("You fragged %s\n%s place with %i", targetName, 
-				CG_PlaceString( cg.snap->ps.persistant[PERS_RANK] + 1 ),
-				cg.snap->ps.persistant[PERS_SCORE] );
-		} else {
-			s = va("You fragged %s", targetName );
-		}
-#ifdef MISSIONPACK
-		if (!(cg_singlePlayerActive.integer && cg_cameraOrbit.integer)) {
-			CG_CenterPrint( s, SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
-		} 
-#else
-		CG_CenterPrint( s, SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
-#endif
-
-		// print the text message as well
-	}
-
-	// check for double client messages
-	if ( !attackerInfo ) {
-		attacker = ENTITYNUM_WORLD;
-		strcpy( attackerName, "noname" );
-	} else {
-		Q_strncpyz( attackerName, Info_ValueForKey( attackerInfo, "n" ), sizeof(attackerName) - 2);
-		Q_CleanStr( attackerName );
-		strcat( attackerName, S_COLOR_WHITE );
-		// check for kill messages about the current clientNum
-		if ( target == cg.snap->ps.clientNum ) {
-			Q_strncpyz( cg.killerName, attackerName, sizeof( cg.killerName ) );
-			// follow killer
-			if ( following && cg_followKiller.integer ) {
-				if ( !cg.followTime && attacker != cg.snap->ps.clientNum && attacker < MAX_CLIENTS ) {
-					cg.followClient = attacker;
-					cg.followTime = cg.time + 1100;
-				}
-			}
-		}
-	}
-
-	if ( attacker != ENTITYNUM_WORLD ) {
-		switch (mod) {
-		case MOD_GRAPPLE:
-			message = "was caught by";
-			break;
-		case MOD_GAUNTLET:
-			message = "was pummeled by";
-			break;
-		case MOD_MACHINEGUN:
-			message = "was machinegunned by";
-			break;
-		case MOD_SHOTGUN:
-			message = "was gunned down by";
-			break;
-		case MOD_GRENADE:
-			message = "ate";
-			message2 = "'s grenade";
-			break;
-		case MOD_GRENADE_SPLASH:
-			message = "was shredded by";
-			message2 = "'s shrapnel";
-			break;
-		case MOD_ROCKET:
-			message = "ate";
-			message2 = "'s rocket";
-			break;
-		case MOD_ROCKET_SPLASH:
-			message = "almost dodged";
-			message2 = "'s rocket";
-			break;
-		case MOD_PLASMA:
-			message = "was melted by";
-			message2 = "'s plasmagun";
-			break;
-		case MOD_PLASMA_SPLASH:
-			message = "was melted by";
-			message2 = "'s plasmagun";
-			break;
-		case MOD_RAILGUN:
-			message = "was railed by";
-			break;
-		case MOD_LIGHTNING:
-			message = "was electrocuted by";
-			break;
-		case MOD_BFG:
-		case MOD_BFG_SPLASH:
-			message = "was blasted by";
-			message2 = "'s BFG";
-			break;
-#ifdef MISSIONPACK
-		case MOD_NAIL:
-			message = "was nailed by";
-			break;
-		case MOD_CHAINGUN:
-			message = "got lead poisoning from";
-			message2 = "'s Chaingun";
-			break;
-		case MOD_PROXIMITY_MINE:
-			message = "was too close to";
-			message2 = "'s Prox Mine";
-			break;
-		case MOD_KAMIKAZE:
-			message = "falls to";
-			message2 = "'s Kamikaze blast";
-			break;
-		case MOD_JUICED:
-			message = "was juiced by";
-			break;
-#endif
-		case MOD_TELEFRAG:
-			message = "tried to invade";
-			message2 = "'s personal space";
-			break;
-		default:
-			message = "was killed by";
-			break;
-		}
-
-		if ( message ) {
-			CG_Printf( "%s %s %s%s\n", targetName, message, attackerName, message2 );
-			// switch to first killer if not following anyone
-			if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR && cg_followKiller.integer ) {
-				if ( !cg.followTime && attacker != cg.snap->ps.clientNum && attacker < MAX_CLIENTS ) {
-					cg.followClient = attacker;
-					cg.followTime = cg.time;
-				}
-			}
-			return;
-		}
-	}
-
-	// we don't know what it was
-	CG_Printf( "%s "S_COLOR_STRIP"died.\n", targetName );
-}
 //==========================================================================
 
 
@@ -425,11 +141,7 @@ static void CG_ItemPickup( int itemNum ) {
 	
 	// see if it should be the grabbed weapon
 	if ( bg_itemlist[itemNum].giType == IT_WEAPON ) {
-		// select it immediately
-		if ( cg_autoswitch.integer && bg_itemlist[itemNum].giTag != WP_MACHINEGUN ) {
-			cg.weaponSelectTime = cg.time;
-			cg.weaponSelect = bg_itemlist[itemNum].giTag;
-		}
+		CG_SelectPickedUpWeapon(bg_itemlist[itemNum].giTag);
 	}
 
 }
@@ -576,6 +288,8 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 	}
 	ci = &cgs.clientinfo[ clientNum ];
 
+	if (CG_QL_EntityEvent(cent)) return;
+
 	switch ( event ) {
 	//
 	// movement generated events
@@ -647,41 +361,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 		}
 		break;
 
-	case EV_STEP_4:
-	case EV_STEP_8:
-	case EV_STEP_12:
-	case EV_STEP_16:		// smooth out step up transitions
-	{
-		float	oldStep;
-		int		delta;
-		int		step;
-
-		if ( clientNum != cg.predictedPlayerState.clientNum ) {
-			break;
-		}
-		// if we are interpolating, we don't need to smooth steps
-		if ( cg.demoPlayback || (cg.snap->ps.pm_flags & PMF_FOLLOW) ||
-			cg_nopredict.integer || cgs.synchronousClients ) {
-			break;
-		}
-		// check for stepping up before a previous step is completed
-		delta = cg.time - cg.stepTime;
-		if (delta < STEP_TIME) {
-			oldStep = cg.stepChange * (STEP_TIME - delta) / STEP_TIME;
-		} else {
-			oldStep = 0;
-		}
-
-		// add this amount
-		step = 4 * (event - EV_STEP_4 + 1 );
-		cg.stepChange = oldStep + step;
-		if ( cg.stepChange > MAX_STEP_CHANGE ) {
-			cg.stepChange = MAX_STEP_CHANGE;
-		}
-		cg.stepTime = cg.time;
-		break;
-	}
-
+	/* QL step smoothing comes from pmove.stepUp, not Q3 step events. */
 	case EV_JUMP_PAD:
 //		CG_Printf( "EV_JUMP_PAD w/effect #%i\n", es->eventParm );
 		{
@@ -781,22 +461,10 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 			if ( item->giType == IT_POWERUP || item->giType == IT_TEAM) {
 				trap_S_StartSound (NULL, es->number, CHAN_AUTO,	cgs.media.n_healthSound );
 			} else if (item->giType == IT_PERSISTANT_POWERUP) {
-#ifdef MISSIONPACK
-				switch (item->giTag ) {
-					case PW_SCOUT:
-						trap_S_StartSound (NULL, es->number, CHAN_AUTO,	cgs.media.scoutSound );
-					break;
-					case PW_GUARD:
-						trap_S_StartSound (NULL, es->number, CHAN_AUTO,	cgs.media.guardSound );
-					break;
-					case PW_DOUBLER:
-						trap_S_StartSound (NULL, es->number, CHAN_AUTO,	cgs.media.doublerSound );
-					break;
-					case PW_AMMOREGEN:
-						trap_S_StartSound (NULL, es->number, CHAN_AUTO,	cgs.media.ammoregenSound );
-					break;
-				}
-#endif
+				// retail 0x1001a50b..0x1001a583: the item's own pickup sound,
+				// then the rune voice by tag
+				trap_S_StartSound (NULL, es->number, CHAN_AUTO,	trap_S_RegisterSound( item->pickup_sound, qfalse ) );
+				CG_PersistentPowerupAnnouncement( item->giTag );
 			} else {
 				trap_S_StartSound (NULL, es->number, CHAN_AUTO,	trap_S_RegisterSound( item->pickup_sound, qfalse ) );
 			}
@@ -838,6 +506,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 			if( item->pickup_sound ) {
 				trap_S_StartSound (NULL, cg.snap->ps.clientNum, CHAN_AUTO, trap_S_RegisterSound( item->pickup_sound, qfalse ) );
 			}
+			CG_GlobalItemPickupAnnouncement( es, item->giType, item->giTag );
 
 			// show icon and name on status bar
 			if ( es->number == cg.snap->ps.clientNum ) {
@@ -854,7 +523,6 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 	// weapon events
 	//
 	case EV_NOAMMO:
-//		trap_S_StartSound (NULL, es->number, CHAN_AUTO, cgs.media.noAmmoSound );
 		if ( es->number == cg.snap->ps.clientNum ) {
 			CG_OutOfAmmoChange();
 		}
@@ -883,7 +551,6 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 	case EV_USE_ITEM12:
 	case EV_USE_ITEM13:
 	case EV_USE_ITEM14:
-	case EV_USE_ITEM15:
 		CG_UseItem( cent );
 		break;
 
@@ -951,6 +618,11 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 		break;
 
 	case EV_JUICED:
+		// retail 0x1001ab40: the DLC juicer, else electro gibs
+		if ( !cgs.media.goreDLC ) {
+			CG_ElectroGibs( cent->lerpOrigin, qtrue );
+			break;
+		}
 		CG_InvulnerabilityJuiced( cent->lerpOrigin );
 		break;
 
@@ -1037,122 +709,10 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 		}
 		break;
 
-	case EV_GLOBAL_TEAM_SOUND:	// play from the player's head so it never diminishes
-		{
-			switch( es->eventParm ) {
-				case GTS_RED_CAPTURE: // CTF: red team captured the blue flag, 1FCTF: red team captured the neutral flag
-					if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED )
-						CG_AddBufferedSound( cgs.media.captureYourTeamSound );
-					else
-						CG_AddBufferedSound( cgs.media.captureOpponentSound );
-					break;
-				case GTS_BLUE_CAPTURE: // CTF: blue team captured the red flag, 1FCTF: blue team captured the neutral flag
-					if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
-						CG_AddBufferedSound( cgs.media.captureYourTeamSound );
-					else
-						CG_AddBufferedSound( cgs.media.captureOpponentSound );
-					break;
-				case GTS_RED_RETURN: // CTF: blue flag returned, 1FCTF: never used
-					if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED )
-						CG_AddBufferedSound( cgs.media.returnYourTeamSound );
-					else
-						CG_AddBufferedSound( cgs.media.returnOpponentSound );
-					//
-					CG_AddBufferedSound( cgs.media.blueFlagReturnedSound );
-					break;
-				case GTS_BLUE_RETURN: // CTF red flag returned, 1FCTF: neutral flag returned
-					if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
-						CG_AddBufferedSound( cgs.media.returnYourTeamSound );
-					else
-						CG_AddBufferedSound( cgs.media.returnOpponentSound );
-					//
-					CG_AddBufferedSound( cgs.media.redFlagReturnedSound );
-					break;
-
-				case GTS_RED_TAKEN: // CTF: red team took blue flag, 1FCTF: blue team took the neutral flag
-					// if this player picked up the flag then a sound is played in CG_CheckLocalSounds
-					if (cg.snap->ps.powerups[PW_BLUEFLAG] || cg.snap->ps.powerups[PW_NEUTRALFLAG]) {
-					}
-					else {
-						if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE) {
-#ifdef MISSIONPACK
-							if (cgs.gametype == GT_1FCTF) 
-								CG_AddBufferedSound( cgs.media.yourTeamTookTheFlagSound );
-							else
-#endif
-						 	CG_AddBufferedSound( cgs.media.enemyTookYourFlagSound );
-						}
-						else if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED) {
-#ifdef MISSIONPACK
-							if (cgs.gametype == GT_1FCTF)
-								CG_AddBufferedSound( cgs.media.enemyTookTheFlagSound );
-							else
-#endif
- 							CG_AddBufferedSound( cgs.media.yourTeamTookEnemyFlagSound );
-						}
-					}
-					break;
-				case GTS_BLUE_TAKEN: // CTF: blue team took the red flag, 1FCTF red team took the neutral flag
-					// if this player picked up the flag then a sound is played in CG_CheckLocalSounds
-					if (cg.snap->ps.powerups[PW_REDFLAG] || cg.snap->ps.powerups[PW_NEUTRALFLAG]) {
-					}
-					else {
-						if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED) {
-#ifdef MISSIONPACK
-							if (cgs.gametype == GT_1FCTF)
-								CG_AddBufferedSound( cgs.media.yourTeamTookTheFlagSound );
-							else
-#endif
-							CG_AddBufferedSound( cgs.media.enemyTookYourFlagSound );
-						}
-						else if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE) {
-#ifdef MISSIONPACK
-							if (cgs.gametype == GT_1FCTF)
-								CG_AddBufferedSound( cgs.media.enemyTookTheFlagSound );
-							else
-#endif
-							CG_AddBufferedSound( cgs.media.yourTeamTookEnemyFlagSound );
-						}
-					}
-					break;
-#ifdef MISSIONPACK
-				case GTS_REDOBELISK_ATTACKED: // Overload: red obelisk is being attacked
-					if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED) {
-						CG_AddBufferedSound( cgs.media.yourBaseIsUnderAttackSound );
-					}
-					break;
-				case GTS_BLUEOBELISK_ATTACKED: // Overload: blue obelisk is being attacked
-					if (cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE) {
-						CG_AddBufferedSound( cgs.media.yourBaseIsUnderAttackSound );
-					}
-					break;
-#endif
-
-				case GTS_REDTEAM_SCORED:
-					CG_AddBufferedSound(cgs.media.redScoredSound);
-					break;
-				case GTS_BLUETEAM_SCORED:
-					CG_AddBufferedSound(cgs.media.blueScoredSound);
-					break;
-				case GTS_REDTEAM_TOOK_LEAD:
-					CG_AddBufferedSound(cgs.media.redLeadsSound);
-					break;
-				case GTS_BLUETEAM_TOOK_LEAD:
-					CG_AddBufferedSound(cgs.media.blueLeadsSound);
-					break;
-				case GTS_TEAMS_ARE_TIED:
-					CG_AddBufferedSound( cgs.media.teamsTiedSound );
-					break;
-#ifdef MISSIONPACK
-				case GTS_KAMIKAZE:
-					trap_S_StartLocalSound(cgs.media.kamikazeFarSound, CHAN_ANNOUNCER);
-					break;
-#endif
-				default:
-					break;
-			}
-			break;
-		}
+	case EV_GLOBAL_TEAM_SOUND:
+		// every retail subcase is handled by CG_QL_EntityEvent (cg_ql_events.c,
+		// retail switch 0x1001b349); retail has no case 21 or 22
+		break;
 
 	case EV_PAIN:
 		// local player sounds are triggered in CG_CheckLocalSounds,
@@ -1174,7 +734,7 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 		break;
 
 	case EV_OBITUARY:
-		CG_Obituary( es );
+		CG_RetailObituary( es );
 		break;
 
 	//
@@ -1208,28 +768,19 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 		// don't play gib sound when using the kamikaze because it interferes
 		// with the kamikaze sound, downside is that the gib sound will also
 		// not be played when someone is gibbed while just carrying the kamikaze
-#ifdef MISSIONPACK
+		// retail 0x1001bf6e: electro gib sound unless eFlags 0x200
 		if ( !(es->eFlags & EF_KAMIKAZE) ) {
-			trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
+			// retail 0x1001bf87: the gore DLC splat replaces the electro sound
+			sfxHandle_t gibSound = cgs.media.goreDLC ? cgs.media.dlcGibSplatSound : CG_ElectroGibSound();
+			if ( gibSound ) trap_S_StartSound( NULL, es->number, CHAN_BODY, gibSound );
 		}
-#else
-		trap_S_StartSound( NULL, es->number, CHAN_BODY, cgs.media.gibSound );
-#endif
 		CG_GibPlayer( cent->lerpOrigin );
-		break;
-
-	case EV_STOPLOOPINGSOUND:
-		trap_S_StopLoopingSound( es->number );
-		es->loopSound = 0;
 		break;
 
 	case EV_DEBUG_LINE:
 		CG_Beam( cent );
 		break;
 
-	case EV_PROXIMITY_MINE_STICK:
-	case EV_PROXIMITY_MINE_TRIGGER:
-		break;
 
 	default:
 		CG_Error( "Unknown event: %i", event );

@@ -587,6 +587,20 @@ static void CG_GrenadeTrail( centity_t *ent, const weaponInfo_t *wi ) {
 
 /*
 =================
+CG_LightningBoltShader
+
+Retail 0x10051f11: cg_lightningStyle 2..5 selects lightningBolt2..5, any
+other value the first style.
+=================
+*/
+qhandle_t CG_LightningBoltShader( void ) {
+	int style = cg_lightningStyle.integer;
+	qhandle_t shader = style >= 2 && style <= 5 ? cgs.media.lightningBolts[style - 1] : cgs.media.lightningBolts[0];
+	return shader ? shader : cgs.media.lightningShader;
+}
+
+/*
+=================
 CG_RegisterWeapon
 
 The server says this item is used on this level
@@ -656,6 +670,14 @@ void CG_RegisterWeapon( int weaponNum ) {
 	Q_strcat( path, sizeof(path), "_hand.md3" );
 	weaponInfo->handsModel = trap_R_RegisterModel( path );
 
+	// retail 0x10050da6: only the grapple registers its hook ("_ammo.md3"),
+	// drawn on tag_ammo of the held weapon, the world item and the leader model
+	if ( weaponNum == WP_GRAPPLING_HOOK ) {
+		COM_StripExtension( item->world_model[0], path, sizeof(path) );
+		Q_strcat( path, sizeof(path), "_ammo.md3" );
+		weaponInfo->attachedAmmoModel = trap_R_RegisterModel( path );
+	}
+
 	if ( !weaponInfo->handsModel ) {
 		weaponInfo->handsModel = trap_R_RegisterModel( "models/weapons2/shotgun/shotgun_hand.md3" );
 	}
@@ -675,7 +697,11 @@ void CG_RegisterWeapon( int weaponNum ) {
 		weaponInfo->firingSound = trap_S_RegisterSound( "sound/weapons/lightning/lg_hum.wav", qfalse );
 
 		weaponInfo->flashSound[0] = trap_S_RegisterSound( "sound/weapons/lightning/lg_fire.wav", qfalse );
-		cgs.media.lightningShader = trap_R_RegisterShader( "lightningBoltNew");
+		// retail 0x10050f28..0x10050f89: five beam styles (cg_lightningStyle)
+		for ( i = 0; i < 5; ++i ) {
+			cgs.media.lightningBolts[i] = trap_R_RegisterShader( va( "lightningBolt%d", i + 1 ) );
+		}
+		cgs.media.lightningShader = cgs.media.lightningBolts[0];
 		cgs.media.lightningExplosionModel = trap_R_RegisterModel( "models/weaphits/crackle.md3" );
 		cgs.media.sfx_lghit1 = trap_S_RegisterSound( "sound/weapons/lightning/lg_hit.wav", qfalse );
 		cgs.media.sfx_lghit2 = trap_S_RegisterSound( "sound/weapons/lightning/lg_hit2.wav", qfalse );
@@ -693,7 +719,11 @@ void CG_RegisterWeapon( int weaponNum ) {
 		MAKERGB( weaponInfo->missileDlightColor, 1, 0.75f, 0 );
 		weaponInfo->readySound = trap_S_RegisterSound( "sound/weapons/melee/fsthum.wav", qfalse );
 		weaponInfo->firingSound = trap_S_RegisterSound( "sound/weapons/melee/fstrun.wav", qfalse );
-		cgs.media.lightningShader = trap_R_RegisterShader( "lightningBoltNew");
+		// Quake III's lightningBoltNew is not in the retail paks; the grapple
+		// keeps the first retail beam shader (its retail beam is unverified)
+		if ( !cgs.media.lightningShader ) {
+			cgs.media.lightningShader = trap_R_RegisterShader( "lightningBolt1" );
+		}
 
 		break;
 
@@ -1063,7 +1093,7 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	VectorCopy( origin, beam.origin );
 
 	beam.reType = RT_LIGHTNING;
-	beam.customShader = cgs.media.lightningShader;
+	beam.customShader = CG_LightningBoltShader();
 	trap_R_AddRefEntityToScene( &beam );
 
 	// add the impact flare if it hit something
@@ -1125,7 +1155,7 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	VectorCopy( origin, beam.origin );
 
 	beam.reType = RT_LIGHTNING;
-	beam.customShader = cgs.media.lightningShader;
+	beam.customShader = CG_LightningBoltShader();
 	trap_R_AddRefEntityToScene( &beam );
 
 	// add the impact flare if it hit something
@@ -1213,29 +1243,7 @@ static float	CG_MachinegunSpinAngle( centity_t *cent ) {
 }
 
 
-/*
-========================
-CG_AddWeaponWithPowerups
-========================
-*/
-static void CG_AddWeaponWithPowerups( refEntity_t *gun, int powerups ) {
-	// add powerup effects
-	if ( powerups & ( 1 << PW_INVIS ) ) {
-		gun->customShader = cgs.media.invisShader;
-		trap_R_AddRefEntityToScene( gun );
-	} else {
-		trap_R_AddRefEntityToScene( gun );
 
-		if ( powerups & ( 1 << PW_BATTLESUIT ) ) {
-			gun->customShader = cgs.media.battleWeaponShader;
-			trap_R_AddRefEntityToScene( gun );
-		}
-		if ( powerups & ( 1 << PW_QUAD ) ) {
-			gun->customShader = cgs.media.quadWeaponShader;
-			trap_R_AddRefEntityToScene( gun );
-		}
-	}
-}
 
 
 /*
@@ -1309,7 +1317,7 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 	CG_PositionEntityOnTag( &gun, parent, parent->hModel, "tag_weapon");
 
-	CG_AddWeaponWithPowerups( &gun, cent->currentState.powerups );
+	CG_AddWeaponWithPowerups( &gun, &cent->currentState );
 
 	// add the spinning barrel
 	if ( weapon->barrelModel ) {
@@ -1326,7 +1334,23 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 
 		CG_PositionRotatedEntityOnTag( &barrel, &gun, weapon->weaponModel, "tag_barrel" );
 
-		CG_AddWeaponWithPowerups( &barrel, cent->currentState.powerups );
+		CG_AddWeaponWithPowerups( &barrel, &cent->currentState );
+	}
+
+	// retail 0x1005282d: the grapple's hook sits on tag_ammo unless the
+	// player fires while the predicted weapon is the grapple (0x10052552)
+	if ( weapon->attachedAmmoModel && weaponNum == WP_GRAPPLING_HOOK
+		&& !( ( cent->currentState.eFlags & EF_FIRING ) && cg.predictedPlayerState.weapon == WP_GRAPPLING_HOOK ) ) {
+		refEntity_t	hook;
+		vec3_t		still = { 0, 0, 0 };
+		memset( &hook, 0, sizeof( hook ) );
+		VectorCopy( parent->lightingOrigin, hook.lightingOrigin );
+		hook.shadowPlane = parent->shadowPlane;
+		hook.renderfx = parent->renderfx;
+		hook.hModel = weapon->attachedAmmoModel;
+		AnglesToAxis( still, hook.axis );
+		CG_PositionRotatedEntityOnTag( &hook, &gun, weapon->weaponModel, "tag_ammo" );
+		CG_AddWeaponWithPowerups( &hook, &cent->currentState );
 	}
 
 	// make sure we aren't looking at cg.predictedPlayerEntity for LG
@@ -1519,271 +1543,6 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	// add everything onto the hand
 	CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity, ps->persistant[PERS_TEAM] );
 }
-
-/*
-==============================================================================
-
-WEAPON SELECTION
-
-==============================================================================
-*/
-
-
-/*
-===================
-CG_DrawWeaponSelect
-===================
-*/
-#define AMMO_FONT_SIZE 12
-void CG_DrawWeaponSelect( void ) {
-	int		i;
-	int		bits;
-	int		count;
-	int		x, y;
-	int		dx, dy;
-	int		weaponSelect;
-	const char *name;
-	float	*color;
-	char	buf[16];
-
-	// don't display if dead
-	if ( cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 || cg_drawWeaponSelect.integer == 0 ) {
-		return;
-	}
-
-	if ( cg_drawWeaponSelect.integer < 0 ) {
-		color = colorWhite;
-	} else {
-		color = CG_FadeColor( cg.weaponSelectTime, WEAPON_SELECT_TIME );
-		if ( !color ) {
-			return;
-		}
-	}
-	trap_R_SetColor( color );
-
-	weaponSelect = abs( cg_drawWeaponSelect.integer );
-
-	// showing weapon select clears pickup item display, but not the blend blob
-	cg.itemPickupTime = 0;
-
-	// count the number of weapons owned
-	bits = cg.predictedPlayerState.stats[ STAT_WEAPONS ];
-	count = 0;
-	for ( i = WP_GAUNTLET ; i < MAX_WEAPONS ; i++ ) {
-		if ( bits & ( 1 << i ) ) {
-			count++;
-		}
-	}
-
-	if ( weaponSelect < 3 ) {
-		x = 320 - count * 20;
-		y = cgs.screenYmax + 1 - 100; // - STATUSBAR_HEIGHT - 40
-		dx = 40;
-		dy = 0;
-	} else {
-		x = cgs.screenXmin + 6;
-		y = 240 - count * 20;
-		dx = 0;
-		dy = 40;
-	}
-
-	for ( i = WP_GAUNTLET ; i < MAX_WEAPONS ; i++ ) {
-		if ( !( bits & ( 1 << i ) ) ) {
-			continue;
-		}
-
-		CG_RegisterWeapon( i );
-
-		// draw weapon icon
-		CG_DrawPic( x, y, 32, 32, cg_weapons[i].weaponIcon );
-
-		// draw selection marker
-		if ( i == cg.weaponSelect ) {
-			CG_DrawPic( x-4, y-4, 32+8, 32+8, cgs.media.selectShader );
-		}
-
-		// no ammo cross on top
-		if ( !cg.predictedPlayerState.ammo[ i ] ) {
-			CG_DrawPic( x, y, 32, 32, cgs.media.noammoShader );
-		} else if ( weaponSelect > 1 && cg.predictedPlayerState.ammo[ i ] > 0 ) {
-			// ammo counter
-			BG_sprintf( buf, "%i", cg.predictedPlayerState.ammo[ i ] );
-			if ( weaponSelect == 2 ) {
-				// horizontal ammo counters
-				CG_DrawString( x + 32/2, y - 20, buf, color, AMMO_FONT_SIZE, AMMO_FONT_SIZE, 0, DS_CENTER | DS_PROPORTIONAL );
-			} else {
-				// vectical ammo counters
-				CG_DrawString( x + 39 + (3*AMMO_FONT_SIZE), y + (32-AMMO_FONT_SIZE)/2, buf, color, AMMO_FONT_SIZE, AMMO_FONT_SIZE, 0, DS_RIGHT );
-			}
-		}
-
-		x += dx;
-		y += dy;
-	}
-
-	// draw the selected name
-	if ( cg_weapons[ cg.weaponSelect ].item && weaponSelect == 1 ) {
-		name = cg_weapons[ cg.weaponSelect ].item->pickup_name;
-		if ( name ) {
-			CG_DrawString( 320, y - 22, name, color, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_SHADOW | DS_PROPORTIONAL | DS_CENTER | DS_FORCE_COLOR );
-		}
-	}
-
-	trap_R_SetColor( NULL );
-}
-
-
-/*
-===============
-CG_WeaponSelectable
-===============
-*/
-static qboolean CG_WeaponSelectable( int i ) {
-	if ( !cg.predictedPlayerState.ammo[i] ) {
-		return qfalse;
-	}
-	if ( ! (cg.predictedPlayerState.stats[ STAT_WEAPONS ] & ( 1 << i ) ) ) {
-		return qfalse;
-	}
-
-	return qtrue;
-}
-
-
-/*
-===============
-CG_NextWeapon_f
-===============
-*/
-void CG_NextWeapon_f( void ) {
-	int		i;
-	int		original;
-
-	if ( !cg.snap ) {
-		return;
-	}
-
-	cg.weaponSelectTime = cg.time;
-
-	if ( cg.snap->ps.pm_flags & PMF_FOLLOW || cg.demoPlayback ) {
-		return;
-	}
-
-	original = cg.weaponSelect;
-
-	for ( i = 0 ; i < MAX_WEAPONS ; i++ ) {
-		cg.weaponSelect++;
-		if ( cg.weaponSelect == MAX_WEAPONS ) {
-			cg.weaponSelect = 0;
-		}
-		if ( cg.weaponSelect == WP_GAUNTLET ) {
-			continue;		// never cycle to gauntlet
-		}
-		if ( CG_WeaponSelectable( cg.weaponSelect ) ) {
-			break;
-		}
-	}
-	if ( i == MAX_WEAPONS ) {
-		cg.weaponSelect = original;
-	}
-}
-
-
-/*
-===============
-CG_PrevWeapon_f
-===============
-*/
-void CG_PrevWeapon_f( void ) {
-	int		i;
-	int		original;
-
-	if ( !cg.snap ) {
-		return;
-	}
-
-	cg.weaponSelectTime = cg.time;
-
-	if ( cg.snap->ps.pm_flags & PMF_FOLLOW || cg.demoPlayback ) {
-		return;
-	}
-
-	original = cg.weaponSelect;
-
-	for ( i = 0 ; i < MAX_WEAPONS ; i++ ) {
-		cg.weaponSelect--;
-		if ( cg.weaponSelect == -1 ) {
-			cg.weaponSelect = MAX_WEAPONS - 1;
-		}
-		if ( cg.weaponSelect == WP_GAUNTLET ) {
-			continue;		// never cycle to gauntlet
-		}
-		if ( CG_WeaponSelectable( cg.weaponSelect ) ) {
-			break;
-		}
-	}
-	if ( i == MAX_WEAPONS ) {
-		cg.weaponSelect = original;
-	}
-}
-
-
-/*
-===============
-CG_Weapon_f
-===============
-*/
-void CG_Weapon_f( void ) {
-	int		num;
-
-	if ( !cg.snap ) {
-		return;
-	}
-
-	cg.weaponSelectTime = cg.time;
-
-	if ( cg.snap->ps.pm_flags & PMF_FOLLOW || cg.demoPlayback ) {
-		return;
-	}
-
-	num = atoi( CG_Argv( 1 ) );
-
-	if ( num < 1 || num > MAX_WEAPONS-1 ) {
-		return;
-	}
-
-	if ( ! ( cg.predictedPlayerState.stats[STAT_WEAPONS] & ( 1 << num ) ) ) {
-		return;		// don't have the weapon
-	}
-
-	cg.weaponSelect = num;
-}
-
-
-/*
-===================
-CG_OutOfAmmoChange
-
-The current weapon has just run out of ammo
-===================
-*/
-void CG_OutOfAmmoChange( void ) {
-	int		i;
-
-	cg.weaponSelectTime = cg.time;
-
-	if ( cg.snap->ps.pm_flags & PMF_FOLLOW || cg.demoPlayback ) {
-		return;
-	}
-
-	for ( i = MAX_WEAPONS-1 ; i > 0 ; i-- ) {
-		if ( CG_WeaponSelectable( i ) ) {
-			cg.weaponSelect = i;
-			break;
-		}
-	}
-}
-
 
 /*
 ===================================================================================================

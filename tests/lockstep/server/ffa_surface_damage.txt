@@ -1,0 +1,35 @@
+# G3: FFA, cheats, 500 frames. Campgrounds bridge at z=496..512:
+# a player directly above the ceiling, one outside the reduced radius,
+# followed by a horizontal wall and an ordinary floor impact.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 3 charlie team f
+clientcmd 20 alpha give Rocket Launcher
+at 40 alpha weapon=5
+clientcmd 58 alpha setviewpos -700 -740 400 0
+clientcmd 58 bravo setviewpos -700 -740 545 0
+clientcmd 58 charlie setviewpos -580 -740 545 0
+at 59 alpha pitch=-89
+at 60 alpha buttons=attack
+at 61 alpha buttons=0
+clientcmd 100 alpha pstats
+clientcmd 120 bravo give health
+at 157 alpha pitch=0
+clientcmd 158 bravo setviewpos -700 -740 545 0
+clientcmd 158 alpha setviewpos -700 -740 400 0
+at 159 alpha pitch=-89
+at 160 alpha buttons=attack
+at 161 alpha buttons=0
+at 200 alpha pitch=0
+clientcmd 220 alpha setviewpos -400 -320 40 270
+at 250 alpha buttons=attack
+at 251 alpha buttons=0
+at 300 alpha pitch=89
+at 330 alpha buttons=attack
+at 331 alpha buttons=0
+clientcmd 400 alpha pstats
+clientcmd 402 bravo score

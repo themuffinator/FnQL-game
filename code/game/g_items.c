@@ -333,6 +333,9 @@ static void Add_Ammo( gentity_t *ent, int weapon, int count )
 	qboolean		startingLimit;
 
 	if ( g_infiniteAmmo.integer ) {
+		// Retail 0x1004dac1: an LG pickup replenishes infinite ammo after
+		// a discharge emptied it. Other weapons still add nothing.
+		if ( g_lightningDischarge.integer && weapon == WP_LIGHTNING ) ps->ammo[weapon] = -1;
 		return;
 	}
 	if ( weapon < 0 || weapon > WP_NUM_WEAPONS || ps->ammo[weapon] == -1 ) {
@@ -867,6 +870,7 @@ void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace) {
 	// powerup pickups are global broadcasts
 	// Retail 0x1004f21a emits a carrier locator even for a subsequent item.
 	if ( G_IsQuadHog() && client->ps.powerups[PW_QUAD] ) G_QuadHogPing( other );
+	if ( g_gametype.integer == GT_1FCTF && client->ps.powerups[PW_NEUTRALFLAG] ) G_NeutralFlagPing( other );
 	if ( ent->item->giType == IT_POWERUP || ent->item->giType == IT_TEAM ) {
 		gentity_t	*te;
 
@@ -992,9 +996,9 @@ gentity_t *LaunchItem( gitem_t *item, vec3_t origin, vec3_t velocity ) {
 	} else if ( item->giType == IT_PERSISTANT_POWERUP ) {
 		dropped->think = G_RespawnRune; // retail 0x1004f6ce
 		dropped->nextthink = level.time + 30000;
-	} else { // auto-remove after 30 seconds
+	} else { // Retail 0x1004f6ec: the health-drop rule shortens all ordinary drops.
 		dropped->think = G_FreeEntity;
-		dropped->nextthink = level.time + 30000;
+		dropped->nextthink = level.time + ( g_dropDamagedHealth.integer ? 10000 : 30000 );
 	}
 
 	trap_LinkEntity (dropped);
@@ -1024,6 +1028,44 @@ gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle ) {
 		return G_LaunchQuadHog( item, ent->s.pos.trBase, velocity );
 	}
 	return LaunchItem( item, ent->s.pos.trBase, velocity );
+}
+
+// Retail 0x1004f8c0: convert actual health lost into rings of 25s, then 5s.
+// The angle deliberately uses the victim's position Y, not their view yaw.
+// Both the position offset and the 200/225 toss are visible in retail drops.
+void G_DropDamagedHealth( gentity_t *victim, gentity_t *attacker, int damage ) {
+	const int amounts[2] = { 25, 5 };
+	const char *names[2] = { "25 Health", "5 Health" };
+	int group, count, n, axis;
+	float angle, yaw;
+	vec3_t velocity, origin;
+	gitem_t *item;
+
+	if ( !g_dropDamagedHealth.integer || !victim || !victim->client || damage <= 0
+		|| ( victim == attacker && ( g_dmflags.integer & DF_NO_SELF_HEALTH_DAMAGE ) ) ) return;
+
+	for ( group = 0; group < 2 && damage > 0; group++ ) {
+		count = damage / amounts[group];
+		damage %= amounts[group];
+		// Retail consumes the small-ring seed even when the remainder is <5.
+		if ( !count && group == 0 ) continue;
+		angle = (float)( rand() % 360 );
+		item = BG_FindItem( names[group] );
+		if ( !item ) continue;
+		for ( n = 0; n < count; n++ ) {
+			yaw = (float)( (double)(float)( victim->s.pos.trBase[1] + (double)angle ) * ITEM_DEG2RAD );
+			velocity[0] = (float)( (double)(float)cos( yaw ) * 200.0 );
+			velocity[1] = (float)( (double)(float)sin( yaw ) * 200.0 );
+			velocity[2] = 225.0f;
+			for ( axis = 0; axis < 3; axis++ ) {
+				origin[axis] = (float)( victim->s.pos.trBase[axis] + (double)velocity[axis] * 0.2 );
+			}
+			// Avoid exhausting the entity pool on malformed health settings.
+			if ( level.num_entities >= ENTITYNUM_MAX_NORMAL && !G_EntitiesFree() ) return;
+			LaunchItem( item, origin, velocity );
+			angle = (float)( (double)angle + 360 / count );
+		}
+	}
 }
 
 /*
@@ -1244,6 +1286,11 @@ ClearRegisteredItems
 void ClearRegisteredItems( void ) {
 	int rune;
 	memset( itemRegistered, 0, sizeof( itemRegistered ) );
+	// Retail ClearRegisteredItems 0x1004ffd0 precaches dynamic health drops.
+	if ( g_dropDamagedHealth.integer ) {
+		RegisterItem( BG_FindItem( "25 Health" ) );
+		RegisterItem( BG_FindItem( "5 Health" ) );
+	}
 	// Retail 0x100500ba registers the dynamic objective before CS_ITEMS.
 	if ( G_IsQuadHog() ) RegisterItem( BG_FindItemForPowerup( PW_QUAD ) );
 	// Retail 0x1005011f precaches all four runes before dynamic spawning.

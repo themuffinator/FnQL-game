@@ -68,6 +68,11 @@ static void CG_Viewpos_f (void) {
 }
 
 
+static void CG_AccuracyDown_f(void) { CG_SetAccuracyOverlay(qtrue); }
+static void CG_AccuracyUp_f(void) { CG_SetAccuracyOverlay(qfalse); }
+static void CG_PlayerStatsDown_f(void) { CG_SetPlayerStatsRequest(qtrue); }
+static void CG_PlayerStatsUp_f(void) { CG_SetPlayerStatsRequest(qfalse); }
+
 static void CG_ScoresDown_f( void ) {
 
 #ifdef MISSIONPACK
@@ -95,12 +100,54 @@ static void CG_ScoresDown_f( void ) {
 }
 
 
+/* Retail 0x1000e880 closes the scoreboard CG_Init raised; 0x1000e9c0 does
+ * so on the first 2D frame for a non-spectator, so a spectator keeps it
+ * until -scores or a team command. Its time also starts the demo HUD
+ * clock. Retail takes the cgame key catcher when it activates the menu
+ * (0x1000ea05) and drops it on closing (0x1000e8f0), so only a spectator
+ * keeps the cursor; CG_SetScoreCatcher has that spectator rule. */
+void CG_CloseInitialScoreboard( void ) {
+	if ( !cg.initialScoreboard ) {
+		return;
+	}
+	cg.initialScoreboard = qfalse;
+	if ( cg.showScores ) {
+		cg.showScores = qfalse;
+		cg.scoreFadeTime = cg.time;
+	}
+	if ( cgs.score_catched ) {
+		CG_SetScoreCatcher( qfalse );
+	}
+}
+
+void CG_CheckInitialScoreboard( void ) {
+	if ( !cg.initialScoreboard || !cg.snap ) {
+		return;
+	}
+	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR ) {
+		if ( !cgs.score_catched ) {
+			CG_SetScoreCatcher( qtrue );
+		}
+		return;
+	}
+	CG_CloseInitialScoreboard();
+}
+
+/* Retail 0x10007880: forward the team choice, then drop the scoreboard. */
+static void CG_Team_f( void ) {
+	char args[128];
+	trap_Args( args, sizeof( args ) );
+	trap_SendClientCommand( va( "team %s", args ) );
+	CG_CloseInitialScoreboard();
+}
+
 static void CG_ScoresUp_f( void ) {
 
 	if ( cgs.filterKeyUpEvent ) {
 		cgs.filterKeyUpEvent = qfalse;
 		return;
 	}
+	cg.initialScoreboard = qfalse;
 
 	if ( cg.showScores ) {
 		cg.showScores = qfalse;
@@ -115,21 +162,7 @@ static void CG_ScoresUp_f( void ) {
 extern menuDef_t *menuScoreboard;
 
 static void CG_LoadHud_f( void) {
-  char buff[1024];
-	const char *hudSet;
-  memset(buff, 0, sizeof(buff));
-
-	String_Init();
-	Menu_Reset();
-	
-	trap_Cvar_VariableStringBuffer("cg_hudFiles", buff, sizeof(buff));
-	hudSet = buff;
-	if (hudSet[0] == '\0') {
-		hudSet = "ui/hud.txt";
-	}
-
-	CG_LoadMenus(hudSet);
-  menuScoreboard = NULL;
+	CG_LoadHudMenu();
 }
 
 
@@ -468,6 +501,9 @@ typedef struct {
 	void	(*function)(void);
 } consoleCommand_t;
 
+static void CG_ChatHistoryDown_f(void) { CG_ChatHistoryShow(qtrue); }
+static void CG_ChatHistoryUp_f(void) { CG_ChatHistoryShow(qfalse); }
+
 static consoleCommand_t	commands[] = {
 	{ "testgun", CG_TestGun_f },
 	{ "testmodel", CG_TestModel_f },
@@ -478,6 +514,7 @@ static consoleCommand_t	commands[] = {
 	{ "viewpos", CG_Viewpos_f },
 	{ "+scores", CG_ScoresDown_f },
 	{ "-scores", CG_ScoresUp_f },
+	{ "team", CG_Team_f },
 	{ "+zoom", CG_ZoomDown_f },
 	{ "-zoom", CG_ZoomUp_f },
 	{ "sizeup", CG_SizeUp_f },
@@ -518,7 +555,15 @@ static consoleCommand_t	commands[] = {
 #endif
 	{ "startOrbit", CG_StartOrbit_f },
 	//{ "camera", CG_Camera_f },
-	{ "loaddeferred", CG_LoadDeferredPlayers }	
+	{ "kill", CG_RaceRespawnCommand },
+	{ "+acc", CG_AccuracyDown_f },
+	{ "-acc", CG_AccuracyUp_f },
+	{ "+chat", CG_ChatHistoryDown_f },	// retail table 10078f28
+	{ "-chat", CG_ChatHistoryUp_f },
+	{ "togglechathistory", CG_ChatHistoryToggle },
+	{ "+pstats", CG_PlayerStatsDown_f },	// retail table 10078de8
+	{ "-pstats", CG_PlayerStatsUp_f },
+	{ "loaddeferred", CG_LoadDeferredPlayers }
 };
 
 
@@ -566,7 +611,6 @@ void CG_InitConsoleCommands( void ) {
 	// the game server will interpret these commands, which will be automatically
 	// forwarded to the server after they are not recognized locally
 	//
-	trap_AddCommand ("kill");
 	trap_AddCommand ("say");
 	trap_AddCommand ("say_team");
 	trap_AddCommand ("tell");
@@ -583,7 +627,6 @@ void CG_InitConsoleCommands( void ) {
 	trap_AddCommand ("god");
 	trap_AddCommand ("notarget");
 	trap_AddCommand ("noclip");
-	trap_AddCommand ("team");
 	trap_AddCommand ("follow");
 	trap_AddCommand ("levelshot");
 	trap_AddCommand ("addbot");
@@ -593,6 +636,8 @@ void CG_InitConsoleCommands( void ) {
 	trap_AddCommand ("callteamvote");
 	trap_AddCommand ("teamvote");
 	trap_AddCommand ("stats");
+	trap_AddCommand ("acc");
+	trap_AddCommand ("pstats");
 	trap_AddCommand ("teamtask");
 	trap_AddCommand ("loaddefered");	// spelled wrong, but not changing for demo
 }

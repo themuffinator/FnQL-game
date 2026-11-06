@@ -94,7 +94,7 @@ static void UI_LoadArenasFromFile( char *filename ) {
 		trap_Print( va( S_COLOR_RED "file not found: %s\n", filename ) );
 		return;
 	}
-	if ( len >= MAX_ARENAS_TEXT ) {
+	if ( len < 0 || len >= MAX_ARENAS_TEXT ) {
 		trap_Print( va( S_COLOR_RED "file too large: %s is %i, max allowed is %i", filename, len, MAX_ARENAS_TEXT ) );
 		trap_FS_FCloseFile( f );
 		return;
@@ -116,7 +116,7 @@ void UI_LoadArenas( void ) {
 	int			numdirs;
 	vmCvar_t	arenasFile;
 	char		filename[128];
-	char		dirlist[1024];
+	char		dirlist[32768];
 	char*		dirptr;
 	int			i, n;
 	int			dirlen;
@@ -134,15 +134,15 @@ void UI_LoadArenas( void ) {
 	}
 
 	// get all arenas from .arena files
-	numdirs = trap_FS_GetFileList("scripts", ".arena", dirlist, 1024 );
+	numdirs = trap_FS_GetFileList("scripts", ".arena", dirlist, sizeof(dirlist) );
 	dirptr  = dirlist;
 	for (i = 0; i < numdirs; i++, dirptr += dirlen+1) {
 		dirlen = strlen(dirptr);
-		strcpy(filename, "scripts/");
-		strcat(filename, dirptr);
+		Com_sprintf(filename, sizeof(filename), "scripts/%s", dirptr);
 		UI_LoadArenasFromFile(filename);
 	}
-	trap_Print( va( "%i arenas parsed\n", ui_numArenas ) );
+	/* Retail loads arenas silently; the count remains a ui_debug diagnostic. */
+	if ( ui_debug.integer ) trap_Print( va( "%i arenas parsed\n", ui_numArenas ) );
 	if (UI_OutOfMemory()) {
 		trap_Print(S_COLOR_YELLOW"WARNING: not anough memory in pool to load all arenas\n");
 	}
@@ -154,33 +154,12 @@ void UI_LoadArenas( void ) {
 		uiInfo.mapList[uiInfo.mapCount].mapLoadName = String_Alloc(Info_ValueForKey(ui_arenaInfos[n], "map"));
 		uiInfo.mapList[uiInfo.mapCount].mapName = String_Alloc(Info_ValueForKey(ui_arenaInfos[n], "longname"));
 		uiInfo.mapList[uiInfo.mapCount].levelShot = -1;
-		uiInfo.mapList[uiInfo.mapCount].imageName = String_Alloc(va("levelshots/%s", uiInfo.mapList[uiInfo.mapCount].mapLoadName));
+		/* Retail arena parser 0x1000335f uses the menu preview image. */
+		uiInfo.mapList[uiInfo.mapCount].imageName = String_Alloc(va("levelshots/preview/%s", uiInfo.mapList[uiInfo.mapCount].mapLoadName));
 		uiInfo.mapList[uiInfo.mapCount].typeBits = 0;
 
 		type = Info_ValueForKey( ui_arenaInfos[n], "type" );
-		// if no type specified, it will be treated as "ffa"
-		if( *type ) {
-			if( strstr( type, "ffa" ) ) {
-				uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_FFA);
-			}
-			if( strstr( type, "tourney" ) ) {
-				uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_TOURNAMENT);
-			}
-			if( strstr( type, "ctf" ) ) {
-				uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_CTF);
-			}
-			if( strstr( type, "oneflag" ) ) {
-				uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_1FCTF);
-			}
-			if( strstr( type, "overload" ) ) {
-				uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_OBELISK);
-			}
-			if( strstr( type, "harvester" ) ) {
-				uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_HARVESTER);
-			}
-		} else {
-			uiInfo.mapList[uiInfo.mapCount].typeBits |= (1 << GT_FFA);
-		}
+		uiInfo.mapList[uiInfo.mapCount].typeBits = UI_QLArenaTypeBits(type);
 
 		uiInfo.mapCount++;
 		if (uiInfo.mapCount >= MAX_MAPS) {
@@ -205,7 +184,7 @@ static void UI_LoadBotsFromFile( char *filename ) {
 		trap_Print( va( S_COLOR_RED "file not found: %s\n", filename ) );
 		return;
 	}
-	if ( len >= MAX_BOTS_TEXT ) {
+	if ( len < 0 || len >= MAX_BOTS_TEXT ) {
 		trap_Print( va( S_COLOR_RED "file too large: %s is %i, max allowed is %i", filename, len, MAX_BOTS_TEXT ) );
 		trap_FS_FCloseFile( f );
 		return;
@@ -229,7 +208,7 @@ void UI_LoadBots( void ) {
 	vmCvar_t	botsFile;
 	int			numdirs;
 	char		filename[128];
-	char		dirlist[1024];
+	char		dirlist[32768];
 	char*		dirptr;
 	int			i;
 	int			dirlen;
@@ -245,12 +224,11 @@ void UI_LoadBots( void ) {
 	}
 
 	// get all bots from .bot files
-	numdirs = trap_FS_GetFileList("scripts", ".bot", dirlist, 1024 );
+	numdirs = trap_FS_GetFileList("scripts", ".bot", dirlist, sizeof(dirlist) );
 	dirptr  = dirlist;
 	for (i = 0; i < numdirs; i++, dirptr += dirlen+1) {
 		dirlen = strlen(dirptr);
-		strcpy(filename, "scripts/");
-		strcat(filename, dirptr);
+		Com_sprintf(filename, sizeof(filename), "scripts/%s", dirptr);
 		UI_LoadBotsFromFile(filename);
 	}
 	trap_Print( va( "%i bots parsed\n", ui_numBots ) );

@@ -257,9 +257,9 @@ void CG_KamikazeEffect( vec3_t org ) {
 	re->reType = RT_MODEL;
 
 	if ( intShaderTime )
-		re->intShaderTime = cg.time;
+		re->u.intShaderTime = cg.time;
 	else
-		re->shaderTime = cg.time / 1000.0f;
+		re->u.shaderTime = cg.time / 1000.0f;
 
 	re->hModel = cgs.media.kamikazeEffectModel;
 
@@ -514,7 +514,13 @@ This is the spurt of blood when a character gets hit
 void CG_Bleed( const vec3_t origin, int entityNum ) {
 	localEntity_t	*ex;
 
-	if ( !cg_blood.integer ) {
+	// retail 0x10013da0 bleeds only with the gore DLC (cg_gore.c) and does
+	// not read cg_blood; the Quake III bloodExplosion shader below is not in
+	// the retail paks
+	if ( CG_GoreBleed( origin ) ) {
+		return;
+	}
+	if ( !cg_blood.integer || !cgs.media.bloodExplosionShader ) {
 		return;
 	}
 
@@ -545,120 +551,19 @@ void CG_Bleed( const vec3_t origin, int entityNum ) {
 
 
 /*
-==================
-CG_LaunchGib
-==================
-*/
-static void CG_LaunchGib( const vec3_t origin, const vec3_t velocity, qhandle_t hModel ) {
-	localEntity_t	*le;
-	refEntity_t		*re;
-
-	le = CG_AllocLocalEntity();
-	re = &le->refEntity;
-
-	le->leType = LE_FRAGMENT;
-	le->startTime = cg.time;
-	le->endTime = le->startTime + 5000 + random() * 3000;
-
-	VectorCopy( origin, re->origin );
-	AxisCopy( axisDefault, re->axis );
-	re->hModel = hModel;
-
-	le->pos.trType = TR_GRAVITY;
-	VectorCopy( origin, le->pos.trBase );
-	VectorCopy( velocity, le->pos.trDelta );
-	le->pos.trTime = cg.time;
-
-	le->bounceFactor = 0.6f;
-
-	le->leBounceSoundType = LEBS_BLOOD;
-	le->leMarkType = LEMT_BLOOD;
-}
-
-/*
 ===================
 CG_GibPlayer
 
-Generated a bunch of gibs launching out from the bodies location
+Retail gibs without the gore DLC are electro gibs (cg_ql_effects.c); the
+Quake III gore models and blood shaders are not in the retail paks.
 ===================
 */
-#define	GIB_VELOCITY	250
-#define	GIB_JUMP		250
 void CG_GibPlayer( const vec3_t playerOrigin ) {
-	vec3_t	origin, velocity;
-
-	if ( !cg_blood.integer ) {
+	// retail 0x10014c80: the gore DLC's fifteen gibs, else electro gibs
+	if ( CG_GoreGibPlayer( playerOrigin ) ) {
 		return;
 	}
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	if ( rand() & 1 ) {
-		CG_LaunchGib( origin, velocity, cgs.media.gibSkull );
-	} else {
-		CG_LaunchGib( origin, velocity, cgs.media.gibBrain );
-	}
-
-	// allow gibs to be turned off for speed
-	if ( !cg_gibs.integer ) {
-		return;
-	}
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibAbdomen );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibArm );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibChest );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibFist );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibFoot );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibForearm );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibIntestine );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibLeg );
-
-	VectorCopy( playerOrigin, origin );
-	velocity[0] = crandom()*GIB_VELOCITY;
-	velocity[1] = crandom()*GIB_VELOCITY;
-	velocity[2] = GIB_JUMP + crandom()*GIB_VELOCITY;
-	CG_LaunchGib( origin, velocity, cgs.media.gibLeg );
+	CG_ElectroGibs( playerOrigin, qtrue );
 }
 
 /*

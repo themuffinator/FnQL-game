@@ -1,0 +1,24 @@
+# G3: live infinite-ammo changes, normal/dead/spectator clients and respawn.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Observer
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha give Railgun
+at 25 alpha weapon=7
+clientcmd 28 alpha setviewpos -260 320 40 180
+clientcmd 29 bravo setviewpos -700 320 40 0
+cmd 30 g_infiniteAmmo 1
+at 40 alpha buttons=attack
+at 41 alpha buttons=0
+cmd 60 g_infiniteAmmo 0
+clientcmd 70 bravo kill
+cmd 80 g_infiniteAmmo 1
+cmd 90 g_infiniteAmmo 0
+at 160 bravo buttons=attack
+at 161 bravo buttons=0
+clientcmd 180 alpha team s
+cmd 190 g_infiniteAmmo 1
+cmd 210 g_infiniteAmmo 0
+cmd 250 map_restart 0

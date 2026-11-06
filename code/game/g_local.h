@@ -259,6 +259,7 @@ typedef struct {
 	int			spectateOnly;		// so: a duel spectator not queueing to play (+0x36c)
 	int			queuePosition;		// pq: place in the duel queue, 0 for none (+0x370)
 	qboolean	muted;
+	int			sessionReservedTail;	// retail serialized +0x37c; no observed gameplay use
 	qboolean	queueChanged;		// pq changed; the player keys go out again (+0x374)
 } clientSession_t;
 
@@ -289,6 +290,8 @@ typedef struct {
 	int			timeoutsUsed;		// timeouts called outside the team modes (+0x2f0)
 	int roundDamage;
 	int roundShotsBase, roundHitsBase, roundTakenBase;
+	// Retail +0x2d4..+0x2dc: retained across respawns, cleared on connect.
+	int complaintCount, complaintClient, complaintDeadline;
 
 	// Quake Live CS_PLAYERS state (keys rp, p, so, pq, st, c).  Ready-up,
 	// privileges, spectate-only and the join queue are driven by the match
@@ -663,6 +666,8 @@ void UseHoldableItem( gentity_t *ent );
 void PrecacheItem (gitem_t *it);
 gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle );
 gentity_t *LaunchItem( gitem_t *item, vec3_t origin, vec3_t velocity );
+void G_DropDamagedHealth( gentity_t *victim, gentity_t *attacker, int damage );
+qboolean G_LightningDischarge( gentity_t *attacker, vec3_t origin, float damage, float radius );
 void SetRespawn (gentity_t *ent, float delay);
 void G_SpawnItem (gentity_t *ent, gitem_t *item);
 void G_SpawnItemForced( gentity_t *ent, gitem_t *item );
@@ -720,6 +725,8 @@ int G_WeaponForMod( int mod );
 void G_DamagePlum( gentity_t *attacker, const vec3_t origin, int damage, int weapon );
 void G_Damage (gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec3_t dir, vec3_t point, int damage, int dflags, int mod);
 qboolean G_RadiusDamage( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore, const trace_t *trace, const vec3_t dir );
+qboolean G_RadiusDamageThroughSurface( const vec3_t origin, gentity_t *inflictor, gentity_t *ignore,
+	const trace_t *trace, const vec3_t dir, const vec3_t throughPoint );
 qboolean G_FreezeTagActive( void );
 void G_UpdateSettingsConfigstrings( void );
 void G_UpdateTimeoutConfigstrings( void );
@@ -806,6 +813,7 @@ int TeamLeader( team_t team );
 team_t PickTeam( int ignoreClientNum );
 void SetClientViewAngle( gentity_t *ent, vec3_t angle );
 void G_CleanPlayerName( const char *input, char *output, int outputSize );
+qboolean G_PlayerNamesEqual( const char *a, const char *b );
 gentity_t *SelectSpawnPoint( gentity_t *ent, vec3_t avoidPoint, vec3_t origin, vec3_t angles );
 void CopyToBodyQue( gentity_t *ent );
 void respawn (gentity_t *ent);
@@ -953,6 +961,9 @@ int G_ForceTeam( gentity_t *ent, const char *team );
 void G_ResetClientStats( gclient_t *client );
 int G_StartingAmmo( int weapon );
 void G_ReadClientSessionData( gclient_t *client );
+void G_ComplaintKill( gentity_t *victim, gentity_t *attacker, int mod );
+void G_ComplaintVote( gentity_t *victim );
+void G_ComplaintDisconnect( int clientNum );
 void G_WriteClientSessionData( gclient_t *client );
 void G_ClearClientSessionData( gclient_t *client );
 
@@ -965,6 +976,11 @@ void Svcmd_AbortPodium_f( void );
 
 //
 // g_unlagged.c
+void G_InitLagHax( void );
+void G_ResetLagHax( gentity_t *ent );
+void G_StoreLagHax( gentity_t *ent );
+void G_BeginLagHax( gentity_t *ent );
+void G_EndLagHax( void );
 //
 void G_ResetHistory( gentity_t *ent );
 void G_StoreHistory( gentity_t *ent );
@@ -1019,6 +1035,8 @@ gentity_t *G_LaunchQuadHog( gitem_t *item, vec3_t origin, vec3_t velocity );
 void G_CheckQuadHog( void );
 void G_QuadHogPing( gentity_t *player );
 void G_QuadHogTimer( gentity_t *player, int msec );
+void G_NeutralFlagPing( gentity_t *player );
+void G_NeutralFlagTimer( gentity_t *player, int msec );
 
 
 #include "g_team.h" // teamplay specific stuff

@@ -487,6 +487,7 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 	}
 	// Retail 0x100347d6: Scout loses one armor every 500 ms down to 50.
 	G_QuadHogTimer( ent, msec );
+	G_NeutralFlagTimer( ent, msec );
 	// Its residual is retained between rune pickups, and pauses freeze it.
 	if ( g_gametype.integer != GT_CLAN_ARENA && client->ps.stats[STAT_PERSISTANT_POWERUP] == PP_SCOUT ) {
 		client->scoutArmorResidual += msec;
@@ -857,6 +858,11 @@ void ClientThink_real( gentity_t *ent ) {
 		return;
 	}
 
+	// Retail 0x10034e20 consumes the previous pmove's selected primary
+	// weapon before this command is simulated. It becomes the next spawn's
+	// loadout, including choices made while dead or spectating.
+	if ( client->ps.weaponPrimary ) client->sess.loadoutWeapon = client->ps.weaponPrimary;
+
 	// spectators don't do much
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR || client->ps.pm_type == PM_SPECTATOR ) {
 		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
@@ -966,6 +972,8 @@ void ClientThink_real( gentity_t *ent ) {
 	pm.debugLevel = g_debugMove.integer;
 
 	pm.settings = &level.pmoveSettings;
+	// Retail 0x10035190: latching a player quarters the owner's pull.
+	pm.grappleSlow = client->hook && client->hook->enemy && client->hook->enemy->client;
 	// Retail 0x1003517e: dmflags bit 32 suppresses surface footsteps.
 	pm.noFootsteps = (g_dmflags.integer & DF_NO_FOOTSTEPS) != 0;
 

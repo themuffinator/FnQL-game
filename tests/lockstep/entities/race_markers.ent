@@ -1,0 +1,50 @@
+// Gravity starts the run, then the player lands facing separated race points.
+// The next checkpoint, following checkpoint and later finish expose the model
+// selection and marker rules without steering or synthetic player commands.
+{
+"classname" "worldspawn"
+"message" "FnQL race presentation gate"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-600 320 300"
+"angle" "0"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-625 320 770"
+"angle" "0"
+"nobots" "1"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-575 320 770"
+"angle" "0"
+"nohumans" "1"
+}
+{
+"classname" "race_point"
+"origin" "-600 320 560"
+"target" "next"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-300 300 280"
+"targetname" "next"
+"target" "following"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-300 180 280"
+"targetname" "following"
+"target" "finish"
+"spawnflags" "1"
+}
+{
+"classname" "race_point"
+"origin" "-300 420 280"
+"targetname" "finish"
+"spawnflags" "1"
+}

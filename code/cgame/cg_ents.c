@@ -145,9 +145,10 @@ static void CG_General( const centity_t *cent ) {
 	const entityState_t	*s1;
 
 	s1 = &cent->currentState;
+	if (CG_DrawRacePoint(cent)) return;
 
-	// if set to invisible, skip
-	if (!s1->modelindex) {
+	// No model, or invalid native input: never index outside gameModels.
+	if (s1->modelindex <= 0 || s1->modelindex >= MAX_MODELS) {
 		return;
 	}
 
@@ -234,6 +235,11 @@ static void CG_Item( centity_t *cent ) {
 	}
 
 	item = &bg_itemlist[ es->modelindex ];
+	if ( item->giType == IT_TEAM ) {
+		// retail 0x100160a7: the last drawn flag position marks its base
+		CG_RecordObjectiveBase( item->giTag == PW_REDFLAG ? TEAM_RED :
+			item->giTag == PW_BLUEFLAG ? TEAM_BLUE : TEAM_FREE, cent->lerpOrigin );
+	}
 	if ( cg_simpleItems.integer && item->giType != IT_TEAM ) {
 		memset( &ent, 0, sizeof( ent ) );
 		ent.reType = RT_SPRITE;
@@ -363,6 +369,22 @@ static void CG_Item( centity_t *cent ) {
 		trap_R_AddRefEntityToScene( &barrel );
 	}
 #endif
+
+	// retail 0x1001737a: a weapon item also carries its tag_ammo model
+	// (only the grapple registers one), placed like the barrel
+	if ( item->giType == IT_WEAPON && wi && wi->attachedAmmoModel ) {
+		refEntity_t	ammo;
+
+		memset( &ammo, 0, sizeof( ammo ) );
+		ammo.hModel = wi->attachedAmmoModel;
+		VectorCopy( ent.lightingOrigin, ammo.lightingOrigin );
+		ammo.shadowPlane = ent.shadowPlane;
+		ammo.renderfx = ent.renderfx;
+		CG_PositionRotatedEntityOnTag( &ammo, &ent, wi->weaponModel, "tag_ammo" );
+		AxisCopy( ent.axis, ammo.axis );
+		ammo.nonNormalizedAxes = ent.nonNormalizedAxes;
+		trap_R_AddRefEntityToScene( &ammo );
+	}
 
 	// accompanying rings / spheres for powerups
 	if ( !cg_simpleItems.integer ) 
@@ -505,8 +527,9 @@ static void CG_Missile( centity_t *cent ) {
 	// add to refresh list, possibly with quad glow
 
 	s1->powerups &= ~( (1 << PW_INVIS) | (1 << PW_REGEN) );
-	ci = &cgs.clientinfo[ s1->clientNum & MAX_CLIENTS ];
-	if ( ci->infoValid ) {
+	ci = s1->clientNum >= 0 && s1->clientNum < MAX_CLIENTS
+		? &cgs.clientinfo[s1->clientNum] : NULL;
+	if ( ci && ci->infoValid ) {
 		CG_AddRefEntityWithPowerups( &ent, s1, ci->team );
 	} else {
 		CG_AddRefEntityWithPowerups( &ent, s1, TEAM_FREE );
@@ -787,13 +810,17 @@ static void CG_CalcEntityLerpPositions( centity_t *cent ) {
 CG_TeamBase
 ===============
 */
-static void CG_TeamBase( const centity_t *cent ) {
+static void CG_TeamBase( centity_t *cent ) {
 	refEntity_t model;
 #ifdef MISSIONPACK
 	vec3_t angles;
 	int t, h;
 	float c;
+#endif
 
+	// retail 0x1001891b: team bases record their position by modelindex
+	CG_RecordObjectiveBase( cent->currentState.modelindex, cent->lerpOrigin );
+#ifdef MISSIONPACK
 	if ( cgs.gametype == GT_CTF || cgs.gametype == GT_1FCTF ) {
 #else
 	if ( cgs.gametype == GT_CTF) {

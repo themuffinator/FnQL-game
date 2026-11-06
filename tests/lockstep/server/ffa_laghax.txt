@@ -1,0 +1,33 @@
+# G3: delayed hitscan against moving/ducking targets, then a teleport.
+# Repeated crossings exercise the capped rewind window and stance bounds.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+at 0 alpha delay=200 weapon=7
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha give Railgun
+clientcmd 22 alpha setviewpos -260 320 40 180
+clientcmd 24 bravo setviewpos -500 260 40 90
+at 25 bravo yaw=0
+cmd 30 weapon_reload_rg 50
+cmd 31 g_damage_rg 1
+at 100 bravo forward=127
+at 100 alpha buttons=attack
+at 140 bravo forward=-127
+at 180 bravo forward=0 up=-127
+clientcmd 190 bravo setviewpos -500 260 40 90
+at 200 bravo forward=127
+at 240 bravo forward=-127
+at 280 bravo forward=0 up=0
+clientcmd 300 bravo setviewpos -500 320 40 90
+at 330 alpha buttons=0 delay=75
+clientcmd 340 bravo setviewpos -500 260 40 90
+at 350 bravo forward=127
+at 350 alpha buttons=attack
+at 390 bravo forward=-127
+at 430 bravo forward=0
+at 440 alpha buttons=0
+clientcmd 460 alpha pstats
+clientcmd 462 bravo score
+cmd 500 map_restart 0
