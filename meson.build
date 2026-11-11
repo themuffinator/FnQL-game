@@ -8,9 +8,9 @@ project('fnql-game', 'c',
   ])
 
 # FnQL-game builds drop-in replacements for the retail Quake Live game modules.
-# FnQL is currently 32-bit x86 only (its AGENTS.md constraint 9); further
-# targets are enabled one at a time through its Project Plan step 7 and
-# FnQL-game milestone 11, each behind its own gates.
+# Targets are enabled one at a time, in step with FnQL's Project Plan step 7
+# (milestone M11), each behind its own gates: 32-bit x86 (the retail ABI) and
+# x86_64 on Windows and Linux, where FnQL-game is the only game.
 
 cc = meson.get_compiler('c')
 fs = import('fs')
@@ -22,21 +22,52 @@ x86_target_probe = '''
 typedef char fnql_game_pointer_width_must_be_32_bits[(sizeof(void *) == 4) ? 1 : -1];
 int main(void) { return 0; }
 '''
-if host_machine.cpu_family() != 'x86' or not cc.compiles(x86_target_probe, name: '32-bit x86 target')
-  error('FnQL-game supports only 32-bit x86 targets; Meson configured host CPU family "'
-    + host_machine.cpu_family() + '". Use a vcvars32 (Win32) environment on Windows or an i686 cross file elsewhere.')
+x86_64_target_probe = '''
+#if !defined(_M_AMD64) && !defined(__x86_64__)
+#error FnQL-game requires an x86_64 target
+#endif
+typedef char fnql_game_pointer_width_must_be_64_bits[(sizeof(void *) == 8) ? 1 : -1];
+int main(void) { return 0; }
+'''
+cpu_family = host_machine.cpu_family()
+if cpu_family == 'x86'
+  target_supported = cc.compiles(x86_target_probe, name: '32-bit x86 target')
+elif cpu_family == 'x86_64'
+  target_supported = cc.compiles(x86_64_target_probe, name: 'x86_64 target')
+else
+  target_supported = false
+endif
+if not target_supported
+  error('FnQL-game supports only 32-bit x86 and x86_64 targets; Meson configured host CPU family "'
+    + cpu_family + '" or the compiler target probe failed. Use a vcvars32 (Win32) or vcvars64 (x64) '
+    + 'environment on Windows, and an i686 cross file or a native x86_64 compiler on Linux.')
 endif
 
 win32 = host_machine.system() == 'windows'
 linux = host_machine.system() == 'linux'
 if not (win32 or linux)
-  error('FnQL-game targets the platforms retail Quake Live ships game modules for: Windows and Linux.')
+  error('FnQL-game targets Windows and Linux; other platforms are enabled through milestone M11.')
 endif
 
-# Retail module names carry the engine's ARCH_STRING: x86 on Windows, i386 on
-# Linux.  FnQL-game prefixes "fnql_" so its modules never shadow the retail
-# ones in a search path; the FnQL engine selects them by provider.
-module_arch = win32 ? 'x86' : 'i386'
+# Module names carry the engine's ARCH_STRING: x86 on Windows and i386 on
+# Linux for the retail-ABI target, x86_64 on both for the 64-bit target (no
+# retail 64-bit Windows modules exist).  FnQL-game prefixes "fnql_" so its
+# modules never shadow the retail ones in a search path; the FnQL engine
+# selects them by provider.
+if cpu_family == 'x86'
+  module_arch = win32 ? 'x86' : 'i386'
+else
+  module_arch = 'x86_64'
+endif
+# The retail client, its cgame and ui, and the retail Windows qagame exist only
+# for 32-bit x86, and the G3 harness and the client probes are written against
+# those x86 modules (retail bin.pk3 also carries a Linux qagamex64.so, which
+# FnQL hosts on Linux x86_64, but no gate here drives it yet).  So the gates
+# that host, join or diff against retail modules run only on x86; on other
+# targets the FnQL hosting gates (G1 dedicated-smoke, combat-soak, map-sweep)
+# still run.
+retail_modules_hostable = cpu_family == 'x86'
+
 module_prefix = 'fnql_'
 
 c_args = []
@@ -58,7 +89,7 @@ else
     '-Wno-unused-parameter',
     '-ffp-contract=off',
   ])
-  if host_machine.cpu_family() == 'x86'
+  if cpu_family == 'x86'
     c_args += cc.get_supported_arguments(['-msse2', '-mfpmath=sse'])
   endif
   link_args += cc.get_supported_link_arguments(['-Wl,--no-undefined'])
@@ -584,6 +615,10 @@ if get_option('fnql-dedicated') != ''
   endif
   test('map-sweep', python, args: sweep_args, depends: qagame,
     suite: 'sweep', timeout: 1200, is_parallel: false)
+
+  # Every gate below hosts, joins or diffs against a retail module, so it is
+  # x86 only (retail_modules_hostable); the block is not re-indented.
+  if retail_modules_hostable
 
   # Gate G5b: the user's retail Steam client joins this server and stays in.
   # It launches the retail game through Steam, which cannot run windowless,
@@ -1247,10 +1282,11 @@ if get_option('fnql-dedicated') != ''
         '--scenario', files('tests/lockstep/server/tdm_items.txt'), '--module', qagame.full_path()],
       depends: qagame, suite: 'factories', timeout: 300, is_parallel: false)
   endforeach
+  endif # retail_modules_hostable
 endif
 
 # Gate G5a: the retail cgame runs against FnQL-game's qagame in one client.
-if get_option('fnql-client') != ''
+if get_option('fnql-client') != '' and retail_modules_hostable
   ui_probe_args = [files('scripts/ui_probe.py'),
     '--client', get_option('fnql-client'), '--module', ui.full_path()]
   if get_option('retail-ql') != ''

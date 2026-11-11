@@ -1283,6 +1283,21 @@ The rules for every target:
 - x86 retail interoperability is never regressed.
 - A target counts as supported only when its gates pass.
 
+Enabled targets:
+
+- **x86_64, Windows and Linux** (2026-11-11). Modules are
+  `fnql_<slot>x86_64.dll` / `.so`, matching the engine's `ARCH_STRING`. Gates:
+  G0 `engine-abi-parity` (220 checks) and G2 `wire-contract` pass with MSVC x64
+  and native gcc x86_64; G1 `dedicated-smoke` and `combat-soak` pass on FnQL's
+  `fnql.ded.x64.exe` and `fnql.ded.x86_64` on retail campgrounds. The gates
+  that host or diff retail modules (G3 differentials, G5 retail client, the
+  client probes) are x86 only (`retail_modules_hostable` in `meson.build`):
+  the retail client, cgame, ui and Windows qagame exist only for x86. Retail
+  `bin.pk3` also carries a Linux `qagamex64.so`, which FnQL hosts on Linux
+  x86_64; a G3 run against it is open. FnQL's release CI builds and tests the
+  pinned commit for both and bundles the modules in its x86_64 packages; G1
+  needs a retail install, so it runs outside CI.
+
 ### M12 — Release
 
 - CI builds for Win32 and Linux i386. Done: FnQL's release workflow builds a
@@ -1301,6 +1316,7 @@ licenses as that document describes.
 
 - Small compatibility slices, each with its gate.
 - Baseline files keep their headers. New files carry the FnQL-game GPL header.
-- 32-bit x86 only. Never validate with 64-bit artifacts.
+- Enabled targets only (x86; x86_64 on Windows and Linux). Validate each
+  target with its own artifacts.
 - Probes run windowed (`+set r_fullscreen 0`) and as cheaply as the question
   allows. Dedicated server first.

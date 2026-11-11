@@ -153,7 +153,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fnql", type=Path, default=ROOT.parent / "FnQL",
                         help="FnQL engine checkout (default: ../FnQL)")
-    parser.add_argument("--cc", default="cl", help="C compiler command for a 32-bit x86 target")
+    parser.add_argument("--cc", default="cl", help="C compiler command for the module target (x86 or x86_64)")
     args = parser.parse_args()
 
     fnql = args.fnql.resolve()
