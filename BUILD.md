@@ -24,13 +24,17 @@ behavioral and windowed hosting gates.
 
 ## Linux (i386)
 
-Use an i686 cross file. FnQL's `misc/meson/linux-x86.ini` works:
+Use the committed i686 cross file on an x86_64 host with `gcc-multilib`:
 
 ```bash
-meson setup build/linux-i386 --cross-file ../FnQL/misc/meson/linux-x86.ini
+meson setup build/linux-i386 --cross-file meson/linux-i686.ini
 ```
 
-Output: `fnql_qagamei386.so`. The Linux build is not yet validated.
+Outputs: `fnql_qagamei386.so`, `fnql_cgamei386.so` and `fnql_uii386.so`.
+The cross file puts `-m32` in the compiler entry so the ABI and wire-contract
+probes compile 32-bit too. FnQL's release workflow builds and gates this
+target in an Ubuntu 20.04 container (glibc 2.31 baseline). Runtime gates on
+Linux are not yet part of the release.
 
 ## Gates
 

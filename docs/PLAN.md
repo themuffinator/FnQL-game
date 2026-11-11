@@ -1285,13 +1285,17 @@ The rules for every target:
 
 ### M12 — Release
 
-- CI builds for Win32 and Linux i386.
-- Packaging inside FnQL releases.
+- CI builds for Win32 and Linux i386. Done: FnQL's release workflow builds a
+  pinned commit of this repository (FnQL `version/fnql_game.json`) with MSVC
+  Win32 and in an Ubuntu 20.04 i686 container, and runs `meson test` on both.
+- Packaging inside FnQL releases. Done: the modules ship in `baseq3/` of
+  every FnQL package, with this repository's licensing documents.
 - Defaults flipped to `auto` once G2–G5 pass.
 - User docs.
 
-Prerequisite: the baseline licensing question in
-[`LICENSING.md`](LICENSING.md) is resolved.
+The baseline licensing question in [`LICENSING.md`](LICENSING.md) is still
+open. Until it is settled, releases distribute the modules under both
+licenses as that document describes.
 
 ## Working conventions
 
