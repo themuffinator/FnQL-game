@@ -271,7 +271,7 @@ test('cgame-ammo', cgame_ammo_test, suite: ['unit', 'cgame'])
 
 cgame_events_test = executable('cgame_events',
   files('tests/cgame_events.c', 'code/cgame/cg_ql_events.c'),
-  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('cgame-events', cgame_events_test, suite: ['unit', 'cgame'])
 
 cgame_race_test = executable('cgame_race',
@@ -420,7 +420,7 @@ test('cgame-effects', cgame_effects_test, suite: ['unit', 'cgame'])
 
 cgame_playerpresentation_test = executable('cgame_playerpresentation',
   files('tests/cgame_playerpresentation.c', 'code/cgame/cg_playerpresentation.c'),
-  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('cgame-playerpresentation', cgame_playerpresentation_test, suite: ['unit', 'cgame'])
 
 cgame_prediction_test = executable('cgame_prediction',
@@ -437,7 +437,7 @@ cgame_damage_test = executable('cgame_damage',
 test('cgame-damage', cgame_damage_test, suite: ['unit', 'cgame'])
 cgame_scores_test = executable('cgame_scores',
   files('tests/cgame_scores.c', 'code/cgame/cg_scores.c', 'code/cgame/cg_scorecells.c'),
-  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('cgame-scores', cgame_scores_test, suite: ['unit', 'cgame'])
 
 # One native UI; the legacy Quake III menu module is not built.
@@ -469,28 +469,28 @@ endif
 
 # Command policy and state transitions, without retail assets or a server.
 game_drops = executable('game_drops', files('tests/game_drops.c', 'code/game/g_drop.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-drops', game_drops, suite: 'unit')
 game_flagphysics = executable('game_flagphysics', files('tests/game_flagphysics.c', 'code/game/g_flagphysics.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-flagphysics', game_flagphysics, suite: 'unit')
 game_runes = executable('game_runes', files('tests/game_runes.c', 'code/game/g_runes.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-runes', game_runes, suite: 'unit')
 game_names = executable('game_names', files('tests/game_names.c', 'code/game/g_names.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-names', game_names, suite: 'unit')
 game_session = executable('game_session', files('tests/game_session.c', 'code/game/g_session.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-session', game_session, suite: 'unit')
 game_laghax = executable('game_laghax', files('tests/game_laghax.c', 'code/game/g_laghax.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-laghax', game_laghax, suite: 'unit')
 game_complaint = executable('game_complaint', files('tests/game_complaint.c', 'code/game/g_complaint.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-complaint', game_complaint, suite: 'unit')
 game_quadhog = executable('game_quadhog', files('tests/game_quadhog.c', 'code/game/g_quadhog.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-quadhog', game_quadhog, suite: 'unit')
 
 game_domination = executable('game_domination', files('tests/game_domination.c', 'code/game/g_domination.c'),
@@ -499,10 +499,10 @@ test('game-domination', game_domination, suite: 'unit')
 
 game_admin = executable('game_admin', files('tests/game_admin.c', 'code/game/g_admin.c', 'code/game/g_access.c',
   'code/game/g_commandextras.c', 'code/game/g_race.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-admin', game_admin, suite: 'unit')
 game_race = executable('game_race', files('tests/game_race.c', 'code/game/g_race.c'),
-  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'])
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-race', game_race, suite: 'unit')
 
 
