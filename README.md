@@ -17,7 +17,8 @@ FnQL clients running FnQL-game join retail servers.
 
 Milestone 1 of [`docs/PLAN.md`](docs/PLAN.md) is complete:
 
-- `fnql_qagamex86.dll` builds for 32-bit x86;
+- `fnql_qagamex86.dll` builds for 32-bit x86, and since milestone 11 the
+  modules also build for x86_64 on Windows and Linux (`fnql_qagamex86_64`);
 - it speaks the retail native module ABI and identifies itself to FnQL;
 - it boots on retail maps in an FnQL dedicated server and hosts bots.
 

@@ -25,7 +25,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from smoke_dedicated import FORBIDDEN, MODULE_NAME, ROOT, find_retail_install  # noqa: E402
+from smoke_dedicated import (  # noqa: E402
+    FORBIDDEN, MODULE_NAME, ROOT, find_retail_install, hosted_module_name)
 import headless  # noqa: E402
 
 KILL_LINE = re.compile(r"^Kill: \d+ \d+ \d+: .* killed .* by (MOD_[A-Z_]+)\s*$", re.MULTILINE)
@@ -61,7 +62,7 @@ def main() -> int:
     home = Path(tempfile.mkdtemp(prefix="combat-soak-", dir=scratch_root))
     try:
         (home / "baseq3").mkdir()
-        shutil.copy2(args.module, home / "baseq3" / MODULE_NAME)
+        shutil.copy2(args.module, home / "baseq3" / hosted_module_name(args.module))
         log_path = home / "baseq3" / "qconsole.log"
         startup = [f"map {args.map} {args.factory}", "wait 40"]
         startup += [f"addbot {name} {args.skill}" for name in bots]

@@ -113,7 +113,7 @@ def run_probe(cc: list[str], enums: dict) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cc", default="cl", help="C compiler command for a 32-bit x86 target")
+    parser.add_argument("--cc", default="cl", help="C compiler command for the module target (x86 or x86_64)")
     args = parser.parse_args()
 
     tables = json.loads(TABLES.read_text(encoding="utf-8"))

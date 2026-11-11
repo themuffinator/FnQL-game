@@ -23,12 +23,16 @@ import headless
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# The x86 (retail-ABI) name; other targets name the module after the engine's
+# ARCH_STRING (fnql_qagamex86_64.dll / .so), so a gate copies the module under
+# the name it was built with -- see hosted_module_name().
 MODULE_NAME = "fnql_qagamex86.dll" if os.name == "nt" else "fnql_qagamei386.so"
+MODULE_ARCHES = ("x86", "i386", "x86_64")
 
-# Each line must appear in the server log for the gate to pass.
+# Each line must appear in the server log for the gate to pass; the hosted
+# module's own line is added by required_lines().
 REQUIRED = [
     "VM_LoadDll(qagame): FnQL-game ",
-    "qagame : native " + MODULE_NAME + " (FnQL-game ",
     "------- Game Initialization -------",
     "fnql_game ",  # identity key reached the serverinfo (listed by the serverinfo command)
     "AAS initialized.",
@@ -47,6 +51,24 @@ FORBIDDEN = [
     "ERROR:",
     "Couldn't open logfile: \n",  # garbage cvar strings (vmCvar_t layout drift)
 ]
+
+
+def hosted_module_name(module: Path) -> str:
+    """The file name the engine loads for `module`: fnql_qagame<ARCH_STRING><ext>.
+
+    Raises SystemExit for a module whose name no enabled target would load,
+    so a gate never copies a module under a name that hides its architecture.
+    """
+    extension = ".dll" if os.name == "nt" else ".so"
+    for arch in MODULE_ARCHES:
+        if module.name == f"fnql_qagame{arch}{extension}":
+            return module.name
+    raise SystemExit(f"{module.name} is not an FnQL-game qagame for this platform "
+                     f"(expected fnql_qagame<{'|'.join(MODULE_ARCHES)}>{extension})")
+
+
+def required_lines(module_name: str) -> list[str]:
+    return REQUIRED + ["qagame : native " + module_name + " (FnQL-game "]
 
 
 def find_retail_install(explicit: str | None) -> Path:
@@ -78,13 +100,14 @@ def main() -> int:
         raise SystemExit(f"module not found: {args.module} (build it first)")
     engine = Path(args.engine).resolve()
     retail = find_retail_install(args.retail)
+    module_name = hosted_module_name(args.module)
 
     scratch_root = ROOT / ".tmp"
     scratch_root.mkdir(exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix="smoke-dedicated-", dir=scratch_root))
     try:
         (home / "baseq3").mkdir()
-        shutil.copy2(args.module, home / "baseq3" / MODULE_NAME)
+        shutil.copy2(args.module, home / "baseq3" / module_name)
         log_path = home / "baseq3" / "qconsole.log"
         command = [
             str(engine),
@@ -121,7 +144,7 @@ def main() -> int:
         failures = []
         if exited_early:
             failures.append(f"server exited after {time.monotonic() - started:.1f}s (code {process.returncode})")
-        failures += [f"missing: {line!r}" for line in REQUIRED if line not in log]
+        failures += [f"missing: {line!r}" for line in required_lines(module_name) if line not in log]
         failures += [f"forbidden: {line!r}" for line in FORBIDDEN if line in log]
 
         if failures:

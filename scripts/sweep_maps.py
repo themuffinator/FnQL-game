@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from smoke_dedicated import MODULE_NAME, find_retail_install  # noqa: E402
+from smoke_dedicated import MODULE_NAME, find_retail_install, hosted_module_name  # noqa: E402
 import headless  # noqa: E402
 
 
@@ -59,7 +59,7 @@ def main() -> int:
     try:
         game_dir = home / "baseq3"
         game_dir.mkdir()
-        shutil.copy2(args.module, game_dir / MODULE_NAME)
+        shutil.copy2(args.module, game_dir / hosted_module_name(args.module))
         lines = []
         for name in maps:
             lines += [f"echo sweep: begin {name}", f"map {name} {args.factory}", "wait 5"]
