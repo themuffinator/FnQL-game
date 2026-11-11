@@ -19,6 +19,7 @@ import tempfile
 import time
 from pathlib import Path
 from smoke_dedicated import find_retail_install
+import headless
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -373,17 +374,16 @@ def main() -> int:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as port_probe:
                 port_probe.bind(('127.0.0.1', 0))
                 rcon_port = port_probe.getsockname()[1]
-            settings.update({'net_ip': '127.0.0.1', 'net_port': str(rcon_port), 'rconPassword': rcon_key})
+            # sv_serverType 1 (LAN): at retail's default 0 the engine ignores every
+            # remote packet, this rcon included.
+            settings.update({'net_ip': '127.0.0.1', 'net_port': str(rcon_port), 'rconPassword': rcon_key,
+                             'sv_serverType': '1'})
+        settings.update(headless.CLIENT_SETTINGS)  # windowless client (AGENTS.md rule 13)
         for key, value in settings.items(): command += ['+set', key, value]
         command += ['+exec', 'probe.cfg']
-        startup = None
-        if sys.platform == 'win32':
-            startup = subprocess.STARTUPINFO()
-            startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
-            startup.wShowWindow = 4  # SW_SHOWNOACTIVATE; never control the user's input.
         process = subprocess.Popen(command, cwd=home, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   startupinfo=startup)
+                                   **headless.popen_options())
         deadline = time.monotonic() + args.timeout
         log = ''
         while process.poll() is None and time.monotonic() < deadline:

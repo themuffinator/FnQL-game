@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from smoke_dedicated import FORBIDDEN, MODULE_NAME, ROOT, find_retail_install  # noqa: E402
+import headless  # noqa: E402
 
 KILL_LINE = re.compile(r"^Kill: \d+ \d+ \d+: .* killed .* by (MOD_[A-Z_]+)\s*$", re.MULTILINE)
 
@@ -66,6 +67,7 @@ def main() -> int:
         startup += [f"addbot {name} {args.skill}" for name in bots]
         command = [
             str(engine),
+            *headless.SERVER,
             "+set", "fs_basepath", str(retail),
             "+set", "fs_homepath", str(home),
             "+set", "logfile", "2",
@@ -81,7 +83,7 @@ def main() -> int:
         ]
         process = subprocess.Popen(command, cwd=engine.parent, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                   **headless.popen_options())
         started = time.monotonic()
         exited_early = False
         while time.monotonic() - started < args.seconds:

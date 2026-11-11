@@ -110,6 +110,16 @@ void trap_UpdateScreen(void) {
 	cgi->trap_UpdateScreen();
 }
 
+/* Retail CG_LoadingString (0x1001cb80) refreshes the engine's loading view
+ * through the advertisement bridge after every screen update. */
+void trap_AdvertisementBridge_UpdateLoadingViewParameters(void) {
+	cgi->trap_AdvertisementBridge_UpdateLoadingViewParameters();
+}
+
+void trap_AdvertisementBridge_SetFrameTime(int frameTime) {
+	cgi->trap_AdvertisementBridge_SetFrameTime(frameTime);
+}
+
 void trap_CM_LoadMap(const char *mapname) {
 	cgi->trap_CM_LoadMap(mapname );
 }

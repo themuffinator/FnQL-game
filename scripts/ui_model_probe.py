@@ -5,7 +5,8 @@ Each UI renders one private test menu holding the five model ownerdraws
 (team, enemy, red, blue and player previews) over a flat background. The test
 menu exists only in a private, unpure probe home and is added through a
 homepath ui/ingame.txt; installed files are never changed. Captures are engine
-screenshots, windowed, with mouse and joystick input disabled.
+screenshots from the windowless client (com_headless 2), with mouse and
+joystick input disabled.
 
 For every preview the silhouette bounding box and mean colour must agree with
 the retail capture. Idle animation phase differs between runs, so the check
@@ -62,10 +63,10 @@ def capture(client: Path, retail: Path, module: Path | None, scratch: Path, keep
                 'screenshotPNG models', 'wait 5', 'echo model-probe-done', 'quit', '']
     (base / 'probe.cfg').write_text('\n'.join(commands), encoding='ascii')
     settings = {
-        'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
+        'com_headless': '2', 'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
         'r_fullscreen': '0', 'r_mode': '-1', 'r_customwidth': '960', 'r_customheight': '600',
         'in_mouse': '0', 'in_nograb': '1', 'in_joystick': '0', 's_initsound': '0',
-        'logfile': '2', 'developer': '1', 'cl_webuiEnable': '0', 'web_browserActive': '0',
+        'logfile': '2', 'developer': '1',
         'cl_allowDownload': '0', 'vm_gameProvider': 'retail', 'net_port': '28119',
         'com_maxfps': '125', **MODELS,
     }

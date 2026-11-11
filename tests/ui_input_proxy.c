@@ -13,7 +13,7 @@ or (at your option) any later version.
  * place of a UI module, it loads the module named by FNQL_UI_PROXY_TARGET
  * (the installed retail uix86.dll or FnQL-game's) and forwards every import
  * and export unchanged, except that the console-command export first accepts
- * three probe commands, so both UIs receive identical, frame-scheduled input:
+ * these probe commands, so both UIs receive identical, frame-scheduled input:
  *
  *   pxmouse <x> <y>         absolute drawable position (export 3)
  *   pxkey <key> <0|1>       key up/down (export 2, character flag 0)
@@ -24,6 +24,11 @@ or (at your option) any later version.
  *                           advances <step> ms per refresh, so time-based
  *                           pulses, blinks and transitions match between
  *                           runs; 0 restores the engine time
+ *
+ * Once a probe has sent pxmouse, pxkey or pxchar, the engine's own key and
+ * mouse events are dropped: the engine forwards the system pointer while a
+ * menu owns input, so a real pointer passing over the probe window would
+ * otherwise move the UI's cursor and focus mid-scenario.
  *
  * It never ships: Meson builds it only for the ui-hosting tests.
  */
@@ -46,13 +51,21 @@ typedef void (__cdecl *refresh_t)(int realTime);
 static void *imports[UI_IMPORTS];
 static void *wrapped[UI_EXPORTS];
 static void *exports[UI_EXPORTS];
-static int clockStep, clockNow;
+static int clockStep, clockNow, scripted;
 
 static int ProxyTime(int realTime) { return clockStep > 0 ? clockNow : realTime; }
 
 static void __cdecl ProxyRefresh(int realTime) {
     if (clockStep > 0) clockNow += clockStep;
     ((refresh_t)wrapped[4])(ProxyTime(realTime));
+}
+
+static void __cdecl ProxyKey(int key, int character, int down) {
+    if (!scripted) ((key_t)wrapped[2])(key, character, down);
+}
+
+static void __cdecl ProxyMouse(int x, int y) {
+    if (!scripted) ((mouse_t)wrapped[3])(x, y);
 }
 
 static int Argument(int n) {
@@ -66,14 +79,17 @@ static int __cdecl ProxyConsole(int realTime) {
     if (((argc_t)imports[11])() >= 2) {
         ((argv_t)imports[12])(0, command, sizeof(command));
         if (!_stricmp(command, "pxmouse") && ((argc_t)imports[11])() >= 3) {
+            scripted = 1;
             ((mouse_t)wrapped[3])(Argument(1), Argument(2));
             return 1;
         }
         if (!_stricmp(command, "pxkey") && ((argc_t)imports[11])() >= 3) {
+            scripted = 1;
             ((key_t)wrapped[2])(Argument(1), 0, Argument(2) != 0);
             return 1;
         }
         if (!_stricmp(command, "pxchar")) {
+            scripted = 1;
             ((key_t)wrapped[2])(Argument(1) & 0xff, 1, 1);
             return 1;
         }
@@ -106,6 +122,8 @@ __declspec(dllexport) void __cdecl dllEntry(void **table, const void *engineImpo
     entry((void **)&table_out, engineImports, version);
     if (!table_out) return;
     for (i = 0; i < UI_EXPORTS; ++i) wrapped[i] = exports[i] = table_out[i];
+    exports[2] = (void *)ProxyKey;
+    exports[3] = (void *)ProxyMouse;
     exports[4] = (void *)ProxyRefresh;
     exports[7] = (void *)ProxyConsole;
     if (table) *table = exports;

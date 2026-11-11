@@ -2724,85 +2724,6 @@ static void UI_Update(const char *name) {
 				trap_Cvar_SetValue( "r_depthbits", 24 );
 			break;
 		}
-	} else if (Q_stricmp(name, "r_lodbias") == 0) {
-		switch (val) {
-			case 0:
-				trap_Cvar_SetValue( "r_subdivisions", 4 );
-			break;
-			case 1:
-				trap_Cvar_SetValue( "r_subdivisions", 12 );
-			break;
-			case 2:
-				trap_Cvar_SetValue( "r_subdivisions", 20 );
-			break;
-		}
-	} else if (Q_stricmp(name, "ui_glCustom") == 0) {
-		switch (val) {
-			case 0:	// high quality
-				trap_Cvar_SetValue( "r_fullScreen", 1 );
-				trap_Cvar_SetValue( "r_subdivisions", 4 );
-				trap_Cvar_SetValue( "r_vertexlight", 0 );
-				trap_Cvar_SetValue( "r_lodbias", 0 );
-				trap_Cvar_SetValue( "r_colorbits", 32 );
-				trap_Cvar_SetValue( "r_depthbits", 24 );
-				trap_Cvar_SetValue( "r_picmip", 0 );
-				trap_Cvar_SetValue( "r_mode", 4 );
-				trap_Cvar_SetValue( "r_texturebits", 32 );
-				trap_Cvar_SetValue( "r_fastSky", 0 );
-				trap_Cvar_SetValue( "r_inGameVideo", 1 );
-				trap_Cvar_SetValue( "cg_shadows", 1 );
-				trap_Cvar_SetValue( "cg_brassTime", 2500 );
-				trap_Cvar_Set( "r_texturemode", "GL_LINEAR_MIPMAP_LINEAR" );
-			break;
-			case 1: // normal 
-				trap_Cvar_SetValue( "r_fullScreen", 1 );
-				trap_Cvar_SetValue( "r_subdivisions", 12 );
-				trap_Cvar_SetValue( "r_vertexlight", 0 );
-				trap_Cvar_SetValue( "r_lodbias", 0 );
-				trap_Cvar_SetValue( "r_colorbits", 0 );
-				trap_Cvar_SetValue( "r_depthbits", 24 );
-				trap_Cvar_SetValue( "r_picmip", 1 );
-				trap_Cvar_SetValue( "r_mode", 3 );
-				trap_Cvar_SetValue( "r_texturebits", 0 );
-				trap_Cvar_SetValue( "r_fastSky", 0 );
-				trap_Cvar_SetValue( "r_inGameVideo", 1 );
-				trap_Cvar_SetValue( "cg_brassTime", 2500 );
-				trap_Cvar_Set( "r_texturemode", "GL_LINEAR_MIPMAP_LINEAR" );
-				trap_Cvar_SetValue( "cg_shadows", 0 );
-			break;
-			case 2: // fast
-				trap_Cvar_SetValue( "r_fullScreen", 1 );
-				trap_Cvar_SetValue( "r_subdivisions", 8 );
-				trap_Cvar_SetValue( "r_vertexlight", 0 );
-				trap_Cvar_SetValue( "r_lodbias", 1 );
-				trap_Cvar_SetValue( "r_colorbits", 0 );
-				trap_Cvar_SetValue( "r_depthbits", 0 );
-				trap_Cvar_SetValue( "r_picmip", 1 );
-				trap_Cvar_SetValue( "r_mode", 3 );
-				trap_Cvar_SetValue( "r_texturebits", 0 );
-				trap_Cvar_SetValue( "cg_shadows", 0 );
-				trap_Cvar_SetValue( "r_fastSky", 1 );
-				trap_Cvar_SetValue( "r_inGameVideo", 0 );
-				trap_Cvar_SetValue( "cg_brassTime", 0 );
-				trap_Cvar_Set( "r_texturemode", "GL_LINEAR_MIPMAP_NEAREST" );
-			break;
-			case 3: // fastest
-				trap_Cvar_SetValue( "r_fullScreen", 1 );
-				trap_Cvar_SetValue( "r_subdivisions", 20 );
-				trap_Cvar_SetValue( "r_vertexlight", 1 );
-				trap_Cvar_SetValue( "r_lodbias", 2 );
-				trap_Cvar_SetValue( "r_colorbits", 16 );
-				trap_Cvar_SetValue( "r_depthbits", 16 );
-				trap_Cvar_SetValue( "r_mode", 3 );
-				trap_Cvar_SetValue( "r_picmip", 2 );
-				trap_Cvar_SetValue( "r_texturebits", 16 );
-				trap_Cvar_SetValue( "cg_shadows", 0 );
-				trap_Cvar_SetValue( "cg_brassTime", 0 );
-				trap_Cvar_SetValue( "r_fastSky", 1 );
-				trap_Cvar_SetValue( "r_inGameVideo", 0 );
-				trap_Cvar_Set( "r_texturemode", "GL_LINEAR_MIPMAP_NEAREST" );
-			break;
-		}
 	} else if (Q_stricmp(name, "ui_mousePitch") == 0) {
 		if (val == 0) {
 			trap_Cvar_SetValue( "m_pitch", 0.022f );
@@ -2873,14 +2794,6 @@ static void UI_RunMenuScript(char **args) {
 					trap_Cmd_ExecuteText( EXEC_APPEND, buff );
 				}
 			}
-		} else if (Q_stricmp(name, "updateSPMenu") == 0) {
-			UI_SetCapFragLimits(qtrue);
-			UI_MapCountByGameType(qtrue);
-			ui_mapIndex.integer = UI_GetIndexFromSelection(ui_currentMap.integer);
-			trap_Cvar_Set("ui_mapIndex", va("%d", ui_mapIndex.integer));
-			Menu_SetFeederSelection(NULL, FEEDER_MAPS, ui_mapIndex.integer, "skirmish");
-			UI_GameType_HandleKey(0, 0, K_MOUSE1, qfalse);
-			UI_GameType_HandleKey(0, 0, K_MOUSE2, qfalse);
 		} else if (Q_stricmp(name, "resetDefaults") == 0) {
 			trap_Cmd_ExecuteText( EXEC_APPEND, "exec default.cfg\n");
 			trap_Cmd_ExecuteText( EXEC_APPEND, "cvar_restart\n");
@@ -2940,8 +2853,6 @@ static void UI_RunMenuScript(char **args) {
 #endif
 			if (ui_currentMap.integer >= 0 && ui_currentMap.integer < uiInfo.mapCount && ui_gameType.integer >= 0 && ui_gameType.integer < uiInfo.numGameTypes)
         UI_LoadBestScores(uiInfo.mapList[ui_currentMap.integer].mapLoadName, uiInfo.gameTypes[ui_gameType.integer].gtEnum);
-		} else if (Q_stricmp(name, "resetScores") == 0) {
-			UI_ClearScores();
 		} else if (Q_stricmp(name, "RefreshServers") == 0) {
 			UI_StartServerRefresh(qtrue);
 			UI_BuildServerDisplayList(qtrue);
@@ -3042,10 +2953,6 @@ static void UI_RunMenuScript(char **args) {
 				// make sure we sort again
 				UI_ServersSort(sortColumn, qtrue);
 			}
-		} else if (Q_stricmp(name, "nextSkirmish") == 0) {
-			UI_StartSkirmish(qtrue);
-		} else if (Q_stricmp(name, "SkirmishStart") == 0) {
-			UI_StartSkirmish(qfalse);
 		} else if (Q_stricmp(name, "closeingame") == 0) {
 			trap_Key_SetCatcher( trap_Key_GetCatcher() & ~KEYCATCH_UI );
 			trap_Key_ClearStates();
@@ -3062,10 +2969,6 @@ static void UI_RunMenuScript(char **args) {
 		} else if (Q_stricmp(name, "voteGame") == 0) {
 			if (ui_netGameType.integer >= 0 && ui_netGameType.integer < uiInfo.numGameTypes) {
 				trap_Cmd_ExecuteText( EXEC_APPEND, va("callvote g_gametype %i\n",uiInfo.gameTypes[ui_netGameType.integer].gtEnum) );
-			}
-		} else if (Q_stricmp(name, "voteLeader") == 0) {
-			if (uiInfo.teamIndex >= 0 && uiInfo.teamIndex < uiInfo.myTeamCount) {
-				trap_Cmd_ExecuteText( EXEC_APPEND, va("callteamvote leader %s\n",uiInfo.teamNames[uiInfo.teamIndex]) );
 			}
 		} else if (Q_stricmp(name, "addBot") == 0) {
 			if (trap_Cvar_VariableValue("g_gametype") >= GT_TEAM) {
@@ -3185,16 +3088,10 @@ static void UI_RunMenuScript(char **args) {
 				trap_Cvar_Set( "cl_paused", "0" );
 				Menus_CloseAll();
 			}
-		} else if (Q_stricmp(name, "glCustom") == 0) {
-			trap_Cvar_Set("ui_glCustom", "4");
 		} else if (Q_stricmp(name, "update") == 0) {
 			if (String_Parse(args, &name2)) {
 				UI_Update(name2);
 			}
-		} else if (Q_stricmp(name, "setPbClStatus") == 0) {
-			int stat;
-			if ( Int_Parse( args, &stat ) )
-				trap_SetPbClStatus( stat );
 		}
 		else {
 			Com_Printf("unknown UI script %s\n", name);

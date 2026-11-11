@@ -43,6 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from smoke_dedicated import MODULE_NAME, find_retail_install  # noqa: E402
+import headless  # noqa: E402
 
 SKIP = 77
 HARNESS_ERROR = 2
@@ -854,11 +855,17 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
         shutil.copy2(args.module, home / "baseq3" / MODULE_NAME)
     command = [
         str(args.engine),
+        *headless.SERVER,
         "+set", "fs_basepath", str(args.retail),
         "+set", "fs_homepath", str(home),
         "+set", "logfile", "2",
         "+set", "net_port", str(args.port),
         "+set", "sv_pure", "0",
+        # The one sanctioned exception to "Steam always on" (AGENTS.md rule 14):
+        # scripted lockstep clients are synthetic engine clients with no Steam
+        # session ticket, and with Steam on the retail qagame rightly rejects
+        # them ("Failed to verify Steam auth token"). Faking their ticket would
+        # synthesize authentication success, which rule 7 forbids.
         "+set", "com_steamIntegration", "0",
         "+set", "sv_floodProtect", "0",
         "+set", "vm_gameProvider", provider,
@@ -895,7 +902,7 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     started = time.monotonic()
     process = subprocess.Popen(command, cwd=args.engine.parent, stdin=subprocess.DEVNULL,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                               **headless.popen_options())
     returncode = None
     stopped = ""
     try:

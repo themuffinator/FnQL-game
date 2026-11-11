@@ -19,6 +19,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import headless
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +88,7 @@ def main() -> int:
         log_path = home / "baseq3" / "qconsole.log"
         command = [
             str(engine),
+            *headless.SERVER,
             "+set", "fs_basepath", str(retail),
             "+set", "fs_homepath", str(home),
             "+set", "logfile", "2",
@@ -103,7 +105,7 @@ def main() -> int:
         ]
         process = subprocess.Popen(command, cwd=engine.parent, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                   **headless.popen_options())
         started = time.monotonic()
         exited_early = False
         while time.monotonic() - started < args.seconds:

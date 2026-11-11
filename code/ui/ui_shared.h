@@ -393,6 +393,7 @@ void Init_Display(displayContextDef_t *dc);
 void Display_ExpandMacros(char * buff);
 void Menu_Init(menuDef_t *menu);
 void Item_Init(itemDef_t *item);
+qboolean Item_PresetValueIsNumber(const char *value);
 void Menu_PostParse(menuDef_t *menu);
 menuDef_t *Menu_GetFocused();
 void Menu_HandleKey(menuDef_t *menu, int key, qboolean down);

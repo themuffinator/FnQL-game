@@ -1210,8 +1210,11 @@ table and change callbacks, its binding table, the slot 3/4 item gates,
 `toggle`, the display and model scripts, retail menu activation, absolute
 mouse input and workshop download progress. Pixel gates now compare every
 in-game menu, tab page and out-of-game screen with retail at 960x600 and
-1024x768, and an input-proxy gate compares hover, slider, list, tab,
-edit-field and key-binding interaction at both sizes.
+1024x768, and an input-proxy gate compares hover, slider, multi, yes/no,
+preset, list, tab, keyboard, edit-field, key-binding and main-menu
+interaction at both sizes, including the cvar values those writes store.
+That gate needs FnQL's `Cvar_SetFromUI`: earlier engines refused the UI's
+writes to retail-protected settings cvars, leaving the options menus inert.
 
 A retail-ABI `fnql_uix86.dll`:
 

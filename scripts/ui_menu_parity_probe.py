@@ -14,10 +14,17 @@ Both UIs run the same engine and installed menus. Three capture sets exist:
   script buffer (0x10014cf0);
 - outgame: main, main_options, quit, demo, error_popmenu with a pending
   error, and the connect screen while connecting to an unused local port.
+  Steam and the web UI run at their defaults, as in retail, so out of game
+  the Awesomium web UI owns the screen (web_browserActive 1) and both UIs
+  must yield to it (retail Menu_Paint 0x1001d82e). Each of those captures
+  first requires web_browserActive 1 in both runs, so a web UI that failed
+  to come up cannot pass as uix86 parity. The connect screen is uix86's even
+  then (web_browserActive 0).
 
 Menus open through retail menu_open; no input is synthesized. Captures are
-engine screenshots, windowed, with mouse and joystick input disabled, in
-private unpure probe homes; installed files are never changed.
+engine screenshots from the windowless client (com_headless 2), with mouse
+and joystick input disabled, in private unpure probe homes; installed files
+are never changed.
 
 Animated menu shaders differ by a few levels between any two runs, so a pixel
 counts as different only above THRESHOLD levels. Every capture must have none.
@@ -42,6 +49,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MENUS = ('ingame_about', 'ingame', 'ingame_callvote', 'ingame_addbot', 'ingame_admin',
          'ingame_join', 'ingame_controls', 'ingame_options', 'ingame_vote', 'demo')
 OUTGAME = ('main', 'main_options', 'quit', 'demo')
+# The web UI needs a moment after startup before it owns the screen.
+WEB_UI_SETTLE = 'wait 200'
 # Retail-against-retail captures differ by at most 4 levels.
 THRESHOLD = 16
 HIDE_WORLD = ['wait 40', 'devmap campgrounds ffa', 'wait 140', 'r_drawworld 0', 'r_drawentities 0',
@@ -118,10 +127,10 @@ def run(client: Path, retail: Path, module: Path | None, home: Path, commands: l
         (base / name).write_text(text, encoding='latin-1')
     (base / 'probe.cfg').write_text('\n'.join(commands + ['quit', '']), encoding='ascii')
     settings = {
-        'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
+        'com_headless': '2', 'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
         'r_fullscreen': '0', 'r_mode': '-1', 'r_customwidth': str(width), 'r_customheight': str(height),
         'in_mouse': '0', 'in_nograb': '1', 'in_joystick': '0', 's_initsound': '0',
-        'logfile': '2', 'developer': '1', 'cl_webuiEnable': '0', 'web_browserActive': '0',
+        'logfile': '2', 'developer': '1',
         'cl_allowDownload': '0', 'vm_gameProvider': 'retail', 'net_port': '28124', 'com_maxfps': '125',
     }
     command = [str(client)]
@@ -157,13 +166,16 @@ def capture(kind: str, client: Path, retail: Path, module: Path | None, scratch:
             commands += [f'menu_open {menu}', 'wait 30', f'screenshotPNG {menu}', 'wait 5', f'menu_close {menu}']
         homes = [(root / 'run', commands, None)]
     elif kind == 'outgame':
-        commands = ['wait 40']
+        web = lambda label: [f'echo PXWEB {label}', 'cvarlist web_browserActive']
+        commands = [WEB_UI_SETTLE]
         for menu in OUTGAME:
-            commands += [f'menu_open {menu}', 'wait 20', f'screenshotPNG out_{menu}', 'wait 3', f'menu_close {menu}']
+            commands += [f'menu_open {menu}', 'wait 20'] + web(f'out_{menu}') + [f'screenshotPNG out_{menu}',
+                                                                                  'wait 3', f'menu_close {menu}']
         commands += ['set com_errorMessage "Probe error: the server refused the connection."',
-                     'menu_open error_popmenu', 'wait 20', 'screenshotPNG out_error', 'wait 3',
+                     'menu_open error_popmenu', 'wait 20'] + web('out_error') + [
+                     'screenshotPNG out_error', 'wait 3',
                      'menu_close error_popmenu', 'set com_errorMessage ""', 'connect 127.0.0.1:27999',
-                     'wait 6', 'screenshotPNG out_connect', 'wait 3', 'disconnect', 'wait 10']
+                     'wait 6'] + web('out_connect') + ['screenshotPNG out_connect', 'wait 3', 'disconnect', 'wait 10']
         homes = [(root / 'run', commands, None)]
     else:
         pages = tab_pages(retail)
@@ -188,6 +200,28 @@ def capture(kind: str, client: Path, retail: Path, module: Path | None, scratch:
     return root
 
 
+def web_ui_failures(root: Path, which: str) -> list[str]:
+    """Out-of-game captures need the web UI up; the connect screen needs it down."""
+    states: dict[str, str] = {}
+    label = None
+    for log in root.rglob('qconsole.log'):
+        for line in log.read_text(encoding='latin-1').splitlines():
+            marker = re.match(r'PXWEB (\w+)\s*$', line)
+            if marker:
+                label = marker.group(1)
+                continue
+            row = re.match(r'\s.*\sweb_browserActive "(.*)"\s*$', line)
+            if label and row:
+                states[label] = row.group(1)
+                label = None
+    failures = []
+    for name in [f'out_{menu}' for menu in OUTGAME] + ['out_error', 'out_connect']:
+        expected = '0' if name == 'out_connect' else '1'
+        if states.get(name) != expected:
+            failures.append(f'{which} {name}: web_browserActive {states.get(name, "missing")}, expected {expected}')
+    return failures
+
+
 def compare(retail_root: Path, fnql_root: Path) -> dict[str, int | None]:
     from PIL import Image, ImageChops
     names = sorted({p.name for p in (retail_root / 'shots').glob('*.png')} |
@@ -198,7 +232,12 @@ def compare(retail_root: Path, fnql_root: Path) -> dict[str, int | None]:
         if not all(path.is_file() for path in paths):
             result[name] = None
             continue
-        a, b = (Image.open(path).convert('RGB') for path in paths)
+        try:
+            a, b = (Image.open(path).convert('RGB') for path in paths)
+        except (OSError, ValueError):
+            # A truncated or empty capture counts as missing, so the set retries.
+            result[name] = None
+            continue
         if a.size != b.size:
             result[name] = None
             continue
@@ -243,7 +282,10 @@ def main() -> int:
             roots = [capture(kind, client, retail, None, scratch, args.width, args.height),
                      capture(kind, client, retail, module, scratch, args.width, args.height)]
             result = compare(*roots)
-            clean = bool(result) and all(count == 0 for count in result.values())
+            web = []
+            if kind == 'outgame':
+                web = web_ui_failures(roots[0], 'retail') + web_ui_failures(roots[1], 'FnQL-game')
+            clean = bool(result) and all(count == 0 for count in result.values()) and not web
             for root in roots:
                 if args.keep or (not clean and attempt == 1):
                     print(f'Evidence: {root}')
@@ -253,8 +295,8 @@ def main() -> int:
                 total += len(result)
                 break
         else:
-            failures += [f'{name}: {"missing" if count is None else f"{count} px"}'
-                         for name, count in result.items() if count != 0] or [f'{kind}: no captures']
+            failures += ([f'{name}: {"missing" if count is None else f"{count} px"}'
+                          for name, count in result.items() if count != 0] + web) or [f'{kind}: no captures']
     if failures:
         print(f'Menus differ from retail at {args.width}x{args.height} (> {THRESHOLD} levels): ' + ', '.join(failures))
         return 1

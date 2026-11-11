@@ -121,6 +121,22 @@ contains no bundled retail menu files, fonts, models or textures.
   cursor is measured as `_`, a cursor past the end of the text keeps its
   raw position (the engine measures that range as 2 px wide), and the
   insert-mode `|` is pulled left by 0.8 of its own width.
+- Applying a preset stores a value made only of digits and at most one `.`
+  as `%f` of its parsed number, and any other value as written. The menus
+  then test the stored text: after the "No" impact-sparks preset,
+  `cg_impactSparks` is `0.000000`, which a test for `0` does not match, so
+  "Sparks Velocity" stays enabled, as it does in retail.
+- Menus use retail's grammar and script set only. The menu-script
+  dispatcher has no command retail's lacks: `updateSPMenu`, `resetScores`,
+  `nextSkirmish`, `SkirmishStart`, `voteLeader`, `glCustom` and
+  `setPbClStatus` are gone, as are the `r_lodbias` and `ui_glCustom` cases
+  of `uiScript update` (the latter forced `r_fullScreen 1`). The installed
+  menus still call `uiScript glCustom`; it now prints "unknown UI script
+  glCustom" as retail's does (0x1000d2c0). Items have no `enableCvar2` or
+  `disableCvar2` (neither retail uix86 nor cgamex86 has them), and menus
+  accept `ownerdrawFlag2`, which retail's menu table maps to the item handler
+  0x1001f5b0. Menu_Paint tests both owner-draw flag words before yielding to
+  the web UI, in retail's order (0x1001d7fb, 0x1001d82e).
 
 ## Evidence and scope
 
@@ -230,6 +246,17 @@ Text_PaintWithCursor 0x10004070..0x10004271 (blink bit 0x100 at
 0x10029388). An investigation proxy that logged imports 94 and 95 showed the
 cursor-range measurement retail makes past the end of an empty field.
 
+A sixth pass also checked what the interactions store. Observed: FnQL's
+engine refused every UI write to a cvar registered with flag 0x800 ("Restricted
+source tried to set"), with both UIs alike. That covered nearly every option
+the in-game menus edit, from `cg_railStyle` to the weapon-config fields, so
+those items were inert and the pixel gates could not tell. The engine fix is
+FnQL's `Cvar_SetFromUI`. With writes landing, one UI difference remained: the
+preset list stored numeric values as written, where retail's preset apply
+(0x100187b2..0x1001881d, numeric test 0x10001670, format `%f` at 0x100290e8)
+stores them as `%f`. Retail's multi writer (0x1001847d..0x100184f4, `%i` at
+0x10025920 for whole values, else `%f`) already matched.
+
 Client provider
 selection and honest pure-server packaging remain the separate M10 engine
 integration contract. Do not replace the installed retail DLL or advertise
@@ -251,7 +278,12 @@ player selections without OS input. It also checks font bounds/point sizes,
 background cropping, archive registration, server-setting rows, and weapon
 icon bit positions and spacing.
 
-`scripts/ui_probe.py` runs windowed with mouse/joystick handling disabled,
+Every UI probe launches the windowless client (`+set com_headless 2`): it
+renders and screenshots normally but never shows a window, takes focus,
+enters fullscreen or touches desktop gamma. Steam and the web UI run at their
+defaults (on), as retail does; no probe switches them off.
+
+`scripts/ui_probe.py` runs with mouse/joystick handling disabled,
 using a private unpure home and an independent DLL copy. It validates module
 identity, active gameplay, all requested menus, advanced options actions,
 an added bot in server status, normal shutdown and ten engine-generated
@@ -264,7 +296,7 @@ otherwise the verified private directory is removed.
 widescreen resolutions. This exercises ordinary menu activation and the
 server-settings ownerdraw that the earlier diagnostic shortcut missed.
 Omit `--module` to capture the installed retail UI for comparison. Both
-paths force windowed mode, disable input and use engine screenshots only.
+paths disable input and use engine screenshots only.
 
 `scripts/ui_model_probe.py` (`fnql-ui-model-previews`) renders one private
 test menu with the five model ownerdraws in each UI, through a homepath
@@ -284,8 +316,13 @@ sub-page) and `ingame_controls` through private variant copies whose
 run through a homepath `ui/ingame.txt`, which keeps the copies inside the UI
 memory pool and each script inside retail's 2048-byte buffer. `outgame`
 covers `main`, `main_options`, `quit`, `demo`, `error_popmenu` with a
-pending error and the connect screen. Both 960x600 and 1024x768 run all
-three sets. A set whose retail capture misses its screens is retried once.
+pending error and the connect screen. Out of game the Awesomium web UI owns
+the screen, as in retail, and uix86 yields to it (retail Menu_Paint
+0x1001d82e), so those captures show the web UI in both runs; each first
+requires `web_browserActive 1` in both, so a web UI that failed to start
+cannot pass as parity. The connect screen is uix86's even then
+(`web_browserActive 0`). Both 960x600 and 1024x768 run all three sets. A
+set whose retail capture misses its screens is retried once.
 
 `scripts/ui_interaction_probe.py` (`fnql-ui-interaction-960`, `-1024`)
 installs the test-only input proxy (`tests/ui_input_proxy.c`, built as
@@ -294,13 +331,34 @@ The proxy loads the UI named by `FNQL_UI_PROXY_TARGET`: the retail
 `uix86.dll` read from `baseq3/bin.pk3` into the probe's private scratch, or
 FnQL-game's module. Its `pxmouse`, `pxkey` and `pxchar` console commands
 reach the UI's own key and mouse exports, and `pxclock 8` gives both UIs the
-same synthetic time, so focus pulses and the cursor blink match. The gate
-hovers a navigation button, hovers and drags a slider, clicks a player head,
-switches to the ADVANCED tab and its WEAPON CONFIG sub-tab, types into an
-edit field in insert mode (both blink phases) and commits it, waits for and
-binds a key, and clicks and arrows through the call-vote map list. All 13
-captures must match retail under the same 16-level threshold, with one
-retry.
+same synthetic time, so focus pulses and the cursor blink match. Once a
+probe command has run, the proxy drops the engine's own key and mouse
+events, so a real pointer crossing the probe window cannot move the UI's
+focus. The gate covers:
+
+- in-game menu: hovering a navigation button;
+- basic options: hovering and dragging the volume slider, clicking a player
+  head, stepping a multi with left and right clicks, clicking and dragging a
+  colour slider, and scrolling the model list with the wheel;
+- the Advanced Game page: a yes/no, a multi, down-arrow focus and Enter, a
+  preset list, and a labelled slider;
+- the weapon-config page: typing in insert mode (both blink phases), Home,
+  Right, Delete, End and backspace edits, overstrike via Insert (both
+  phases), and committing with Enter;
+- controls: waiting for and binding a key;
+- call vote: clicking and arrowing through the map list;
+- out of game, with the web UI up: hovering a main-menu button, clicking
+  it and pressing Escape, which must leave the web UI on screen in both UIs
+  (`web_browserActive` is required to be 1 there and 0 in game).
+
+All 31 captures must match retail under the same 16-level threshold. The
+values of 12 cvars the scenarios write, printed at the start and end of each
+run, must match retail's. Six of them must differ from their starting value,
+so a refused write fails the gate even though both UIs would then render the
+same unchanged state. A failing run is retried once. The gate needs an FnQL
+engine whose UI cvar imports use `Cvar_SetFromUI` (FnQL
+`docs/fnql/GAME_MODULES.md`); an older engine refuses the protected writes and
+fails it.
 
 `ui_openmenu <menu>` is a diagnostic console command. With `developer 1`,
 `ui_menuaction <menu> <item>` invokes an existing visible menu's action
@@ -345,6 +403,24 @@ Before it, the slider drag stored three-decimal values, the bound item lost
 its tint, editing started in whatever overstrike mode was last used, the
 cursor drew 2-4 px off and the edit text was shadowed. All 47 tests in the
 `ui`, `ui-hosting`, `unit`, `abi` and `contract` suites passed.
+
+Sixth pass: on an FnQL build with `Cvar_SetFromUI`, all 31 interaction
+captures and all 12 cvar results match retail at 960x600 and 1024x768. All
+nine `ui-hosting` gates and the 54 `ui`, `unit`, `abi` and `contract` tests
+passed, as did 76 of FnQL's 77 engine tests (the retail factory probe
+skipped for want of its environment). Before it, every protected option
+write was refused in both UIs, and presets stored `0` where retail stores
+`0.000000`.
+
+Seventh pass: menus follow retail's grammar and script set only, and every
+UI probe runs headless (`com_headless 2`) with Steam and the web UI at their
+defaults. All nine `ui-hosting` gates and the 55 `ui`, `unit`, `abi` and
+`contract` tests passed. With the web UI up, both UIs yield the out-of-game
+screens to it identically, and the connect screen still matches retail. A
+rerun with the FnQL-Steam provider beside the shared `fnql.exe` and a
+signed-in Steam client (`com_steamProviderStatus active`) passed all nine
+`ui-hosting` gates too; the probe homes kept every profile write
+(`qzconfig.cfg`, `repconfig.cfg`, the web UI's data) away from the install.
 
 Earlier local validation on 2026-11-05:
 

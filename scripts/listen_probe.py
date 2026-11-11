@@ -12,7 +12,8 @@ bot, takes a screenshot (kept with --keep for inspection) and requires:
   - the retail cgame initialized and the client reached CS_ACTIVE;
   - no engine or cgame error.
 
-The client runs windowed (r_fullscreen 0) with sound off.
+The client runs windowless (com_headless 2) with sound off, and with Steam
+and the WebUI at their defaults.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from smoke_dedicated import MODULE_NAME, find_retail_install  # noqa: E402
+import headless  # noqa: E402
 
 REQUIRED = [
     "qagame : native " + MODULE_NAME + " (FnQL-game ",
@@ -82,23 +84,19 @@ def main() -> int:
             f"{'devmap' if args.cheats else 'map'} {args.map} {args.factory}",
             "wait 1000", "addbot sarge 3", "wait 400",
             "screenshotJPEG", "wait 60", "vminfo", "g_gametype", "echo probe: done", "quit", ""]), encoding="ascii")
-        command = [str(client),
+        # Windowless client with Steam and the WebUI at their defaults (on),
+        # as in retail (AGENTS.md rules 13 and 14).
+        command = [str(client), *headless.CLIENT,
                    "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
                    "+set", "r_fullscreen", "0", "+set", "r_mode", "-1",
                    "+set", "r_customwidth", "1024", "+set", "r_customheight", "640",
                    "+set", "in_mouse", "0", "+set", "in_nograb", "1", "+set", "in_joystick", "0",
-                   "+set", "com_steamIntegration", "0",
                    "+set", "s_initsound", "0", "+set", "logfile", "2", "+set", "developer", "1",
                    "+set", "cl_allowDownload", "0", "+set", "net_port", str(args.port),
                    "+set", "vm_gameProvider", "fnql", "+exec", "probe.cfg"]
-        startup = None
-        if sys.platform == "win32":
-            startup = subprocess.STARTUPINFO()
-            startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
-            startup.wShowWindow = 4  # SW_SHOWNOACTIVATE
         process = subprocess.Popen(command, cwd=home, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   startupinfo=startup)
+                                   **headless.popen_options())
         deadline = time.monotonic() + args.timeout
         while process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.5)
