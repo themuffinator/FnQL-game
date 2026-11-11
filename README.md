@@ -80,8 +80,11 @@ entirely; client provider selection and pure-server packaging remain M10.
 
 ## Using it
 
-Build it (see [`BUILD.md`](BUILD.md)) and place `fnql_qagamex86.dll` in your
-FnQL home `baseq3` directory. Then start an FnQL server with:
+FnQL releases include the modules in `baseq3/` (`fnql_qagamex86.dll` on
+Windows, `fnql_qagamei386.so` on Linux, plus the cgame and UI modules that
+FnQL cannot select yet). To use your own build instead (see
+[`BUILD.md`](BUILD.md)), place the module in your FnQL home `baseq3`
+directory. Then start an FnQL server with:
 
 ```bash
 fnql.ded.exe +set vm_gameProvider fnql +map campgrounds ffa
@@ -98,7 +101,7 @@ says so. Run `vminfo` to see which module is active.
   contract with retail peers and the FnQL engine.
 - [`docs/BASELINE.md`](docs/BASELINE.md): what was imported from baseq3a, and
   what was left out.
-- [`docs/LICENSING.md`](docs/LICENSING.md): licensing status, including one
-  open question.
+- [`docs/LICENSING.md`](docs/LICENSING.md): the two licenses the code and
+  the released modules are under, and one open question.
 - [`BUILD.md`](BUILD.md): building and running the gates.
 - [`CREDITS.md`](CREDITS.md): lineage and acknowledgements.
