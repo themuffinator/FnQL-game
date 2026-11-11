@@ -62,8 +62,8 @@ contract.
    FnQL's Project Plan step 7 (FnQ3's full architecture and platform range).
    Then enable each target only behind its build, gate and FnQL hosting test.
    Retail-module interoperability stays x86 regardless.
-10. **Cheap, windowed probes.** Use dedicated-server probes when the question
-    is server-side. Client probes always run with `+set r_fullscreen 0`.
+10. **Cheap probes.** Use dedicated-server probes when the question is
+    server-side.
 11. **Provenance.** Baseline files keep their original headers. New files use
     the FnQL-game GPL header. Record baseline drift in `docs/BASELINE.md`.
 12. **No retail content.** Never commit Quake Live or Quake III assets,
@@ -72,6 +72,27 @@ contract.
     paths that the protocol and retail peers reference. They are regenerated
     and checked against the user's install by
     `scripts/extract_retail_contract.py`. Scratch output goes to `.tmp/`.
+13. **Fully headless.** No automated or investigative run may show a window,
+    take focus, enter fullscreen or change the display mode or desktop
+    gamma. Launch through `scripts/headless.py`: FnQL clients with
+    `headless.CLIENT` (`+set com_headless 2`, a windowless client that still
+    renders and captures), servers with `headless.SERVER`, processes with
+    `headless.popen_options()`, and the retail Steam client under
+    `RetailWindowHider`. Meson's default `headless` test setup sets
+    `FNQL_HEADLESS=2` for every test; ad hoc runs set it too. The retail
+    client is retail code launched by Steam and cannot be windowless, so the
+    `retail-client` gates run only with `FNQL_ALLOW_RETAIL_CLIENT=1`, on the
+    user's request.
+14. **Steam and the WebUI, always.** Run with `com_steamIntegration` and
+    `cl_webuiEnable` at their defaults (on), as retail does. No gate, probe
+    or launch may switch them off. The one exception is the deterministic
+    lockstep harness (`scripts/server_lockstep.py`): its scripted clients
+    are synthetic and hold no Steam ticket, so with Steam on the retail
+    qagame rejects them, and faking a ticket would break rule 7.
+15. **Retail menus only.** Menus come from the retail menu files, parsed as
+    retail's UI parses them. Add no UI script commands, menu keywords or
+    menu definitions that retail lacks, and hard-code no menu retail loads
+    from a file.
 
 ## Layout
 

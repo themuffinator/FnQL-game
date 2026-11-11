@@ -128,7 +128,7 @@ static unsigned long long QDECL Measure(const char *text, const char *end, int f
 static void CheckMenus(void) {
     menuDef_t *menu;
     itemDef_t *item;
-    char fixture[] = "{ name gate rect 0 0 640 480 backgroundSize 0 0 1920 1080 "
+    char fixture[] = "{ name gate rect 0 0 640 480 backgroundSize 0 0 1920 1080 ownerdrawFlag2 8 "
         "itemDef { name gated type 1 visible 1 cvarTest first showCvar { yes } cvarTest2 second hideCvar2 { hidden } } "
         "itemDef { name gated4 type 1 visible 1 cvarTest3 third showCvar3 { on } cvarTest4 fourth hideCvar4 { off } outlineimage ui/assets/outline } "
         "itemDef { name presetA type 15 cvarPreset { alpha 2 beta enabled } } "
@@ -137,6 +137,8 @@ static void CheckMenus(void) {
         "itemDef { name slider type 14 cvarInt volume 5 0 10 precision 2 maxPaintChars 4 } }";
     tokens = fixture; Menu_New(1);
     menu = Menus_FindByName("gate"); assert(menu && menu->itemCount == 6);
+    /* Retail menu keyword table 0x1002ad6c: ownerdrawFlag2 sets the second flag word. */
+    assert(menu->window.ownerDrawFlags2 == 8 && !menu->window.ownerDrawFlags);
     assert(registeredFlags == CVAR_ARCHIVE);
     item = Menu_FindItemByName(menu, "gated");
     Set("first", "yes"); Set("second", "hidden"); assert(!Item_EnableShowViaCvar(item, CVAR_SHOW));
@@ -156,6 +158,12 @@ static void CheckMenus(void) {
     uiInfo.uiDC.cursorx = item->window.rect.x + 2; uiInfo.uiDC.cursory = item->window.rect.y + 2;
     assert(Item_HandleKey(item, K_ENTER, qtrue));
     assert(Value("alpha") == 3 && !strcmp(Item_Multi_Setting(item), "B"));
+    /* Retail 0x100187b2 stores a numeric preset value as "%f" (0x10001670
+     * accepts digits and one '.'); other values are stored as written. */
+    { char value[128]; Get("alpha", value, sizeof(value)); assert(!strcmp(value, "3.000000")); }
+    assert(Item_PresetValueIsNumber("0") && Item_PresetValueIsNumber("1000") && Item_PresetValueIsNumber(".5"));
+    assert(!Item_PresetValueIsNumber("") && !Item_PresetValueIsNumber("-1") && !Item_PresetValueIsNumber("1.2.3"));
+    assert(!Item_PresetValueIsNumber("enabled") && !Item_PresetValueIsNumber("1e3"));
     { char value[128]; Get("beta", value, sizeof(value)); assert(!*value); }
     Set("beta", "custom"); assert(!strcmp(Item_Multi_Setting(item), "Custom"));
     { char value[128]; Get("selection", value, sizeof(value)); assert(!strcmp(value, "Custom")); }

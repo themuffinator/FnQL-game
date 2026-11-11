@@ -3,8 +3,9 @@
 
 The server is an FnQL dedicated server hosting FnQL-game's qagame on a
 retail map.  The client is the user's legitimate retail quakelive_steam.exe,
-launched windowed through Steam (`steam -applaunch 282440 ... +connect`); a
-directly started client cannot initialize Steam.  The gate passes when the
+launched through Steam (`steam -applaunch 282440 ... +connect`); a
+directly started client cannot initialize Steam. It is retail code, so it
+cannot run windowless: each of its windows is hidden as soon as it appears.  The gate passes when the
 retail client connects, enters the game and stays in it for the observation
 window without being dropped. It also requires the requested bot to appear
 and the retail client to remain in the final authenticated-rcon status query.
@@ -58,6 +59,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from smoke_dedicated import MODULE_NAME, find_retail_install  # noqa: E402
+import headless  # noqa: E402
 
 SKIP = 77
 RETAIL_CLIENT = "quakelive_steam.exe"
@@ -198,6 +200,11 @@ def main() -> int:
     if os.name != "nt":
         print("the retail client is Windows only; skipping")
         return SKIP
+    if not headless.retail_client_allowed():
+        # The retail client cannot run windowless (AGENTS.md rule 13); only an
+        # explicit opt-in may launch it, and its windows are then hidden.
+        print("launching the retail client needs FNQL_ALLOW_RETAIL_CLIENT=1; skipping")
+        return SKIP
     try:
         retail = find_retail_install(args.retail)
     except SystemExit:
@@ -242,6 +249,10 @@ def main() -> int:
                     break
         return "\n".join(replies)
 
+    # The retail client is launched by Steam and cannot be made windowless;
+    # hide each of its windows as soon as it appears (AGENTS.md rule 13).
+    hider = headless.RetailWindowHider(RETAIL_CLIENT)
+    hider.__enter__()
     try:
         (home / "baseq3").mkdir()
         shutil.copy2(args.module, home / "baseq3" / MODULE_NAME)
@@ -255,15 +266,18 @@ def main() -> int:
             shutil.copy2(client_base / "baseq3" / "bin.pk3", home / "baseq3" / "bin.pk3")
             client_args = ["+set", "fs_basepath", str(client_base), "+set", "fs_homepath", str(client_home)]
         server = subprocess.Popen(
-            [str(engine), "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
+            [str(engine), *headless.SERVER, "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
              "+set", "logfile", "2", "+set", "net_port", str(args.port), "+set", "sv_pure", args.pure,
              "+set", "bot_enable", "1", "+set", "vm_gameProvider", "fnql",
              "+set", "rconPassword", rcon_password,
+             # FnQL enforces retail's sv_serverType: 0 (the default) ignores every
+             # remote packet, 1 admits LAN clients such as this one on 127.0.0.1.
+             "+set", "sv_serverType", "1",
              "+set", "sv_hostname", "FnQL-game retail client probe",
              "+set", "developer", "1" if args.developer or args.require_auth else "0",
              "+set", "serverstartup", f"map {args.map} {args.factory}"],
             cwd=home, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            stderr=subprocess.DEVNULL, **headless.popen_options())
 
         def log() -> str:
             return log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
@@ -381,6 +395,7 @@ def main() -> int:
         for pid in clients:
             kill_tree(pid)
         time.sleep(1)
+        hider.__exit__(None, None, None)
         # a console log the client created where there was none is the run's own
         logs = [retail / "baseq3" / "qconsole.log"] + [
             a / "baseq3" / "qconsole.log" for a in retail.iterdir() if re.fullmatch(r"\d{17}", a.name)]

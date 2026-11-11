@@ -32,6 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from smoke_dedicated import MODULE_NAME, find_retail_install  # noqa: E402
+import headless  # noqa: E402
 
 # Movement course, in client frames (wait N).  Each segment exercises a
 # different part of Pmove; the names tag the misses in the report.
@@ -91,7 +92,7 @@ def main() -> int:
         lines += ["set cg_showmiss 0", "vminfo", "echo course: done", "quit"]
         (game_dir / "course.cfg").write_text("\n".join(lines) + "\n", encoding="ascii")
 
-        command = [str(client),
+        command = [str(client), *headless.CLIENT,
                    "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
                    "+set", "r_fullscreen", "0", "+set", "r_mode", "-1",
                    "+set", "r_customwidth", "800", "+set", "r_customheight", "500",
@@ -101,13 +102,9 @@ def main() -> int:
                    "+set", "cl_allowDownload", "0", "+set", "net_port", str(args.port),
                    "+set", "com_maxfps", "125", "+set", "vm_gameProvider",
                    "retail" if args.retail_qagame else "fnql", "+exec", "course.cfg"]
-        startup = None
-        if sys.platform == 'win32':
-            startup = subprocess.STARTUPINFO()
-            startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
-            startup.wShowWindow = 4  # SW_SHOWNOACTIVATE
         process = subprocess.Popen(command, cwd=home, stdin=subprocess.DEVNULL,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startup)
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   **headless.popen_options())
         deadline = time.monotonic() + args.timeout
         while process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.5)

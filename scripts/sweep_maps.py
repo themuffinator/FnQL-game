@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from smoke_dedicated import MODULE_NAME, find_retail_install  # noqa: E402
+import headless  # noqa: E402
 
 
 def stock_maps(retail: Path) -> list[str]:
@@ -66,14 +67,14 @@ def main() -> int:
         (game_dir / "sweep.cfg").write_text("\n".join(lines) + "\n", encoding="ascii")
 
         log_path = game_dir / "qconsole.log"
-        command = [str(engine), "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
+        command = [str(engine), *headless.SERVER, "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
                    "+set", "logfile", "2", "+set", "net_port", str(args.port), "+set", "sv_pure", "0",
                    "+set", "vm_gameProvider", "fnql",
                    # the dedicated startup hook runs after the command line
                    "+set", "serverstartup", "exec sweep.cfg"]
         process = subprocess.Popen(command, cwd=engine.parent, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                   **headless.popen_options())
         deadline = time.monotonic() + args.timeout
         while process.poll() is None and time.monotonic() < deadline:
             time.sleep(0.5)

@@ -2012,6 +2012,16 @@ static int Item_PresetIndex(itemDef_t *item) {
     }
     return -1;
 }
+qboolean Item_PresetValueIsNumber(const char *value) {
+    qboolean dot = qfalse;
+    if (!value || !*value) return qfalse;
+    for (; *value; ++value) {
+        if (*value >= '0' && *value <= '9') continue;
+        if (*value != '.' || dot) return qfalse;
+        dot = qtrue;
+    }
+    return qtrue;
+}
 static void Item_ApplyPreset(itemDef_t *item, int index) {
     multiDef_t *list = item->typeData, *pairs;
     itemDef_t *preset;
@@ -2019,7 +2029,16 @@ static void Item_ApplyPreset(itemDef_t *item, int index) {
     if (!list || index < 0 || index >= list->count) return;
     preset = Menu_FindItemByName(item->parent, list->cvarStr[index]);
     if (!preset || preset->type != ITEM_TYPE_PRESET || !(pairs = preset->typeData)) return;
-    for (j = 0; j < pairs->count; ++j) DC->setCVar(pairs->cvarList[j], pairs->cvarStr[j]);
+    /* Retail 0x100187b2..0x1001881d writes a value made of digits and at most
+     * one '.' (0x10001670) as "%f" of its parsed float, and any other value
+     * (signed, NULL, text) as written. Retail menus then test the stored
+     * "0.000000", not "0": an impact-sparks preset of 0 leaves "Sparks
+     * Velocity" enabled. */
+    for (j = 0; j < pairs->count; ++j) {
+        const char *value = pairs->cvarStr[j];
+        if (Item_PresetValueIsNumber(value)) DC->setCVar(pairs->cvarList[j], va("%f", (double)(float)atof(value)));
+        else DC->setCVar(pairs->cvarList[j], value);
+    }
     DC->setCVar(item->cvar, list->cvarList[index]);
 }
 int Item_Multi_FindCvarByValue(itemDef_t *item) {
@@ -4439,19 +4458,20 @@ void Menu_Paint(menuDef_t *menu, qboolean forcePaint) {
 	if (menu == NULL) {
 		return;
 	}
-#ifdef UI
-    /* Retail Menu_Paint 0x1001d82e yields presentation to the web UI. */
-    if (DC->getCVarValue("web_browserActive")) return;
-#endif
-
 	if (!(menu->window.flags & WINDOW_VISIBLE) &&  !forcePaint) {
 		return;
 	}
 
-	if (menu->window.ownerDrawFlags && DC->ownerDrawVisible && !DC->ownerDrawVisible(menu->window.ownerDrawFlags)) {
-		return;
+	/* Retail Menu_Paint 0x1001d7fb tests both owner-draw flag words, then
+	 * (0x1001d82e) yields presentation to the web UI. */
+	if ((menu->window.ownerDrawFlags || menu->window.ownerDrawFlags2) && (DC->ownerDrawVisibleEx || DC->ownerDrawVisible)) {
+		qboolean visible = DC->ownerDrawVisibleEx ? DC->ownerDrawVisibleEx(menu->window.ownerDrawFlags, menu->window.ownerDrawFlags2) : DC->ownerDrawVisible(menu->window.ownerDrawFlags);
+		if (!visible) return;
 	}
-	
+#ifdef UI
+	if (DC->getCVarValue("web_browserActive")) return;
+#endif
+
 	if (forcePaint) {
 		menu->window.flags |= WINDOW_FORCED;
 	}
@@ -5326,10 +5346,8 @@ qboolean ItemParse_cvarInt(itemDef_t *item, int handle) {
     item->integerCvar = qtrue;
     return ItemParse_cvarFloat(item, handle);
 }
-/* enableCvar2/disableCvar2 are FnQL-game extensions; retail has only the
- * show/hide forms for slots 2..4. */
-qboolean ItemParse_enableCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_ENABLE); }
-qboolean ItemParse_disableCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_DISABLE); }
+/* Retail item keywords (uix86 and cgamex86) gate slots 2..4 with the
+ * show/hide forms only; there is no enableCvar2 or disableCvar2. */
 qboolean ItemParse_showCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_SHOW); }
 qboolean ItemParse_hideCvar2(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 2, CVAR_HIDE); }
 static qboolean ItemParse_showCvar3(itemDef_t *item, int handle) { return ItemParse_cvarGateSlot(item, handle, 3, CVAR_SHOW); }
@@ -5386,8 +5404,6 @@ keywordHash_t itemParseKeywords[] = {
     {"cvarTest2", ItemParse_cvarTest2, NULL},
     {"precision", ItemParse_precision, NULL},
     {"cvarInt", ItemParse_cvarInt, NULL},
-    {"enableCvar2", ItemParse_enableCvar2, NULL},
-    {"disableCvar2", ItemParse_disableCvar2, NULL},
     {"showCvar2", ItemParse_showCvar2, NULL},
     {"hideCvar2", ItemParse_hideCvar2, NULL},
     {"cvarTest3", ItemParse_cvarTest3, NULL},
@@ -5769,6 +5785,19 @@ qboolean MenuParse_ownerdrawFlag( itemDef_t *item, int handle ) {
 	return qtrue;
 }
 
+/* Retail menu keyword table (0x1002ad6c) maps ownerdrawFlag2 to the item
+ * handler 0x1001f5b0, which ORs into the window's second flag word. */
+static qboolean MenuParse_ownerdrawFlag2( itemDef_t *item, int handle ) {
+	int i;
+	menuDef_t *menu = (menuDef_t*)item;
+
+	if (!PC_Int_Parse(handle, &i)) {
+		return qfalse;
+	}
+	menu->window.ownerDrawFlags2 |= i;
+	return qtrue;
+}
+
 qboolean MenuParse_ownerdraw( itemDef_t *item, int handle ) {
 	menuDef_t *menu = (menuDef_t*)item;
 
@@ -5876,6 +5905,7 @@ keywordHash_t menuParseKeywords[] = {
 	{"background", MenuParse_background, NULL},
 	{"ownerdraw", MenuParse_ownerdraw, NULL},
 	{"ownerdrawFlag", MenuParse_ownerdrawFlag, NULL},
+	{"ownerdrawFlag2", MenuParse_ownerdrawFlag2, NULL},
 	{"outOfBoundsClick", MenuParse_outOfBounds, NULL},
 	{"soundLoop", MenuParse_soundLoop, NULL},
 	{"itemDef", MenuParse_itemDef, NULL},

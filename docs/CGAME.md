@@ -129,7 +129,7 @@ The reload probes also verify that a missing custom HUD loads the default
 without dropping the connection; the inherited fatal-error call prevented
 that advertised fallback before this fix.
 
-`scripts/cgame_probe.py` runs windowed with mouse/joystick disabled and no
+`scripts/cgame_probe.py` runs windowless (`com_headless 2`) with mouse/joystick disabled and no
 input injection, mounts legitimate retail assets, joins FFA, verifies module
 identity and active state, captures with engine `screenshotJPEG`, and exits.
 Both qagame providers passed on Campgrounds. Captures confirmed world,
@@ -1949,8 +1949,8 @@ The later combined 56-check regression log is retained in
 `scripts/prediction_probe.py` now accepts `--cgame` and `--retail-qagame` for
 the native client/server matrix, verifies module identity and normal active
 completion, rejects mismatched requested settings and can retain evidence
-with `--keep`. It runs windowed with mouse/joystick disabled and no foreground
-activation. Its console movement course still requires the user's specific
+with `--keep`. It runs windowless (`com_headless 2`) with mouse/joystick
+disabled, so it never shows a window or takes focus. Its console movement course still requires the user's specific
 input-control permission under the project rules; it was prepared but not
 run as part of the offline gate.
 
@@ -2252,3 +2252,52 @@ over-100 values are checked through production drawing tests. Actual retail
 engine hosting, full HUD visual parity, and the separate `+pstats` panel remain
 unproven. Existing health/armor HUD placement and waiting-text overlap remain
 visible in these captures.
+
+## Level loading screen (2026-11-06)
+
+The Quake III loading screen (proportional font, item and player icons,
+hostname, pure/cheat lines and limits) is replaced by retail's
+(`code/cgame/cg_info.c`). Observed in the retail cgamex86:
+
+- `CG_LoadingString` (0x1001cb80) copies the text unmasked into
+  `cg.infoScreenText`, then calls `trap_UpdateScreen` and the advertisement
+  bridge's `UpdateLoadingViewParameters` (import 77) and `SetFrameTime(1000)`
+  (import 64). Both slots are now named in `cg_native.h`; the FnQL engine
+  already implements them.
+- Items (0x100249d0) and clients (0x1001cbe0) still register their icons (38
+  items, 16 clients) without drawing them. A client's text is its `n` key cut
+  to 63 characters, minus `^0`-`^7` codes and control bytes (0x100574c0); an
+  empty name stays empty. The graphics stage shows `CS_MESSAGE` before the
+  world loads (0x10022f80).
+- CG_Init (0x10029c58) counts finished stages after the collision map,
+  sounds, graphics and clients and once more before the final empty loading
+  string; the counter lives for the module.
+- `CG_DrawInformation` (0x1001ce10) rereads `CS_SETTINGS_MASK` and draws
+  either `backscreen_smoke` with "Awaiting gamestate..." (no loading text but
+  a snapshot) or the levelshot (`menu/art/unknownmap` when missing) with: a
+  0.75 dark-red bar, `logo_background` and `ql_logo` on the left; a 0.75
+  black bar at y 400 with `CS_MESSAGE` (font 0, 0.8) and `CS_MAP_AUTHOR` /
+  `CS_MAP_AUTHOR2` (font 1, 0.25) at x 10; `gt_background` and the 13-entry
+  gametype name right-aligned to x 620 on the right; and, centred, "Loading
+  %s" or "Awaiting Snapshot" (font 1, 0.3, shadowed) at y 370 over four 8x8
+  progress squares, opaque dark red once their stage is done. Each text's y
+  is its measured height plus 400, 447, 462 or 10. Full-screen images keep
+  their 16:9 centre: the texture window is cropped by
+  (1920 - 1080 / height * width) / 3840 on each side. Text styles were read
+  from the call sites' pushes (style 3 for the shadowed lines), since the
+  HLIL drops the ninth argument of the painter 0x10008440.
+- The five loading shaders register early in CG_Init in retail order,
+  including the unused `levelshots/loadingback.jpg`.
+
+Gates: `cgame-loading` (unit) covers the strings, names, icon limits, crop,
+gametype table, every layout element, the progress squares and both awaiting
+states. `fnql-cgame-loading-960` (campgrounds, 960x600) and
+`fnql-cgame-loading-1024` (aerowalk with two authors, 1024x768) host the
+retail cgame and FnQL-game's on the FnQL client through the test-only
+`tests/cgame_snapshot_hold_proxy.c`, which reports no snapshot to the wrapped
+module until `pxholdsnap 0`, so each draws its "Awaiting Snapshot" loading
+screen during ordinary frames; the engine screenshots match within the
+menu parity threshold (no pixel differs by more than 16 levels). Earlier
+desktop captures of the retail engine during loading showed the same layout
+for both modules, but other windows covered parts of them, so the engine
+captures are the evidence.

@@ -60,11 +60,11 @@ def main() -> int:
         commands += ['echo legacy-ui-probe-done', 'quit', '']
         (base / 'probe.cfg').write_text('\n'.join(commands), encoding='ascii')
         settings = {
-            'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
+            'com_headless': '2', 'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
             'r_fullscreen': '0', 'r_mode': '-1', 'r_customwidth': str(args.width),
             'r_customheight': str(args.height), 'in_mouse': '0', 'in_nograb': '1',
             'in_joystick': '0', 's_initsound': '0', 'logfile': '2', 'developer': '1',
-            'cl_webuiEnable': '0', 'web_browserActive': '0', 'cl_allowDownload': '0',
+            'cl_allowDownload': '0',
             'vm_gameProvider': 'retail', 'net_port': '28117', 'com_maxfps': '125',
         }
         command = [str(client)]

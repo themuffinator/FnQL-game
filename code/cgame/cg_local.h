@@ -894,6 +894,12 @@ typedef struct {
 	qhandle_t	charsetProp;
 	qhandle_t	charsetPropGlow;
 	qhandle_t	charsetPropB;
+	// loading screen (retail 0x10029932-0x10029991)
+	qhandle_t	loadingBackShader;			// registered, unused, as in retail
+	qhandle_t	loadingGametypeBackShader;
+	qhandle_t	loadingLogoShader;
+	qhandle_t	loadingLogoBackShader;
+	qhandle_t	loadingSmokeShader;
 	qhandle_t	whiteShader;
 
 	qhandle_t	redCubeModel;
@@ -1750,6 +1756,11 @@ void CG_ProcessSnapshots( void );
 void CG_LoadingString( const char *s );
 void CG_LoadingItem( int itemNum );
 void CG_LoadingClient( int clientNum );
+void CG_LoadingStageDone( void );
+int CG_LoadingStagesDone( void );
+void CG_LoadingCleanName( char *name );
+const char *CG_LoadingGametypeName( int gametype );
+float CG_LoadingImageCrop( int width, int height );
 void CG_DrawInformation( void );
 
 //
@@ -1847,6 +1858,8 @@ void		trap_SendClientCommand( const char *s );
 
 // force a screen update, only used during gamestate load
 void		trap_UpdateScreen( void );
+void		trap_AdvertisementBridge_UpdateLoadingViewParameters( void );
+void		trap_AdvertisementBridge_SetFrameTime( int frameTime );
 
 // model collision
 void		trap_CM_LoadMap( const char *mapname );

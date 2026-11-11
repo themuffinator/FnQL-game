@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Windowed, input-free native ui hosting probe using installed retail assets.
+"""Windowless (com_headless 2), input-free native ui hosting probe using installed retail assets.
 
 The module is copied under the retail filename only inside a disposable,
 explicitly unpure home until FnQL's client provider/purity work is enabled.
@@ -75,11 +75,11 @@ def main() -> int:
             'echo ui-probe-done', 'quit', '']), encoding='ascii')
         command = [str(client)]
         settings = {
-            'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
+            'com_headless': '2', 'fs_basepath': str(retail), 'fs_homepath': str(home), 'sv_pure': '0',
             'r_fullscreen': '0', 'r_mode': '-1', 'r_customwidth': '960', 'r_customheight': '600',
             'in_mouse': '0', 'in_nograb': '1', 'in_joystick': '0',
             's_initsound': '0', 'logfile': '2', 'developer': '1',
-            'cl_allowDownload': '0', 'cl_webuiEnable': '0', 'net_port': '28097', 'com_maxfps': '125',
+            'cl_allowDownload': '0', 'net_port': '28097', 'com_maxfps': '125',
             'vm_gameProvider': 'fnql' if args.qagame else 'retail',
         }
         for key, value in settings.items(): command += ['+set', key, value]

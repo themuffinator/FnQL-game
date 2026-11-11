@@ -551,7 +551,8 @@ static void CG_RegisterGraphics( void ) {
 	memset( &cg.refdef, 0, sizeof( cg.refdef ) );
 	trap_R_ClearScene();
 
-	CG_LoadingString( cgs.mapname );
+	// retail 0x10022f80: the graphics stage shows the map's long name
+	CG_LoadingString( CG_ConfigString( CS_MESSAGE ) );
 
 	trap_R_LoadWorldMap( cgs.mapname );
 	CG_RegisterRaceMedia();
@@ -1677,6 +1678,12 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	cgs.media.charsetProp		= trap_R_RegisterShaderNoMip( "menu/art/font1_prop.tga" );
 	cgs.media.charsetPropGlow	= trap_R_RegisterShaderNoMip( "menu/art/font1_prop_glo.tga" );
 	cgs.media.charsetPropB		= trap_R_RegisterShaderNoMip( "menu/art/font2_prop.tga" );
+	// retail 0x1002992a: loading screen media, in retail order
+	cgs.media.loadingBackShader = trap_R_RegisterShaderNoMip( "levelshots/loadingback.jpg" );
+	cgs.media.loadingGametypeBackShader = trap_R_RegisterShaderNoMip( "ui/assets/main_menu/gt_background.tga" );
+	cgs.media.loadingLogoShader = trap_R_RegisterShaderNoMip( "ui/assets/main_menu/ql_logo.tga" );
+	cgs.media.loadingLogoBackShader = trap_R_RegisterShaderNoMip( "ui/assets/main_menu/logo_background.tga" );
+	cgs.media.loadingSmokeShader = trap_R_RegisterShaderNoMip( "ui/assets/backscreen_smoke.jpg" );
 
 	CG_RegisterCvars();
 
@@ -1750,20 +1757,25 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 #ifdef MISSIONPACK
 	String_Init();
 #endif
+	// retail 0x10029cb7-0x10029ed4: the loading screen's progress squares
+	CG_LoadingStageDone();
 
 	cg.loading = qtrue;		// force players to load instead of defer
 
 	CG_LoadingString( "sounds" );
 
 	CG_RegisterSounds();
+	CG_LoadingStageDone();
 
 	CG_LoadingString( "graphics" );
 
 	CG_RegisterGraphics();
+	CG_LoadingStageDone();
 
 	CG_LoadingString( "clients" );
 
 	CG_RegisterClients();		// if low on memory, some clients will be deferred
+	CG_LoadingStageDone();
 
 #ifdef MISSIONPACK
 	CG_AssetCache();
@@ -1784,6 +1796,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 
 	CG_StartMusic();
 
+	CG_LoadingStageDone();
 	CG_LoadingString( "" );
 
 #ifdef MISSIONPACK

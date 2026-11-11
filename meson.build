@@ -400,6 +400,12 @@ cgame_demohud_test = executable('cgame_demohud',
   c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('cgame-demohud', cgame_demohud_test, suite: ['unit', 'cgame'])
 
+cgame_loading_test = executable('cgame_loading',
+  files('tests/cgame_loading.c', 'code/cgame/cg_info.c',
+    'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
+  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('cgame-loading', cgame_loading_test, suite: ['unit', 'cgame'])
+
 cgame_gore_test = executable('cgame_gore',
   files('tests/cgame_gore.c', 'code/cgame/cg_gore.c',
     'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
@@ -456,6 +462,9 @@ test('ui-native', ui_native_test, suite: ['unit', 'ui'])
 if host_machine.system() == 'windows'
   ui_input_proxy = shared_library('ui_input_proxy', files('tests/ui_input_proxy.c'),
     name_prefix: '')
+  # Test-only snapshot hold for the loading-screen gate; never installed.
+  cgame_snapshot_hold_proxy = shared_library('cgame_snapshot_hold_proxy',
+    files('tests/cgame_snapshot_hold_proxy.c'), name_prefix: '')
 endif
 
 # Command policy and state transitions, without retail assets or a server.
@@ -577,8 +586,10 @@ if get_option('fnql-dedicated') != ''
     suite: 'sweep', timeout: 1200, is_parallel: false)
 
   # Gate G5b: the user's retail Steam client joins this server and stays in.
-  # It launches the retail game through Steam, so it is its own opt-in suite:
-  # meson test --suite retail-client.  Skips without Steam running.
+  # It launches the retail game through Steam, which cannot run windowless,
+  # so it runs only on request: FNQL_ALLOW_RETAIL_CLIENT=1 meson test --suite
+  # retail-client (its windows are hidden as they appear). Skips otherwise,
+  # and without Steam running.
   retail_client_args = [files('scripts/retail_client_probe.py'),
     '--engine', get_option('fnql-dedicated'),
     '--module', qagame.full_path()]
@@ -1302,6 +1313,24 @@ if get_option('fnql-client') != ''
   if get_option('retail-ql') != ''
     cgame_probe_args += ['--retail', get_option('retail-ql')]
   endif
+  # The level loading screen renders as retail's cgame renders it, held in
+  # its "Awaiting Snapshot" state by the test-only proxy, at a widescreen and
+  # a 4:3 size.
+  if host_machine.system() == 'windows'
+    loading_args = [files('scripts/loading_screen_probe.py'),
+      '--client', get_option('fnql-client'), '--module', cgame.full_path(),
+      '--proxy', cgame_snapshot_hold_proxy.full_path()]
+    if get_option('retail-ql') != ''
+      loading_args += ['--retail', get_option('retail-ql')]
+    endif
+    # aerowalk's worldspawn names two authors, so its 4:3 run covers both
+    # author lines.
+    foreach size : [['960', '600', 'campgrounds'], ['1024', '768', 'aerowalk']]
+      test('fnql-cgame-loading-' + size[0], python,
+        args: loading_args + ['--width', size[0], '--height', size[1], '--map', size[2]],
+        depends: [cgame, cgame_snapshot_hold_proxy], suite: 'cgame-hosting', timeout: 420, is_parallel: false)
+    endforeach
+  endif
   test('fnql-cgame-retail-hosting', python, args: cgame_probe_args,
     depends: cgame, suite: 'cgame-hosting', timeout: 120, is_parallel: false)
   test('fnql-cgame-fnql-hosting', python,
@@ -1484,3 +1513,8 @@ summary({
   'target': host_machine.system() + ' ' + host_machine.cpu_family(),
   'qagame': fs.name(qagame.full_path()),
 }, section: 'FnQL-game')
+
+# Every test runs unattended (AGENTS.md headless rule): FnQL clients start
+# windowless (com_headless 2, which still renders and captures) and dedicated
+# servers headless, unless a test passes +set com_headless itself.
+add_test_setup('headless', env: {'FNQL_HEADLESS': '2'}, is_default: true)

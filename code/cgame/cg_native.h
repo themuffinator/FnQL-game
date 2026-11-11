@@ -92,7 +92,7 @@ typedef struct {
 	void (QDECL *reserved61)(void); // 61, unused by this module
 	void (QDECL *reserved62)(void); // 62, unused by this module
 	void (QDECL *reserved63)(void); // 63, unused by this module
-	void (QDECL *reserved64)(void); // 64, unused by this module
+	void (QDECL *trap_AdvertisementBridge_SetFrameTime)(int frameTime); // 64, loading screen (retail 0x1001cbd8)
 	void (QDECL *reserved65)(void); // 65, unused by this module
 	void (QDECL *reserved66)(void); // 66, unused by this module
 	void (QDECL *reserved67)(void); // 67, unused by this module
@@ -105,7 +105,7 @@ typedef struct {
 	void (QDECL *trap_R_AddLightToScene)(const vec3_t org, float intensity, float r, float g, float b); // 74
 	int (QDECL *trap_R_LightForPoint)(vec3_t point, vec3_t ambientLight, vec3_t directedLight, vec3_t lightDir); // 75
 	void (QDECL *trap_R_RenderScene)(const refdef_t *fd); // 76
-	void (QDECL *reserved77)(void); // 77, unused by this module
+	void (QDECL *trap_AdvertisementBridge_UpdateLoadingViewParameters)(void); // 77, loading screen (retail 0x1001cbc0)
 	void (QDECL *trap_R_SetColor)(const float *rgba); // 78
 	void (QDECL *trap_R_DrawStretchPic)(float x, float y, float w, float h, 
 							   float s1, float t1, float s2, float t2, qhandle_t hShader); // 79
