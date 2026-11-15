@@ -1,0 +1,38 @@
+# Gate G3 scenario (scripts/server_lockstep.py --cheats --frames 900
+# --entities tests/lockstep/entities/key_doors.ent): key doors (retail
+# qagamex86 0x1005f300, 0x1005f400, 0x1005ec68, 0x1005fa25).  The silver
+# door hangs over (-400, -320) and the gold door over (-260, -320).  A door
+# stays shut for a player without its key, opens with its own key's sound for
+# the right key, and both open for the master key; the keys are kept until
+# the player dies.  The gold door also takes its sounds from the map's
+# startsound and endsound keys.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+
+clientcmd 1 alpha team f
+
+# no key: neither door answers
+clientcmd 40 alpha setviewpos -420 -320 40 0
+clientcmd 90 alpha setviewpos -280 -320 40 0
+
+# the silver key opens the silver door only
+clientcmd 140 alpha give Silver Key
+clientcmd 160 alpha setviewpos -280 -320 40 0
+clientcmd 210 alpha setviewpos -420 -320 40 0
+
+# with the gold key as well, the gold door opens
+clientcmd 360 alpha give Gold Key
+clientcmd 380 alpha setviewpos -280 -320 40 0
+
+# death takes the keys; the master key opens both
+clientcmd 520 alpha kill
+at 560 alpha buttons=attack
+at 570 alpha buttons=0
+clientcmd 640 alpha setviewpos -420 -320 40 0
+clientcmd 690 alpha give Master Key
+clientcmd 710 alpha setviewpos -420 -320 40 0
+clientcmd 780 alpha setviewpos -280 -320 40 0
+
+cmd 850 map_restart 0

@@ -487,9 +487,9 @@ accepts frozen players and ignores hooked players (0x1002d540/0x1006b5d0);
 the ordinary-movement `ffa_jumppad` pair reaches the stock campgrounds pad.
 
 The match statistics reports (engine imports 185/186) are implemented under
-M5 below. Still deferred: the Steam statistics and achievements retail
-awards from the game module itself (imports 201, 203 and 204; the call
-sites are listed in the stats notes below), under the online-services rules.
+M5 below, and so are the Steam statistics and most of the achievements
+retail awards from the game module itself (imports 201, 203 and 204; the
+stats notes below list what is still open).
 Freeze Tag thawing, Red Rover infection scoring and CA/FT/RR respawn rules
 are implemented and gated under M6 below.
 
@@ -888,10 +888,35 @@ them. Until now FnQL-game reported nothing.
   provider's retail JSON adapter reads JsonCpp's 32-bit integers as 64-bit,
   so retail-hosted integers are published with stale upper halves (`TIME` 11
   as 12884901899). The probe repairs them when it reads the retail run.
-- **Open:** the Steam statistics and achievements retail awards from the
-  module (imports 201/203/204: weapon shots and hits, and the achievement
-  tests inside the kill, medal and stats builders); a `stats-events` run in
-  Race, Domination and Red Rover.
+- **Steam statistics and achievements awarded by the module** (2026-11-15,
+  imports 201/203/204; the engine decides whether a Steam provider backs
+  them). Observed in retail and implemented:
+  - Weapon statistics: each weapon's row carries a shots and a hits
+    statistic (0x1008ff08 and 0x1008ff0c + weapon × 0x30: 26–37 and 14–25,
+    none for the gauntlet and the grapple). A shot adds one, a shotgun blast
+    its pellet count and a nailgun shot its nail count (0x1006f361–
+    0x1006f47f); a hit adds one (0x1005b6c4, 0x1006d0a3, 0x1006d765,
+    0x1006ec1d, 0x1006ed81). Nothing counts in Race, in warmup or during a
+    shuffle (wrapper 0x10072320 and its callers).
+  - Achievements, each awarded only after import 204 says the player does
+    not hold it: the kill builder's tests (0x10073062–0x10073dc8: 0x10
+    fifteen rail kills, 0x14 an enemy killed from the air, 0x15 on one
+    health, 0x16 a quad carrier killed with no powerup, 0x19 five gauntlet
+    kills, 0x1a a flying or mid-air gauntlet victim, 0x1c a quad carrier by
+    gauntlet, 0x11 a rocket kill of an airborne enemy, 0x13 a rail kill of a
+    player left on one health); the reward sites of the kill path (0x2f ten
+    quad kills 0x1004778a, 0x30 a humiliation in a duel 0x10047898, 0x17
+    three excellents 0x10047925, 0x35 five mid-air shotgun kills 0x10047a9d,
+    0x12 a kamikaze kill 0x10047cd3, 0x18 two stopped near-captures
+    0x100470a9); the medal builder's CTF tests (0x38, 0x39); and the player
+    report's accuracy test (0x1b, six hits in ten shots, 0x1007493b).
+  - The names of the achievements are inferences from the conditions; only
+    the numbers and the conditions are observed.
+- **Open:** achievements 0x1f, 0x31 and 0x32 and any award site outside the
+  kill, medal and report paths; a `stats-events` run in Race, Domination and
+  Red Rover. No gate observes the three imports yet: lockstep runs without a
+  Steam provider and the stats journal does not record them, so the award
+  conditions are covered by reading only.
 
 Chat tokens (2026-11-15): team chat and tells expand `#h`, `#a` and `#w` to
 the speaker's health, armor and weapon with its ammo; `##` is a literal `#`
@@ -918,8 +943,89 @@ map may name any door's sounds with `startsound` and `endsound`
 (0x1005fa25). FnQL-game picked the keys up and returned them on death but
 had no door that asked for one, and treated spawnflag 32 as a silent door,
 which retail does not have. Covered by the stock-map and differential gates
-for doors without keys; no stock map carries a key door, so a hand-authored
-G3 fixture for one is still to be added.
+for doors without keys. No stock map carries a key door, so the
+`server-rules-key-doors` G3 pair hangs two installed campgrounds brush models
+as a silver and a gold door (`tests/lockstep/entities/key_doors.ent`) and
+walks a player under them with no key, each key, after a death and with the
+master key; both recordings carry `door_silver` and `door_gold`, and the
+differential is at zero divergence.
+
+Worldspawn keys (2026-11-15): with `g_loadout` on, `disable_loadout` lists
+weapon short names (g, mg, sg, gl, rl, lg, rg, pg, bfg, gh, ng, pl, cg, hmg;
+up to sixteen tokens, unknown ones ignored, retail 0x1002d980) whose weapon
+bits go to `CS_DISABLED_LOADOUTS` and `g_disableLoadout` (0x10066557);
+`atmosphere`, or else `g_forceAtmosphericEffects`, goes to configstring 0x2b3
+(0x100666dd). The `server-rules-worldspawn-keys` G3 pair compares both
+configstrings (16736 for "rl lg hmg unknown pg") across a restart.
+
+Ready-up and arena size (2026-11-15):
+
+- `readyup` (retail 0x10045bd0) is refused while players are missing: with
+  `g_teamForcePresent` a free-for-all, duel or race needs two players and a
+  team mode `g_teamSizeMin` on each side (0x10068140; an infection round
+  needs only one of the two), and with `g_teamForceBalance` the teams may
+  not be more than one apart (0x10068100). The refusals read "Cannot ready
+  up until more players are present.", "Players cannot ready up until both
+  teams are present." and "Players cannot ready up until both teams are
+  fully present."; a player who was ready is made unready without a word
+  instead. During the intermission the command only sets the flag, which
+  the end scoreboard shows; FnQL-game ignored it there, and let a lone
+  player ready up.
+- A free-for-all holds `teamsize` players: the next one to join is told
+  "Arena is full. Team size is currently set to %d." and stays a spectator
+  (0x10040b68). FnQL-game had the limit in the team modes only.
+- Gates: the `server-rules-ready-gate-ffa` and `-tdm` G3 pairs. Their retail
+  recordings carry each refusal, the arena message and the ready
+  announcements. Negative control: the module at `d1c6efe` diverges on both
+  from frame 20 (it readies the lone player), and on the worldspawn-keys
+  pair from frame 0.
+- Not implemented: retail's `readyup` also ends the training tour
+  (0x10045a80).
+
+Client presentation follow-up (2026-11-15):
+
+- Vote and complaint prompt (`cg_voteprompt.c`, retail cgame 0x1000dbb0):
+  the two lines at (4, 300) and (8, 312), the vote line with the keys bound
+  to `vote yes` and `vote no`, and before it, in the team modes other than
+  Red Rover, the team-kill complaint prompt that the `complaint` server
+  command starts (0x1004bc43; fifteen seconds, or a ten-second notice for a
+  negative number). FnQL-game's server already sent `complaint`; its client
+  ignored it. Gate: `cgame-voteprompt`.
+- Game description lines: `cg_gameInfo1`–`cg_gameInfo6` are set from the
+  gametype (table 0x10076870, writer 0x100295c0), or to the training tour's
+  text while `g_training` is set, at init and whenever the serverinfo is
+  read; the retail in-game menus read them.
+- Mark lifetime: `cg_impactMarkTime` is how long an impact mark lives and
+  zero turns marks off (0x1002aca0, 0x1002a77d); FnQL-game used Quake III's
+  fixed ten seconds.
+- World items (`cg_itempresentation.c`, retail 0x10015f30; details in
+  `docs/CGAME.md`): `cg_itemFx` gates the bob (retail's shared 6-unit sine,
+  not Quake III's), the rotation and the respawn scale-up; simple items
+  honour `cg_simpleItemsBob`, `cg_simpleItemsHeightOffset` and
+  `cg_simpleItemsRadius`; `cg_flagStyle 2` picks the flags' other model; the
+  red and blue flag items are not drawn in One Flag; the railgun pickup is
+  green. Gate: `cgame-itempresentation`.
+- Not verified in a running client: the shared client build these gates use
+  was being rebuilt by other work, so these have unit or reading coverage
+  only.
+- Smoke: `cg_smoke_SG` turns the shotgun's muzzle smoke off (0x1005598c);
+  `cg_smokeRadius_RL`, `_GL` and `_NG` size the rocket, grenade and nail
+  trails (0x1005023e, 0x10050367), `cg_smokeRadius_haste` and `_dust` the
+  haste and landing puffs (0x1003fa36, 0x1003fb96), and zero draws none.
+  A flying player leaves a puff every 100 ms, `cg_smokeRadius_flight` wide
+  (0x1003f8c0); FnQL-game had no flight trail.
+- Lightning impact (0x10051f82): the flare at the beam's end is drawn only
+  with `cg_lightningImpact`, never on a no-impact surface, and within
+  `cg_lightningImpactCap` units of the muzzle it shrinks with the distance,
+  to an eighth at the least.
+- Still unread by FnQL-game's cgame, from the retail cvar table:
+  `cg_drawItemPickups`, `cg_speedometer`, `cg_vignette`,
+  `cg_trueShotgun`, `cg_thirdPersonPitch`, `cg_forceDrawCrosshair`,
+  `cg_playerLean`, `cg_deadBodyColor`, `cg_railStyle`, `cg_rocketStyle`,
+  `cg_plasmaStyle`, `cg_screenDamage_Self` and `cg_screenDamageAlpha*`,
+  `cg_drawInputCmds*`, the `cg_drawTeamOverlay*` placement cvars, the
+  voice-chat cvars, `cg_forceEnemyWeaponColor` and
+  `cg_forceTeamWeaponColor`, and `cg_weaponColor_grenade`.
 
 ### M6 — Round-based and special modes
 
@@ -1362,18 +1468,43 @@ report, in 47 seconds).
 Observed while gating the stats reports, still open:
 
 - Capture the Flag. On spidercrossings (2v2, capture limit 1) retail's bots
-  took a flag after 37 seconds and captured after 69; FnQL-game's first took
-  one after 195 seconds and had not captured after seven minutes, fighting
-  as in a deathmatch (28 kills). The flag events themselves match retail's
-  sequence. The team goals and orders of the flag modes are this milestone.
+  took a flag after 37 seconds and captured after 69 in one run and took
+  over 200 seconds in another; FnQL-game's first took one after 195 seconds
+  and had not captured after seven minutes, fighting as in a deathmatch
+  (28 kills). One cause is fixed (2026-11-15): Quake Live puts a two-digit
+  client number before chat text, team orders travel as tells, and retail's
+  bot strips the prefix from "chat" before matching (0x100221a7; "tchat"
+  keeps it), so FnQL-game's bots never understood an order. With the prefix
+  stripped they capture, and `stats-events-ctf` passes as registered; the
+  first pickup still comes late (about 177 seconds). The flag events
+  themselves match retail's sequence. The team goals of the flag modes
+  remain this milestone.
+- Instagib (2026-11-15). Retail's bots hunt in instagib: FnQL-game's stood
+  in for retail's "insta gib!" node (0x10013410) with the CA/RR hunt goal in
+  FFA, Duel, TDM and Freeze Tag (leaving the objective modes alone is an
+  inference), and bots now read the unlimited-ammo sentinel as plenty of
+  ammo (the end of the inventory update, 0x100162d0: an ammo slot of -1
+  becomes 999). Before: 18 gauntlet kills and no rail shot in a bot match;
+  after: 23 railgun kills.
+- `bot_gauntlet` (2026-11-15) keeps every bot on the gauntlet, as retail's
+  weapon chooser does (0x10015ee7); the cvar was registered but unread.
+- Weapon choice. In bot matches on campgrounds (TDM, Freeze Tag, Duel)
+  retail's bots fire the shotgun and machinegun far more and the plasma gun
+  far less than FnQL-game's (TDM shots: retail SG 440, MG 111, PG 6;
+  FnQL-game SG 60, MG 68, PG 105). Match length, kill counts and pickups are
+  close. Not analysed; the weapon weights are the likely place.
+- Red Rover join order. Four bots added without a side join in the order
+  3, 2, 0, 1 under retail and 3, 2, 1, 0 under FnQL-game, so two bots start
+  on swapped sides. Not analysed.
 - Joining a team. Added without a team argument in a team mode, retail's
   four bots all stayed spectators for five minutes; two of FnQL-game's
   joined. Neither is a match anyone can use, so the probes add bots with
   their sides.
-- Retail's instagib node ("insta gib!", 0x100133c0, entered from
+- Retail's instagib node itself ("insta gib!", 0x100133c0, entered from
   BotDeathmatchAI at 0x1001f328 when `g_instaGib` is set and the bot has no
-  enemy) and its training nodes ("seek teammate", "lead teammate",
-  "torment human", the tour points) are not implemented.
+  enemy; the hunt goal above stands in for it) and its training nodes
+  ("seek teammate", "lead teammate", "torment human", the tour points) are
+  not implemented.
 
 Quake Live bot behavior over FnQL's botlib:
 

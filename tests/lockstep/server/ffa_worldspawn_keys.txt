@@ -1,0 +1,13 @@
+# Gate G3 scenario (scripts/server_lockstep.py --set g_loadout 1 --frames 200
+# --entities tests/lockstep/entities/worldspawn_keys.ent): the worldspawn
+# keys "disable_loadout" and "atmosphere" (retail qagamex86 0x10066557,
+# 0x100666dd, 0x1002d980) reach their configstrings, at the map's start and
+# again after a restart.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+
+clientcmd 1 alpha team f
+
+cmd 90 map_restart 0

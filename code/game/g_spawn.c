@@ -598,6 +598,40 @@ Every map should have exactly one worldspawn.
 "gravity"	800 is default gravity
 "message"	Text to print during connection process
 */
+/*
+================
+G_LoadoutWeaponMask
+
+Retail qagamex86 0x1002d980: up to sixteen tokens, each compared without
+case with the weapons' short names (the weapon table's second column,
+0x1008ff34); a match sets the weapon's bit.
+================
+*/
+int G_LoadoutWeaponMask( const char *list ) {
+	static const char *const shortNames[WP_NUM_WEAPONS] = {
+		NULL, "g", "mg", "sg", "gl", "rl", "lg", "rg", "pg", "bfg", "gh", "ng", "pl", "cg", "hmg"
+	};
+	const char	*text = list;
+	const char	*token;
+	int			i, w, mask = 0;
+
+	if ( !list ) {
+		return 0;
+	}
+	for ( i = 0; i < 16; i++ ) {
+		token = COM_ParseExt( (char **)&text, qtrue );
+		if ( !token[0] ) {
+			break;
+		}
+		for ( w = WP_GAUNTLET; w < WP_NUM_WEAPONS; w++ ) {
+			if ( !Q_stricmp( shortNames[w], token ) ) {
+				mask |= 1 << w;
+			}
+		}
+	}
+	return mask;
+}
+
 void SP_worldspawn( void ) {
 	char	*s;
 	int		delay, spread;
@@ -624,6 +658,18 @@ void SP_worldspawn( void ) {
 	G_SpawnString( "author2", "", &s );
 	trap_SetConfigstring( CS_MAP_AUTHOR2, s );
 
+	// With loadouts on, the map says which weapons it keeps out of them
+	// (retail 0x10066557): "disable_loadout" lists weapon short names, and
+	// the mask replaces g_disableLoadout, to zero when the map names none.
+	if ( g_loadout.integer ) {
+		int	mask;
+
+		G_SpawnString( "disable_loadout", "", &s );
+		mask = G_LoadoutWeaponMask( s );
+		trap_SetConfigstring( CS_DISABLED_LOADOUTS, va( "%i", mask ) );
+		trap_Cvar_Set( "g_disableLoadout", va( "%i", mask ) );
+	}
+
 	trap_SetConfigstring( CS_MOTD, g_motd.string );		// message of the day
 
 	// retail keeps the server's g_gravity unless the map sets one
@@ -643,6 +689,14 @@ void SP_worldspawn( void ) {
 		trap_Cvar_Set( "g_training", "1" );
 	}
 	level.trainingMap = Q_stricmp( s, "0" ) != 0;
+
+	// the map's weather for the client (retail 0x100666dd): its
+	// "atmosphere" key, or else the server's g_forceAtmosphericEffects
+	if ( G_SpawnString( "atmosphere", "", &s ) ) {
+		trap_SetConfigstring( CS_ATMOSPHERE, s );
+	} else {
+		trap_SetConfigstring( CS_ATMOSPHERE, g_forceAtmosphericEffects.string );
+	}
 
 	g_entities[ENTITYNUM_WORLD].s.number = ENTITYNUM_WORLD;
 	g_entities[ENTITYNUM_WORLD].r.ownerNum = ENTITYNUM_NONE;

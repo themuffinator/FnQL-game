@@ -1616,19 +1616,60 @@ static void CG_HasteTrail( centity_t *cent ) {
 		cent->trailTime = cg.time;
 	}
 
+	// retail 0x1003fa36: cg_smokeRadius_haste, and zero is no puff
+	if ( cg_smokeRadius_haste.value == 0.0f ) {
+		return;
+	}
+
 	VectorCopy( cent->lerpOrigin, origin );
 	origin[2] -= 16;
 
-	smoke = CG_SmokePuff( origin, vec3_origin, 
-				  8, 
+	smoke = CG_SmokePuff( origin, vec3_origin,
+				  cg_smokeRadius_haste.value,
 				  1, 1, 1, 1,
-				  500, 
+				  500,
 				  cg.time,
 				  0,
 				  0,
 				  cgs.media.hastePuffShader );
 
 	// use the optimized local entity add
+	smoke->leType = LE_SCALE_FADE;
+}
+
+/*
+===============
+CG_FlightTrail
+
+Retail 0x1003f8c0, from the flight branch of the powerup effects
+(0x1004084c): a puff every 100 ms, cg_smokeRadius_flight wide and a second
+long, under the first-person viewer and over anyone seen from outside.
+===============
+*/
+static void CG_FlightTrail( centity_t *cent ) {
+	localEntity_t	*smoke;
+	vec3_t			origin;
+
+	if ( cent->trailTime > cg.time ) {
+		return;
+	}
+	cent->trailTime += 100;
+	if ( cent->trailTime < cg.time ) {
+		cent->trailTime = cg.time;
+	}
+	if ( cg_smokeRadius_flight.value == 0.0f ) {
+		return;
+	}
+
+	VectorCopy( cent->lerpOrigin, origin );
+	if ( cg.snap && cg.snap->ps.clientNum == cent->currentState.clientNum && !cg_thirdPerson.integer ) {
+		origin[2] -= 16;
+	} else {
+		origin[2] += 24;
+	}
+
+	smoke = CG_SmokePuff( origin, vec3_origin, cg_smokeRadius_flight.value, 1, 1, 1, 1, 1000, cg.time, 0, 0,
+		cgs.media.hastePuffShader );
 	smoke->leType = LE_SCALE_FADE;
 }
 
@@ -1707,9 +1748,14 @@ static void CG_DustTrail( centity_t *cent ) {
 	VectorCopy( cent->currentState.pos.trBase, end );
 	end[2] -= 16;
 
+	// retail 0x1003fb96: cg_smokeRadius_dust, and zero is no puff
+	if ( cg_smokeRadius_dust.value == 0.0f ) {
+		return;
+	}
+
 	VectorSet(vel, 0, 0, -30);
 	CG_SmokePuff( end, vel,
-				  24,
+				  cg_smokeRadius_dust.value,
 				  .8f, .8f, 0.7f, 0.33f,
 				  500,
 				  cg.time,
@@ -1957,6 +2003,7 @@ static void CG_PlayerPowerups( centity_t *cent, refEntity_t *torso ) {
 	// flight plays a looped sound
 	if ( powerups & ( 1 << PW_FLIGHT ) ) {
 		trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, cgs.media.flightSound );
+		CG_FlightTrail( cent );
 	}
 
 	ci = &cgs.clientinfo[ cent->currentState.clientNum ];

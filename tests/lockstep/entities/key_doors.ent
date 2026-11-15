@@ -1,0 +1,33 @@
+// Hand-authored fixture: two key doors made from installed campgrounds brush
+// models (*10 and *12, 112 x 112 x 16 slabs), hung 110 units over the floor
+// so that a player under one stands in its trigger but not in the door.
+// Spawnflag 16 asks for the silver key, 32 for the gold key.
+{
+"classname" "worldspawn"
+"message" "FnQL key door replay"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-260 -320 40"
+"angle" "180"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-260 -320 300"
+}
+{
+"classname" "func_door"
+"model" "*10"
+"origin" "1200 -128 -346"
+"angle" "-1"
+"spawnflags" "16"
+}
+{
+"classname" "func_door"
+"model" "*12"
+"origin" "1212 -384 -346"
+"angle" "-1"
+"spawnflags" "32"
+"startsound" "sound/movers/doors/dr1_end.wav"
+"endsound" "sound/movers/doors/dr1_strt.wav"
+}

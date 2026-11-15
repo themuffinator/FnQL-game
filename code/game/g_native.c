@@ -100,6 +100,11 @@ qboolean G_NativeHasEngineExtensions( void ) {
 	return g_nativeGetValue ? qtrue : qfalse;
 }
 
+// retail import 201: adds to one of the player's Steam statistics
+void trap_AddSteamStat( int clientNum, int statIndex, int delta ) {
+	gi->AddSteamStat( clientNum, statIndex, delta );
+}
+
 qboolean trap_StatsAvailable( void ) {
 	return ( g_nativeStatsReportJson && g_nativeStatsEventJson ) ? qtrue : qfalse;
 }

@@ -336,6 +336,129 @@ static void Stats_Ranks( const gclient_t *client, int *rank, qboolean *tied, int
 /*
 ======================================================================
 
+  Steam statistics and achievements awarded by the game module
+
+  Retail reaches Steam through three engine imports: 201 adds to a
+  statistic, 204 asks whether the player holds an achievement and 203
+  awards one.  The engine decides whether a Steam provider backs them and
+  whether the match counts.
+
+======================================================================
+*/
+
+// the weapon table's Steam statistics (retail 0x1008ff08 and 0x1008ff0c +
+// weapon * 0x30): shots fired and hits scored; none for the gauntlet and
+// the grapple
+static const int statsSteamShots[WP_NUM_WEAPONS] = { 0, 0, 26, 27, 28, 29, 30, 31, 32, 33, 0, 34, 35, 36, 37 };
+static const int statsSteamHits[WP_NUM_WEAPONS] = { 0, 0, 14, 15, 16, 17, 18, 19, 20, 21, 0, 22, 23, 24, 25 };
+
+// retail's wrapper 0x10072320 and its callers: not in race, not before the
+// match, not while a shuffle or an infection move is going on
+static qboolean Stats_SteamCounting( void ) {
+	return g_gametype.integer != GT_RACE && !level.warmupTime && !level.shuffling;
+}
+
+/*
+================
+G_StatsSteamShots / G_StatsSteamHit
+
+Retail 0x1006f361-0x1006f47f (a shot, a shotgun blast's pellets, a nailgun's
+nails) and 0x1005b6c4, 0x1006d0a3, 0x1006d765, 0x1006ec1d, 0x1006ed81 (a hit).
+================
+*/
+void G_StatsSteamShots( const gentity_t *ent, int weapon, int count ) {
+	if ( !ent->client || weapon <= 0 || weapon >= WP_NUM_WEAPONS || !statsSteamShots[weapon] || !Stats_SteamCounting() ) {
+		return;
+	}
+	trap_AddSteamStat( ent->client->ps.clientNum, statsSteamShots[weapon], count );
+}
+
+void G_StatsSteamHit( const gclient_t *client, int weapon ) {
+	if ( !client || weapon <= 0 || weapon >= WP_NUM_WEAPONS || !statsSteamHits[weapon] || !Stats_SteamCounting() ) {
+		return;
+	}
+	trap_AddSteamStat( client->ps.clientNum, statsSteamHits[weapon], 1 );
+}
+
+// every retail award asks first whether the player already holds it
+void G_SteamAchievement( const gentity_t *ent, int id ) {
+	if ( !ent || !ent->client ) {
+		return;
+	}
+	if ( !trap_HasSteamAchievement( ent->client->ps.clientNum, id ) ) {
+		trap_UnlockSteamAchievement( ent->client->ps.clientNum, id );
+	}
+}
+
+static qboolean Stats_Airborne( const gclient_t *client ) {
+	return client->ps.groundEntityNum == ENTITYNUM_NONE || client->ps.powerups[PW_FLIGHT] != 0;
+}
+
+/*
+================
+G_StatsKillAchievements
+
+The achievement tests of retail's kill builder (0x10073062-0x10073dc8), run
+for a kill by a player after the kill has been counted.  An enemy kill is
+one of another player who is not a teammate.
+================
+*/
+void G_StatsKillAchievements( gentity_t *victim, gentity_t *attacker, int mod ) {
+	const gclient_t	*killer, *target;
+	const int		weapon = G_WeaponForMod( mod );
+	qboolean		enemy, quadded;
+	int				i;
+
+	if ( !victim || !victim->client || !attacker || !attacker->client ) {
+		return;
+	}
+	killer = attacker->client;
+	target = victim->client;
+	enemy = attacker != victim && !OnSameTeam( attacker, victim );
+	quadded = target->ps.powerups[PW_QUAD] != 0;
+
+	if ( weapon == WP_RAILGUN && killer->stats.weaponKills[WP_RAILGUN] >= 15 ) {
+		G_SteamAchievement( attacker, 0x10 );
+	}
+	if ( enemy && Stats_Airborne( killer ) ) {
+		G_SteamAchievement( attacker, 0x14 );
+	}
+	if ( enemy && killer->ps.stats[STAT_HEALTH] == 1 ) {
+		G_SteamAchievement( attacker, 0x15 );
+	}
+	if ( enemy && quadded ) {
+		// with no powerup of the killer's own
+		for ( i = PW_QUAD; i < PW_NUM_POWERUPS; i++ ) {
+			if ( killer->ps.powerups[i] ) {
+				break;
+			}
+		}
+		if ( i == PW_NUM_POWERUPS ) {
+			G_SteamAchievement( attacker, 0x16 );
+		}
+	}
+	if ( weapon == WP_GAUNTLET && killer->stats.weaponKills[WP_GAUNTLET] >= 5 ) {
+		G_SteamAchievement( attacker, 0x19 );
+	}
+	if ( target->ps.powerups[PW_FLIGHT] || ( weapon == WP_GAUNTLET && Stats_Airborne( killer )
+			&& target->ps.groundEntityNum == ENTITYNUM_NONE ) ) {
+		G_SteamAchievement( attacker, 0x1a );
+	}
+	if ( weapon == WP_GAUNTLET && quadded ) {
+		G_SteamAchievement( attacker, 0x1c );
+	}
+	if ( enemy && weapon == WP_ROCKET_LAUNCHER && Stats_Airborne( target ) ) {
+		G_SteamAchievement( attacker, 0x11 );
+	}
+	// a rail kill of a player an enemy had left on one health
+	if ( enemy && weapon == WP_RAILGUN && target->stats.lastHealth == 1 ) {
+		G_SteamAchievement( attacker, 0x13 );
+	}
+}
+
+/*
+======================================================================
+
   events
 
 ======================================================================
@@ -562,7 +685,23 @@ count of that award including this one.
 ================
 */
 void G_StatsReportMedal( const gentity_t *ent, const char *medal, int total ) {
-	if ( !trap_StatsAvailable() || !ent || !ent->client ) {
+	if ( !ent || !ent->client ) {
+		return;
+	}
+	// in Capture the Flag every medal also tests the all-rounder
+	// achievements: a capture, an assist and a defense, and three of each
+	// (0x1007173a, 0x1007179b)
+	if ( g_gametype.integer == GT_CTF ) {
+		const clientStats_t	*st = &ent->client->stats;
+
+		if ( st->captures >= 1 && st->assists >= 1 && st->defends >= 1 ) {
+			G_SteamAchievement( ent, 0x38 );
+		}
+		if ( st->captures >= 3 && st->assists >= 3 && st->defends >= 3 ) {
+			G_SteamAchievement( ent, 0x39 );
+		}
+	}
+	if ( !trap_StatsAvailable() ) {
 		return;
 	}
 	Stats_Begin();
@@ -667,7 +806,7 @@ void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean qu
 	int				i, rank, teamRank, win = 0, lose = 0;
 	qboolean		tied, teamTied;
 
-	if ( !trap_StatsAvailable() || !client ) {
+	if ( !client ) {
 		return;
 	}
 	if ( client->pers.connected == CON_CONNECTING || client->ps.pm_type == PM_INTERMISSION
@@ -675,6 +814,23 @@ void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean qu
 		return;
 	}
 	st = &client->stats;
+
+	// an accuracy of six in ten over every weapon (retail 0x1007493b, tested
+	// as the builder walks the weapons; no shots, no award)
+	{
+		int	hits = 0, shots = 0;
+
+		for ( i = WP_GAUNTLET; i < WP_NUM_WEAPONS; i++ ) {
+			hits += st->weaponHits[i];
+			shots += st->weaponShots[i];
+		}
+		if ( shots > 0 && (float)hits / (float)shots >= 0.6f ) {
+			G_SteamAchievement( &g_entities[client - level.clients], 0x1b );
+		}
+	}
+	if ( !trap_StatsAvailable() ) {
+		return;
+	}
 
 	Stats_Begin();
 	JSON_String( &stats, "NAME", client->pers.netname );

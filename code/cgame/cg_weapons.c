@@ -312,6 +312,8 @@ void CG_RailTrail( const clientInfo_t *ci, const vec3_t start, const vec3_t end 
 CG_RocketTrail
 ==========================
 */
+static void CG_GrenadeTrail( centity_t *ent, const weaponInfo_t *wi );
+
 static void CG_RocketTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	int		step;
 	vec3_t	origin, lastPos;
@@ -321,6 +323,7 @@ static void CG_RocketTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	entityState_t	*es;
 	vec3_t	up;
 	localEntity_t	*smoke;
+	float	radius;
 
 	if ( cg_noProjectileTrail.integer ) {
 		return;
@@ -357,11 +360,23 @@ static void CG_RocketTrail( centity_t *ent, const weaponInfo_t *wi ) {
 		return;
 	}
 
+	// retail 0x1005023e: the rocket's and the grenade's smoke take their
+	// radius from cg_smokeRadius_RL and cg_smokeRadius_GL, and zero is none
+	radius = wi->trailRadius;
+	if ( wi->missileTrailFunc == CG_RocketTrail ) {
+		radius = cg_smokeRadius_RL.value;
+	} else if ( wi->missileTrailFunc == CG_GrenadeTrail ) {
+		radius = cg_smokeRadius_GL.value;
+	}
+	if ( radius == 0.0f ) {
+		return;
+	}
+
 	for ( ; t <= ent->trailTime ; t += step ) {
 		BG_EvaluateTrajectory( &es->pos, t, lastPos );
 
-		smoke = CG_SmokePuff( lastPos, up, 
-					  wi->trailRadius, 
+		smoke = CG_SmokePuff( lastPos, up,
+					  radius,
 					  1.0f, 1.0f, 1.0f, 0.33f,
 					  wi->wiTrailTime, 
 					  t,
@@ -390,7 +405,9 @@ static void CG_NailTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	vec3_t	up;
 	localEntity_t	*smoke;
 
-	if ( cg_noProjectileTrail.integer ) {
+	// retail 0x10050367: cg_smokeRadius_NG is the nail smoke's radius, and
+	// zero is no trail at all
+	if ( cg_noProjectileTrail.integer || cg_smokeRadius_NG.value == 0.0f ) {
 		return;
 	}
 
@@ -428,8 +445,8 @@ static void CG_NailTrail( centity_t *ent, const weaponInfo_t *wi ) {
 	for ( ; t <= ent->trailTime ; t += step ) {
 		BG_EvaluateTrajectory( &es->pos, t, lastPos );
 
-		smoke = CG_SmokePuff( lastPos, up, 
-					  wi->trailRadius, 
+		smoke = CG_SmokePuff( lastPos, up,
+					  cg_smokeRadius_NG.value,
 					  1, 1, 1, 0.33f,
 					  wi->wiTrailTime, 
 					  t,
@@ -1096,10 +1113,12 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 	beam.customShader = CG_LightningBoltShader();
 	trap_R_AddRefEntityToScene( &beam );
 
-	// add the impact flare if it hit something
-	if ( trace.fraction < 1.0 ) {
+	// add the impact flare if it hit something (retail 0x10051f82: only
+	// with cg_lightningImpact, and never on a surface that takes no impact)
+	if ( cg_lightningImpact.integer && trace.fraction != 1.0 && !( trace.surfaceFlags & SURF_NOIMPACT ) ) {
 		vec3_t	angles;
 		vec3_t	dir;
+		int		cap;
 
 		VectorSubtract( beam.oldorigin, beam.origin, dir );
 		VectorNormalize( dir );
@@ -1107,13 +1126,33 @@ static void CG_LightningBolt( centity_t *cent, vec3_t origin ) {
 		memset( &beam, 0, sizeof( beam ) );
 		beam.hModel = cgs.media.lightningExplosionModel;
 
-		VectorMA( trace.endpos, -16, dir, beam.origin );
+		// pulled back along the beam by 16 units of its depth into the view
+		VectorMA( trace.endpos, -16 * DotProduct( dir, cg.refdef.viewaxis[0] ), dir, beam.origin );
 
 		// make a random orientation
 		angles[0] = rand() % 360;
 		angles[1] = rand() % 360;
 		angles[2] = rand() % 360;
 		AnglesToAxis( angles, beam.axis );
+
+		// retail 0x10052099: within cg_lightningImpactCap of the muzzle the
+		// flare shrinks with the distance, to an eighth at the least
+		cap = cg_lightningImpactCap.integer;
+		if ( cap ) {
+			const int	dist = (int)Distance( trace.endpos, muzzlePoint );
+
+			if ( dist < cap ) {
+				float	scale = (float)dist / cap;
+
+				if ( scale < 0.125f ) {
+					scale = 0.125f;
+				}
+				VectorScale( beam.axis[0], scale, beam.axis[0] );
+				VectorScale( beam.axis[1], scale, beam.axis[1] );
+				VectorScale( beam.axis[2], scale, beam.axis[2] );
+				beam.nonNormalizedAxes = qtrue;
+			}
+		}
 		trap_R_AddRefEntityToScene( &beam );
 	}
 }
@@ -1974,7 +2013,8 @@ void CG_ShotgunFire( entityState_t *es ) {
 	VectorNormalize( v );
 	VectorScale( v, 32, v );
 	VectorAdd( es->pos.trBase, v, v );
-	if ( cgs.glconfig.hardwareType != GLHW_RAGEPRO ) {
+	// retail 0x1005598c: cg_smoke_SG turns the muzzle smoke off
+	if ( cg_smoke_SG.integer && cgs.glconfig.hardwareType != GLHW_RAGEPRO ) {
 		// ragepro can't alpha fade, so don't even bother with smoke
 		vec3_t			up;
 

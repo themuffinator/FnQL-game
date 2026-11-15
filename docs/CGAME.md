@@ -920,6 +920,50 @@ default timed out on some runs. The frozen probe now also issues a console
 it; the capture still shows the ice shell, and both providers pass in
 about 27 s.
 
+Vote and complaint prompt (`cg_voteprompt.c`, retail 0x1000dbb0): two lines
+at scale 0.22 with a shadow, yellow at (4, 300) and white at (8, 312). In
+the team modes other than Red Rover a team-kill complaint comes first while
+its time runs, never in a demo and only with `cg_complaintWarning`:
+"File complaint against %s for team-killing?" and "Press '%s' for Yes, or
+'%s' for No (%is)". The `complaint` server command (0x1004bc43) starts it
+for fifteen seconds; a negative number is one of four notices, shown alone
+in white at (3, 300) for ten seconds (-3 reads "Comlaints" in retail);
+`map_restart` clears it (0x1004a369). Otherwise the vote:
+"VOTE(%is):%s Yes(%s):%i No(%s):%i" and "or press ESC then click Vote",
+with the keys bound to `vote yes` and `vote no`. Gate: `cgame-voteprompt`
+(text, precedence, placement, the beep); not yet compared in a capture.
+
+Game description (`CG_SetGameInfo`, retail 0x100295c0): `cg_gameInfo1` to
+`cg_gameInfo6` take the gametype's six lines from table 0x10076870, or the
+training tour's text while `g_training` is set, at init (0x10029fa6) and on
+every serverinfo read (0x100489a5). Mark lifetime (0x1002aca0, 0x1002a77d):
+`cg_impactMarkTime` replaces Quake III's fixed ten seconds, and zero, like
+`cg_marks 0`, adds and draws no persistent mark.
+
+World items (`cg_itempresentation.c`, retail item drawer 0x10015f30):
+
+- An item whose row mask (`gitem_t` +0x40) has the gametype's bit is not
+  drawn (0x10016c8d). Only the red and blue flags carry one, One Flag's.
+- `cg_itemFx` is a bit set. Bit 1 bobs the model by 4 + 6 sin on a 1024 ms
+  cycle every item shares (0x10016e5e); bit 2 rotates it, health at the fast
+  rate, and without it the model keeps the fixed axis (0x10016eb1); bit 4
+  scales a respawned model up over a second (0x10017047). FnQL-game carried
+  Quake III's unconditional bob (4 + 4 cos, phased by entity number),
+  rotation and scale-up.
+- `cg_simpleItems` (0x10016cbe): the sprite sits
+  `cg_simpleItemsHeightOffset` over the origin (10 for a persistant
+  powerup); `cg_simpleItemsBob` 1, or 2 for an item with a timer, replaces
+  that with 10 + 6 sin on the same cycle; `cg_simpleItemsRadius` less 15 is
+  added, and the radius is the cvar's integer. FnQL-game drew a 14-unit
+  sprite at the origin.
+- `cg_flagStyle 2` draws the three flags with the row's fifth model
+  (`models/flag3/…`, 0x10016fa9).
+- The railgun pickup is green (0x1001712b); FnQL-game tinted it with the
+  viewer's rail color.
+
+Gate: `cgame-itempresentation`. Not yet compared in a capture; a moving item
+needs a capture at a fixed `cg.time` to compare.
+
 Connection notice (0x1000aef0/0x10012790): "Connection Interrupted" in
 white, scale 0.25, font 0, shadow style 3, centered on x 320 with its
 baseline at 116, and the net icon blinking at (592, 432), replacing Quake

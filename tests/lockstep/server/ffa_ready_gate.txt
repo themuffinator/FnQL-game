@@ -1,0 +1,24 @@
+# Gate G3 scenario (scripts/server_lockstep.py --frames 400 --set teamsize 2):
+# who may ready up and who may join a free-for-all (retail qagamex86
+# 0x10045bd0, 0x10068140, 0x10040b68).  A lone player cannot ready up; with
+# a second player both can, and a ready player becomes unready without a
+# word once the other leaves.  With teamsize 2 a third player is told the
+# arena is full.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+
+clientcmd 1 alpha team f
+clientcmd 20 alpha readyup
+clientcmd 40 bravo team f
+clientcmd 60 alpha readyup
+clientcmd 80 charlie team f
+clientcmd 100 bravo team s
+clientcmd 120 alpha readyup
+clientcmd 140 alpha readyup
+clientcmd 160 charlie team f
+clientcmd 180 charlie readyup
+clientcmd 200 charlie readyup

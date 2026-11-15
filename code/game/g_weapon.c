@@ -1060,12 +1060,15 @@ void FireWeapon( gentity_t *ent ) {
 		if ( ent->s.weapon == WP_SHOTGUN ) {
 			client->accuracy_shots++;
 			client->stats.weaponShots[WP_SHOTGUN] += SHOTGUN_PELLETS;
+			G_StatsSteamShots( ent, WP_SHOTGUN, SHOTGUN_PELLETS );
 		} else if ( ent->s.weapon == WP_NAILGUN ) {
 			client->accuracy_shots += g_nailcount.integer;
 			client->stats.weaponShots[WP_NAILGUN] += g_nailcount.integer;
+			G_StatsSteamShots( ent, WP_NAILGUN, g_nailcount.integer );
 		} else {
 			client->accuracy_shots++;
 			client->stats.weaponShots[ent->s.weapon]++;
+			G_StatsSteamShots( ent, ent->s.weapon, 1 );
 		}
 	}
 

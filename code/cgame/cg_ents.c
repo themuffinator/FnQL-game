@@ -209,12 +209,10 @@ static void CG_Item( centity_t *cent ) {
 	refEntity_t		ent;
 	entityState_t	*es;
 	const gitem_t	*item;
-	int				msec;
 	float			frac;
-	float			scale;
 	weaponInfo_t	*wi;
-	int				modulus;
 	itemInfo_t		*itemInfo;
+	const char		*flagModel;
 
 	es = &cent->currentState;
 	if ( es->modelindex >= bg_numItems ) {
@@ -240,11 +238,27 @@ static void CG_Item( centity_t *cent ) {
 		CG_RecordObjectiveBase( item->giTag == PW_REDFLAG ? TEAM_RED :
 			item->giTag == PW_BLUEFLAG ? TEAM_BLUE : TEAM_FREE, cent->lerpOrigin );
 	}
+	// retail 0x10016c8d: the item's row hides it in some gametypes (the red
+	// and blue flags in One Flag)
+	if ( CG_ItemHiddenInGametype( item, cgs.gametype ) ) {
+		return;
+	}
 	if ( cg_simpleItems.integer && item->giType != IT_TEAM ) {
+		// retail 0x10016cbe: see cg_itempresentation.c
+		qboolean	bobs;
+		float		lift;
+
+		lift = CG_SimpleItemLift( item, cg_simpleItemsBob.integer, cg_simpleItemsHeightOffset.integer, cg.time, &bobs );
 		memset( &ent, 0, sizeof( ent ) );
 		ent.reType = RT_SPRITE;
 		VectorCopy( cent->lerpOrigin, ent.origin );
-		ent.radius = 14;
+		ent.origin[2] += lift;
+		if ( bobs ) {
+			cent->lerpOrigin[2] = ent.origin[2];
+			VectorCopy( ent.origin, ent.oldorigin );
+		}
+		ent.origin[2] += cg_simpleItemsRadius.value - 15.0f;
+		ent.radius = (float)cg_simpleItemsRadius.integer;
 		ent.customShader = cg_items[es->modelindex].icon_df;
 		ent.shaderRGBA[0] = 255;
 		ent.shaderRGBA[1] = 255;
@@ -254,20 +268,26 @@ static void CG_Item( centity_t *cent ) {
 		return;
 	}
 
-	// items bob up and down continuously
-	scale = 0.005 + cent->currentState.number * 0.00001;
-	modulus = 2 * M_PI * 20228 / scale;
-	cent->lerpOrigin[2] += 4 + cos( ( ( cg.time + 1000 ) % modulus ) *  scale ) * 4;
+	// retail 0x10016e5e: cg_itemFx bit 1 bobs every item on one shared cycle
+	cent->lerpOrigin[2] += CG_ItemBobOffset( cg_itemFx.integer, cg.time );
 
 	memset (&ent, 0, sizeof(ent));
 
-	// autorotate at one of two speeds
-	if ( item->giType == IT_HEALTH ) {
+	// retail 0x10016eb1: cg_itemFx bit 2 rotates at one of two speeds;
+	// without it the model keeps the fixed axis
+	switch ( CG_ItemRotation( cg_itemFx.integer, item ) ) {
+	case 2:
 		VectorCopy( cg.autoAnglesFast, cent->lerpAngles );
 		AxisCopy( cg.autoAxisFast, ent.axis );
-	} else {
+		break;
+	case 1:
 		VectorCopy( cg.autoAngles, cent->lerpAngles );
 		AxisCopy( cg.autoAxis, ent.axis );
+		break;
+	default:
+		VectorClear( cent->lerpAngles );
+		AxisClear( ent.axis );
+		break;
 	}
 
 	wi = NULL;
@@ -293,22 +313,25 @@ static void CG_Item( centity_t *cent ) {
 	}
 
 	ent.hModel = cg_items[es->modelindex].models[0];
+	// retail 0x10016fa9: cg_flagStyle 2 draws the flags with their other model
+	flagModel = CG_ItemFlagStyleModel( item, cg_flagStyle.integer );
+	if ( flagModel ) {
+		ent.hModel = trap_R_RegisterModel( flagModel );
+	}
 
 	VectorCopy( cent->lerpOrigin, ent.origin);
 	VectorCopy( cent->lerpOrigin, ent.oldorigin);
 
 	ent.nonNormalizedAxes = qfalse;
 
-	// if just respawned, slowly scale up
-	msec = cg.time - cent->miscTime;
-	if ( msec >= 0 && msec < ITEM_SCALEUP_TIME ) {
-		frac = (float)msec / ITEM_SCALEUP_TIME;
+	// retail 0x10017047: with cg_itemFx bit 4 a respawned item scales up
+	// over a second
+	frac = CG_ItemSpawnScale( cg_itemFx.integer, cg.time - cent->miscTime );
+	if ( frac != 1.0f ) {
 		VectorScale( ent.axis[0], frac, ent.axis[0] );
 		VectorScale( ent.axis[1], frac, ent.axis[1] );
 		VectorScale( ent.axis[2], frac, ent.axis[2] );
 		ent.nonNormalizedAxes = qtrue;
-	} else {
-		frac = 1.0;
 	}
 
 	// items without glow textures need to keep a minimum light value
@@ -327,12 +350,11 @@ static void CG_Item( centity_t *cent ) {
 #ifdef MISSIONPACK
 		trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, cgs.media.weaponHoverSound );
 #endif
-		// pickup color from spectaror/own client
+		// retail 0x1001712b: the railgun pickup is green for everyone
 		if ( item->giTag == WP_RAILGUN ) {
-			const clientInfo_t *ci = cgs.clientinfo + cg.snap->ps.clientNum;
-			ent.shaderRGBA[0] = ci->color1[0] * 255.0f;
-			ent.shaderRGBA[1] = ci->color1[1] * 255.0f;
-			ent.shaderRGBA[2] = ci->color1[2] * 255.0f;
+			ent.shaderRGBA[0] = 0;
+			ent.shaderRGBA[1] = 255;
+			ent.shaderRGBA[2] = 0;
 			ent.shaderRGBA[3] = 255;
 		}
 	}

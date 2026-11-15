@@ -331,9 +331,13 @@ void CheckAlmostCapture( gentity_t *self, gentity_t *attacker ) {
 				self->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
 				if ( attacker->client ) {
 					attacker->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
-					// retail 0x100470a9: an enemy's near-capture stopped, for the stats report
+					// retail 0x100470a9: an enemy's near-capture stopped, for the stats
+					// report; the second one earns an achievement (0x100470f7)
 					if ( self->client->sess.sessionTeam != attacker->client->sess.sessionTeam ) {
 						attacker->client->stats.holyShits++;
+						if ( attacker->client->stats.holyShits >= 2 ) {
+							G_SteamAchievement( attacker, 0x18 );
+						}
 					}
 				}
 			}
@@ -497,6 +501,9 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 	if ( killer->ps.powerups[PW_QUAD] ) {
 		killer->ps.stats[STAT_QUAD_FRAG_COUNT]++;
 		killer->stats.quadKills++;
+		if ( killer->stats.quadKills >= 10 ) {
+			G_SteamAchievement( attacker, 0x2f );	// retail 0x1004778a
+		}
 	}
 
 	// the first frag of the match
@@ -510,11 +517,17 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 		// play humiliation on the player and the target
 		G_AwardSprite( attacker, PERS_GAUNTLET_FRAG_COUNT, EF_AWARD_GAUNTLET );
 		client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_GAUNTLETREWARD;
+		if ( g_gametype.integer == GT_TOURNAMENT ) {
+			G_SteamAchievement( attacker, 0x30 );	// a humiliation in a duel (0x10047898)
+		}
 	}
 
 	// two kills in a short amount of time
 	if ( level.time - killer->lastKillTime < CARNAGE_REWARD_TIME ) {
 		G_AwardSprite( attacker, PERS_EXCELLENT_COUNT, EF_AWARD_EXCELLENT );
+		if ( killer->ps.persistant[PERS_EXCELLENT_COUNT] >= 3 ) {
+			G_SteamAchievement( attacker, 0x17 );	// retail 0x10047925
+		}
 	}
 
 	// killing a player who has killed you three times since you last got him
@@ -537,6 +550,9 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 	if ( meansOfDeath == MOD_SHOTGUN ) {
 		if ( client->ps.groundEntityNum == ENTITYNUM_NONE && !self->waterlevel ) {
 			killer->stats.midairShotgunKills++;
+			if ( killer->stats.midairShotgunKills >= 5 ) {
+				G_SteamAchievement( attacker, 0x35 );	// retail 0x10047a9d
+			}
 		}
 	} else {
 		// a projectile kill of a player well clear of the ground
@@ -562,6 +578,10 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 	if ( killer->ps.powerups[PW_QUAD] && killer->ps.stats[STAT_QUAD_FRAG_COUNT] > 9
 		&& killer->ps.stats[STAT_QUAD_FRAG_COUNT] % 10 == 0 ) {
 		G_AwardMedal( attacker, MEDAL_QUADGOD );
+	}
+
+	if ( meansOfDeath == MOD_KAMIKAZE ) {
+		G_SteamAchievement( attacker, 0x12 );	// retail 0x10047cd3
 	}
 
 	killer->lastKillTime = level.time;
@@ -716,6 +736,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	if ( !level.shuffling ) {
 		G_StatsReportKill( self, attacker, meansOfDeath );
 		G_StatsKill( self, attacker, meansOfDeath );
+		G_StatsKillAchievements( self, attacker, meansOfDeath );
 	}
 
 	if ( !attacker || !attacker->client ) {
@@ -973,6 +994,7 @@ A scored hit counts toward both the overall and the weapon's accuracy.
 void G_StatsHit( gclient_t *client, int weapon ) {
 	client->accuracy_hits++;
 	client->stats.weaponHits[weapon]++;
+	G_StatsSteamHit( client, weapon );
 }
 
 

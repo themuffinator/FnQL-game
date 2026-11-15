@@ -1574,6 +1574,11 @@ void BotChooseWeapon(bot_state_t *bs) {
 			bs->cur_ps.weaponstate == WEAPON_DROPPING) {
 		trap_EA_SelectWeapon(bs->client, bs->weaponnum);
 	}
+	else if ( bot_gauntlet.integer ) {
+		// retail 0x10015ee7: bot_gauntlet keeps every bot on the gauntlet
+		bs->weaponnum = WP_GAUNTLET;
+		trap_EA_SelectWeapon(bs->client, bs->weaponnum);
+	}
 	else {
 		newweaponnum = trap_BotChooseBestFightWeapon(bs->ws, bs->inventory);
 		if (bs->weaponnum != newweaponnum) bs->weaponchange_time = FloatTime();
@@ -1798,6 +1803,27 @@ void BotUpdateInventory(bot_state_t *bs) {
 	}
 #endif
 	BotCheckItemPickup(bs, oldinventory);
+	// Retail qagamex86 0x100162d0, the last step of the update: ammunition
+	// held without limit (-1, as under instagib or g_infiniteAmmo) counts as
+	// 999 rounds.  The weapon weights read these slots, and with -1 they
+	// rated every such weapon as empty: an instagib bot never fired its
+	// railgun and fought with the gauntlet.
+	{
+		static const int ammoSlots[] = {
+			INVENTORY_SHELLS, INVENTORY_BULLETS, INVENTORY_GRENADES, INVENTORY_CELLS,
+			INVENTORY_LIGHTNINGAMMO, INVENTORY_ROCKETS, INVENTORY_SLUGS, INVENTORY_BFGAMMO,
+#ifdef MISSIONPACK
+			INVENTORY_NAILS, INVENTORY_MINES, INVENTORY_BELT
+#endif
+		};
+		int i;
+
+		for (i = 0; i < (int)ARRAY_LEN(ammoSlots); i++) {
+			if (bs->inventory[ammoSlots[i]] == -1) {
+				bs->inventory[ammoSlots[i]] = 999;
+			}
+		}
+	}
 }
 
 /*

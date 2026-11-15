@@ -861,6 +861,12 @@ void G_StatsReportRaceComplete( const gentity_t *ent, int raceTime, qboolean wea
 void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean quit );
 void G_StatsReportMatchStarted( void );
 void G_StatsReportMatch( qboolean aborted, int restarted, const char *exitMessage );
+int G_LoadoutWeaponMask( const char *list );
+void G_SteamAchievement( const gentity_t *ent, int id );
+void G_StatsSteamShots( const gentity_t *ent, int weapon, int count );
+void G_StatsSteamHit( const gclient_t *client, int weapon );
+void G_StatsKillAchievements( gentity_t *victim, gentity_t *attacker, int mod );
+void trap_AddSteamStat( int clientNum, int statIndex, int delta );
 qboolean trap_StatsAvailable( void );
 void trap_StatsReportJson( const char *json );
 void trap_StatsEventJson( unsigned long long steamId, const char *eventName, const char *json );

@@ -405,6 +405,17 @@ int BotGetLongTermGoal(bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal) 
 	if (gametype == GT_CLAN_ARENA || gametype == GT_RED_ROVER) {
 		return BotGetHuntLongTermGoal(bs, goal);
 	}
+	// Instagib has no items either.  Retail gives it an AI node of its own
+	// ("insta gib!", 0x10013410, entered from BotDeathmatchAI at 0x1001f328
+	// while g_instaGib is set and the bot has no enemy): walk to the nearest
+	// enemy, fight what comes into view.  The same hunt serves here as the
+	// long term goal of the modes without an objective; the flag and
+	// objective modes keep their team goals (an inference: what retail's
+	// node does to those goals was not traced).
+	if (g_instaGib.integer && (gametype == GT_FFA || gametype == GT_TOURNAMENT
+			|| gametype == GT_TEAM || gametype == GT_FREEZE)) {
+		return BotGetHuntLongTermGoal(bs, goal);
+	}
 
 	if (bs->ltgtype == LTG_TEAMHELP && !retreat) {
 		//check for bot typing status message

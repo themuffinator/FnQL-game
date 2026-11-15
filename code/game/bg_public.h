@@ -113,7 +113,8 @@
 #define	CS_QL_2B0				CS_DUEL_CLIENT2
 #define	CS_QL_2B1				CS_DUEL_NAME1
 #define	CS_QL_2B2				CS_DUEL_NAME2
-#define	CS_QL_2B3				0x2B3
+#define	CS_ATMOSPHERE			0x2B3	// worldspawn "atmosphere", or g_forceAtmosphericEffects (retail 0x100666dd)
+#define	CS_QL_2B3				CS_ATMOSPHERE
 // The end-of-match awards each hold a client number, or "" for nobody
 // (retail qagamex86 0x100559e0); the names say what the game measures.
 #define	CS_AWARD_DAMAGE			0x2B4	// most damage given; the fewest shots break a tie

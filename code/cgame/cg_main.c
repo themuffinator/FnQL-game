@@ -1616,6 +1616,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 
 	// clear everything
 	memset( &cgs, 0, sizeof( cgs ) );
+	cgs.complaintClient = -1;	// no team-kill complaint pending (retail 0x1004a369)
 	memset( &cg, 0, sizeof( cg ) );
 	cg.damagePlumRandom = 0x92u; /* Retail damage-plum generator initial state. */
 	memset( cg_entities, 0, sizeof(cg_entities) );
@@ -1795,6 +1796,8 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 #endif
 
 	CG_ShaderStateChanged();
+
+	CG_SetGameInfo();	// retail 0x10029fa6
 
 	trap_S_ClearLoopingSounds( qtrue );
 

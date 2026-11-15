@@ -198,6 +198,8 @@ cgame = shared_library(module_prefix + 'cgame' + module_arch,
     'code/cgame/cg_statusicons.c',
     'code/cgame/cg_spectatorhud.c',
     'code/cgame/cg_endvote.c',
+    'code/cgame/cg_voteprompt.c',
+    'code/cgame/cg_itempresentation.c',
     'code/cgame/cg_duelhud.c',
     'code/cgame/cg_teamstats.c',
     'code/cgame/cg_itemtimers.c',
@@ -379,6 +381,17 @@ cgame_endvote_test = executable('cgame_endvote',
     'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
   c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('cgame-endvote', cgame_endvote_test, suite: ['unit', 'cgame'])
+
+cgame_voteprompt_test = executable('cgame_voteprompt',
+  files('tests/cgame_voteprompt.c', 'code/cgame/cg_voteprompt.c',
+    'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
+  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('cgame-voteprompt', cgame_voteprompt_test, suite: ['unit', 'cgame'])
+
+cgame_itempresentation_test = executable('cgame_itempresentation',
+  files('tests/cgame_itempresentation.c', 'code/cgame/cg_itempresentation.c'),
+  c_args: c_args + ['-DCGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('cgame-itempresentation', cgame_itempresentation_test, suite: ['unit', 'cgame'])
 
 cgame_duelhud_test = executable('cgame_duelhud',
   files('tests/cgame_duelhud.c', 'code/cgame/cg_duelhud.c',
@@ -808,6 +821,9 @@ if get_option('fnql-dedicated') != ''
     'chat-tokens-tdm': ['tdm_chat_tokens', '--factory', 'tdm', '--frames', '160'],
     'chat-tokens-ffa': ['tdm_chat_tokens', '--frames', '160'],
     'team-join': ['tdm_team_join', '--factory', 'tdm', '--frames', '800', '--set', 'teamsize', '2'],
+    'ready-gate-ffa': ['ffa_ready_gate', '--frames', '400', '--set', 'teamsize', '2'],
+    'ready-gate-tdm': ['tdm_ready_gate', '--factory', 'tdm', '--frames', '400',
+      '--set', 'g_teamForceBalance', '1'],
     'sudden-death': ['ffa_sudden_death', '--frames', '3000', '--set', 'g_doWarmup', '0',
       '--set', 'g_warmup', '0', '--set', 'g_suddenDeathRespawn', '1',
       '--set', 'g_suddenDeathRespawnTick', '2', '--set', 'g_suddenDeathRespawnStart', '1',
@@ -843,6 +859,25 @@ if get_option('fnql-dedicated') != ''
       args: rule_args + ['--module', qagame.full_path()], depends: qagame,
       suite: 'server-rules', timeout: 300, is_parallel: false)
   endforeach
+  # Key doors, on a hand-authored fixture: no stock map carries one.
+  key_door_args = server_lockstep_args + ['--cheats', '--frames', '900',
+    '--entities', files('tests/lockstep/entities/key_doors.ent'),
+    '--scenario', files('tests/lockstep/server/ffa_key_doors.txt')]
+  test('server-rules-key-doors-selfcheck', python, args: key_door_args + ['--self-check'],
+    suite: 'server-rules', timeout: 300, is_parallel: false)
+  test('server-rules-key-doors-differential', python,
+    args: key_door_args + ['--module', qagame.full_path()], depends: qagame,
+    suite: 'server-rules', timeout: 300, is_parallel: false)
+  # Worldspawn keys: disable_loadout and atmosphere reach their configstrings.
+  worldspawn_key_args = server_lockstep_args + ['--factory', 'ffa', '--frames', '200', '--port', '28031',
+    '--set', 'g_loadout', '1',
+    '--entities', files('tests/lockstep/entities/worldspawn_keys.ent'),
+    '--scenario', files('tests/lockstep/server/ffa_worldspawn_keys.txt')]
+  test('server-rules-worldspawn-keys-selfcheck', python, args: worldspawn_key_args + ['--self-check'],
+    suite: 'server-rules', timeout: 300, is_parallel: false)
+  test('server-rules-worldspawn-keys-differential', python,
+    args: worldspawn_key_args + ['--module', qagame.full_path()], depends: qagame,
+    suite: 'server-rules', timeout: 300, is_parallel: false)
   # Public voting: grammar, electorate, actions and match transitions.
   foreach scenario, spec : {'voting_rules': ['ffa', '1820'],
                            'voting_actions': ['ffa', '1080'],

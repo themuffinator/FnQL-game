@@ -1002,6 +1002,15 @@ int BotAI(int client, float thinktime) {
 			//remove first and last quote from the chat message
 			memmove(args, args+1, strlen(args));
 			args[strlen(args)-1] = '\0';
+			// Quake Live chat starts with the speaker's two-digit client
+			// number, which the bot chat templates do not know: retail
+			// skips it here (qagamex86 0x100221a7), and only here.  Team
+			// orders travel as tells, which are "chat" commands, so
+			// without this no bot ever understood an order.  Retail leaves
+			// the prefix on "tchat" below.
+			if (args[0] >= '0' && args[0] <= '9' && args[1] >= '0' && args[1] <= '9' && args[2] == ' ') {
+				args += 3;
+			}
 			trap_BotQueueConsoleMessage(bs->cs, CMS_CHAT, args);
 		}
 		else if (!Q_stricmp(buf, "tchat")) {

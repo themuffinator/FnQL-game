@@ -49,6 +49,82 @@ This is called explicitly when the gamestate is first received,
 and whenever the server updates any serverinfo flagged cvars
 ================
 */
+// The lines the retail in-game menus show about the mode, by gametype
+// (retail cgame table 0x10076870, six strings a row).
+static const char *const cg_gameInfoLines[GT_MAX_GAME_TYPE][6] = {
+	{ "This is a Free For All game", "Shoot Everyone!", "First player to reach the Frag Limit wins.",
+		"If time runs out, the player with the highest score wins.",
+		"If the time limit is hit and there is a tie, a Sudden Death round begins.", " " },
+	{ "This is a 1 vs 1 Duel game", "Defeat your opponent!", "If time runs out, the player with the highest score wins.",
+		"If the time limit is hit and there is a tie, the match extends", "into overtime.", " " },
+	{ "This is a Race game", "Race to the finish!", "Run through the course, hitting all checkpoints in order.",
+		"Use all your movement skills to complete the course the fastest.",
+		"The player with the shortest time at the end of the match wins.", " " },
+	{ "This is a Team Deathmatch game", "Shoot anyone on the other team!",
+		"When time runs out, the team with the highest score wins.",
+		"If the time limit is hit and there is a tie, a Sudden Death round begins.", " ", " " },
+	{ "This is a Clan Arena game", "Shoot anyone on the other team!", "You spawn equipped with all weapons and full armor.",
+		"Completely eliminate the opposing team to win the round.", "The first team to reach the round limit wins.", " " },
+	{ "This is a Capture the Flag game", "Grab the other teams flag and bring it back to your own flag.",
+		"First team to reach the Capture Limit wins.", "If time runs out, the team with most captures wins.",
+		"If the time limit is hit and there is a tie, a Sudden Death round begins.", " " },
+	{ "This is a One Flag game", "Grab the white flag in the center, and carry it to the enemy flag stand.",
+		"First team to reach the Capture Limit wins.", "If time runs out, the team with most captures wins.",
+		"If the time limit is hit and there is a tie, a Sudden Death round begins.", " " },
+	{ "This is an Overload game", "Destroy the enemy obelisk.", "The obelisk will explode when enough damage is applied.",
+		"When it explodes, your team scores a capture.", "First team to reach the Capture Limit wins.", " " },
+	{ "This is a Harvester game", "When a player is fragged, a skull spawns from the skull generator.",
+		"Pick up enemy skulls.", "Carry the skulls to the enemy flag stand.",
+		"First team to reach the Capture Limit wins.", " " },
+	{ "This is a Freeze Tag game", "Shoot everyone on the other team!", "Fragging another player freezes them.",
+		"Freeze all enemy team members to score a team point.",
+		"Stand by frozen teammates for 3 seconds to thaw them.", " " },
+	{ "This is a Domination game", "Capture domination points to earn points for your team.",
+		"Either team can capture any domination point.",
+		"Capture multiple points to earn more points for your team.", "First team to reach the Score Limit wins.", " " },
+	{ "This is an Attack and Defend game", "Alternate each round Attacking or Defending the flag.",
+		"You spawn equipped with all weapons and full armor.", "Touch the enemy's flag to be awarded a bonus point.",
+		"Eliminate the opposing team or capture their flag to win the round.", " " },
+	{ "This is a Red Rover game", "You spawn equipped with all weapons and full armor.",
+		"Frag enemies and they will respawn onto your team.",
+		"Compete against your teammates for the most damage and frags.",
+		"The player with the highest score at the end of the round limit wins.", " " }
+};
+
+/*
+================
+CG_SetGameInfo
+
+Retail cgame 0x100295c0, at init and whenever the serverinfo is read: the
+six cg_gameInfo cvars describe the mode, or the training tour while
+g_training is set; a gametype out of range blanks them.
+================
+*/
+void CG_SetGameInfo( void ) {
+	static const char *const training[6] = {
+		"Welcome to QUAKE LIVE training",
+		"A trainer named 'Crash' is waiting to give you a quick introduction",
+		"to the game. Follow 'Crash' through a tour of the warm-up arena, then",
+		"compete against her in a free-for-all deathmatch game.",
+		"",
+		"Click 'Start Training' to begin."
+	};
+	int		i;
+
+	for ( i = 0; i < 6; i++ ) {
+		const char *line;
+
+		if ( g_training.integer ) {
+			line = training[i];
+		} else if ( cgs.gametype >= 0 && cgs.gametype < GT_MAX_GAME_TYPE ) {
+			line = cg_gameInfoLines[cgs.gametype][i];
+		} else {
+			line = " ";
+		}
+		trap_Cvar_Set( va( "cg_gameInfo%i", i + 1 ), line );
+	}
+}
+
 void CG_ParseServerinfo( void ) {
 	const char	*info;
 	char	*mapname;
@@ -58,6 +134,7 @@ void CG_ParseServerinfo( void ) {
 	/* Retail 10048967: installed HUDs select mode-specific panels here. */
 	trap_Cvar_Set( "cg_gametype", va( "%i", cgs.gametype ) );
 	trap_Cvar_Set( "ui_gametype", va( "%i", cgs.gametype ) );
+	CG_SetGameInfo();	/* retail 100489a5 */
 	cgs.dmflags = atoi( Info_ValueForKey( info, "dmflags" ) );
 	cgs.teamflags = atoi( Info_ValueForKey( info, "teamflags" ) );
 	cgs.fraglimit = atoi( Info_ValueForKey( info, "fraglimit" ) );
@@ -1014,6 +1091,15 @@ static void CG_ServerCommand( void ) {
 
 	if ( !strcmp( cmd, "map_restart" ) ) {
 		CG_MapRestart();
+		CG_ClearComplaint();	// retail 0x1004a369
+		return;
+	}
+
+	// Retail 0x1004bc43: a teammate killed the player, who may file a
+	// complaint for fifteen seconds; a negative number is a notice shown for
+	// ten.
+	if ( !strcmp( cmd, "complaint" ) ) {
+		CG_SetComplaint( atoi( CG_Argv( 1 ) ) );
 		return;
 	}
 

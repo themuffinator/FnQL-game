@@ -1,0 +1,18 @@
+// Hand-authored fixture: a worldspawn that carries the Quake Live keys
+// "disable_loadout" (weapon short names taken out of the loadout menu) and
+// "atmosphere" (the weather the client draws), over one spawn point.
+{
+"classname" "worldspawn"
+"message" "FnQL worldspawn key replay"
+"disable_loadout" "rl lg hmg unknown pg"
+"atmosphere" "T=RAIN,B=5 10,C=0.5,G=0.5 2,BV=0 0,GV=0 0,W=1 2,D=2000"
+}
+{
+"classname" "info_player_deathmatch"
+"origin" "-260 -320 40"
+"angle" "180"
+}
+{
+"classname" "info_player_intermission"
+"origin" "-260 -320 300"
+}

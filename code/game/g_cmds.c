@@ -1515,6 +1515,13 @@ static int SetTeamInternal( gentity_t *ent, const char *s, qboolean force ) {
 		checkLock = !force;
 
 	} else {
+		// retail 0x10040b68: a free-for-all arena holds teamsize players
+		if ( g_gametype.integer == GT_FFA && teamsize.integer > 0
+			&& level.numNonSpectatorClients >= teamsize.integer ) {
+			trap_SendServerCommand( clientNum, va( "print \"^1Arena is full. Team size is currently set to %d.^7\n\"",
+				teamsize.integer ) );
+			return -1;
+		}
 		team = TEAM_FREE;
 		if ( g_gametype.integer == GT_TOURNAMENT ) {
 			// retail (qagamex86 0x10040bd1): asking to play joins the queue
@@ -1630,13 +1637,39 @@ void G_FollowNextOrStop( gentity_t *ent ) {
 Cmd_ReadyUp_f
 
 Retail qagamex86 0x10045bd0: a player in the game toggles ready while the
-match waits in PRE_GAME, and everyone hears about it.
+match waits in PRE_GAME, and everyone hears about it.  Nobody readies up
+while g_teamForcePresent finds players missing (0x10068140) or
+g_teamForceBalance finds the teams more than one apart (0x10068100); a
+player who was ready is quietly made unready instead.  During the
+intermission the command only sets the flag, for the scoreboard.  (Retail
+also ends the training tour from here, 0x10045a80; training is not
+implemented.)
 =================
 */
+static qboolean G_ReadyUpPlayersPresent( void ) {
+	const int	red = TeamCount( -1, TEAM_RED );
+	const int	blue = TeamCount( -1, TEAM_BLUE );
+	const int	minimum = g_teamSizeMin.integer;
+
+	if ( !g_teamForcePresent.integer ) {
+		return qtrue;
+	}
+	// an infection round needs only its survivors' side or enough players
+	if ( g_rrInfected.integer && !( blue < minimum && level.numPlayingClients < minimum ) ) {
+		return qtrue;
+	}
+	if ( g_gametype.integer < GT_TEAM ) {
+		return level.numPlayingClients >= 2;
+	}
+	return red >= minimum && blue >= minimum;
+}
+
 static void Cmd_ReadyUp_f( gentity_t *ent ) {
 	gclient_t	*client = ent->client;
+	const int	clientNum = ent - g_entities;
+	const qboolean	preGame = level.warmupTime < 0;
 
-	if ( level.warmupTime >= 0 || level.intermissiontime ) {
+	if ( !preGame && !level.intermissiontime ) {
 		return;
 	}
 	if ( client->ps.pm_type == PM_SPECTATOR || client->sess.sessionTeam == TEAM_SPECTATOR
@@ -1644,10 +1677,38 @@ static void Cmd_ReadyUp_f( gentity_t *ent ) {
 		return;
 	}
 
-	client->pers.readyToPlay = !client->pers.readyToPlay;
-	ClientUserinfoChanged( ent - g_entities );
-	trap_SendServerCommand( -1, va( "cp \"%s ^7is ^7%s\n\"", client->pers.netname,
-		client->pers.readyToPlay ? "Ready" : "Not Ready" ) );
+	if ( preGame ) {
+		if ( !G_ReadyUpPlayersPresent() ) {
+			if ( client->pers.readyToPlay == 1 ) {
+				client->pers.readyToPlay = 0;
+				ClientUserinfoChanged( clientNum );
+				return;
+			}
+			trap_SendServerCommand( clientNum, G_IsTeamGametype( g_gametype.integer )
+				? "print \"Players cannot ready up until both teams are present.\n\""
+				: "print \"Cannot ready up until more players are present.\n\"" );
+			return;
+		}
+		if ( g_teamForceBalance.integer ) {
+			const int	red = TeamCount( -1, TEAM_RED );
+			const int	blue = TeamCount( -1, TEAM_BLUE );
+
+			if ( red > blue + 1 || blue > red + 1 ) {
+				trap_SendServerCommand( clientNum,
+					"print \"Players cannot ready up until both teams are fully present.\n\"" );
+				return;
+			}
+		}
+	}
+
+	if ( !level.intermissiontime || !client->pers.readyToPlay ) {
+		client->pers.readyToPlay = !client->pers.readyToPlay;
+		ClientUserinfoChanged( clientNum );
+	}
+	if ( preGame ) {
+		trap_SendServerCommand( -1, va( "cp \"%s ^7is ^7%s\n\"", client->pers.netname,
+			client->pers.readyToPlay ? "Ready" : "Not Ready" ) );
+	}
 }
 
 

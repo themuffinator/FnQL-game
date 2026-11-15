@@ -1301,6 +1301,11 @@ typedef struct {
 	int				voteYes;
 	int				voteNo;
 	qboolean		voteModified;			// beep whenever changed
+	// the team-kill complaint prompt (retail cgame 0x1000dbb0, 0x1004bc43):
+	// the teammate to complain about, or a notice (-1 filed, -2 dismissed,
+	// -3 no complaints against admins, -4 friendly fire from an admin)
+	int				complaintClient;
+	int				complaintEndTime;
 	char			voteString[MAX_STRING_TOKENS];
 
 	int				teamVoteTime[2];
@@ -1565,6 +1570,20 @@ qboolean CG_DrawDuelStat(int ownerDraw, float x, float y, float w, float h, int 
 qboolean CG_DrawEndVote(int ownerDraw, float x, float y, float w, float h, int align, float scale, vec4_t color, int style);
 const char *CG_VoteChoice(const char *key, int choice);
 const char *CG_VoteTimerText(void);
+int CG_VotePromptText( char *first, int firstSize, char *second, int secondSize );
+void CG_SetComplaint( int clientNum );
+void CG_ClearComplaint( void );
+void CG_DrawVote( void );
+
+//
+// cg_itempresentation.c
+//
+qboolean CG_ItemHiddenInGametype( const gitem_t *item, int gametype );
+float CG_ItemBobOffset( int itemFx, int time );
+int CG_ItemRotation( int itemFx, const gitem_t *item );
+float CG_ItemSpawnScale( int itemFx, int sinceSpawn );
+float CG_SimpleItemLift( const gitem_t *item, int bobMode, int heightOffset, int time, qboolean *bobs );
+const char *CG_ItemFlagStyleModel( const gitem_t *item, int flagStyle );
 void CG_DrawSpectatorHud(void);
 void CG_DrawFollowPlayerName(int ownerDraw, float x, float y, int align, float scale, vec4_t color, int style);
 qboolean CG_DrawEndSummary(int ownerDraw, float x, float y, int align, float scale, vec4_t color, int style);
@@ -1784,6 +1803,7 @@ void Menu_Reset( void );
 //
 void CG_ExecuteNewServerCommands( int latestSequence );
 void CG_ParseServerinfo( void );
+void CG_SetGameInfo( void );
 void CG_ParseSysteminfo( void );
 void CG_ParsePmoveSettings(void);
 void CG_SetConfigValues( void );

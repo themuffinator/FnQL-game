@@ -1,0 +1,26 @@
+# Gate G3 scenario (scripts/server_lockstep.py --factory tdm --frames 400):
+# who may ready up in a team mode (retail qagamex86 0x10045bd0, 0x10068140,
+# 0x10068100).  Nobody readies up until both teams have a player, nor while
+# the teams are more than one apart; a spectator's readyup does nothing.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client charlie name Charlie
+client dave name Dave
+client eve name Eve
+
+clientcmd 1 alpha team r
+clientcmd 20 alpha readyup
+clientcmd 30 eve readyup
+clientcmd 40 bravo team b
+clientcmd 60 alpha readyup
+clientcmd 80 bravo team s
+clientcmd 100 alpha readyup
+clientcmd 120 alpha readyup
+clientcmd 140 bravo team b
+clientcmd 160 charlie team r
+clientcmd 180 dave team r
+clientcmd 200 dave readyup
+clientcmd 220 bravo readyup

@@ -120,7 +120,8 @@ void CG_ImpactMark( qhandle_t markShader, const vec3_t origin, const vec3_t dir,
 	vec3_t			markPoints[MAX_MARK_POINTS];
 	vec3_t			projection;
 
-	if ( !cg_addMarks.integer && !temporary ) {
+	// retail 0x1002a77d: persistent marks need cg_marks and a mark lifetime
+	if ( ( !cg_addMarks.integer || !cg_impactMarkTime.integer ) && !temporary ) {
 		return;
 	}
 
@@ -207,7 +208,6 @@ void CG_ImpactMark( qhandle_t markShader, const vec3_t origin, const vec3_t dir,
 CG_AddMarks
 ===============
 */
-#define	MARK_TOTAL_TIME		10000
 #define	MARK_FADE_TIME		1000
 
 void CG_AddMarks( void ) {
@@ -215,8 +215,13 @@ void CG_AddMarks( void ) {
 	markPoly_t	*mp, *next;
 	int			t;
 	int			fade;
+	int			totalTime;
 
-	if ( !cg_addMarks.integer ) {
+	// Retail 0x1002aca0: cg_impactMarkTime is how long a mark lives (Quake
+	// III's fixed ten seconds is its default and upper bound); zero turns
+	// marks off.
+	totalTime = cg_impactMarkTime.integer;
+	if ( !cg_addMarks.integer || !totalTime ) {
 		return;
 	}
 
@@ -227,7 +232,7 @@ void CG_AddMarks( void ) {
 		next = mp->nextMark;
 
 		// see if it is time to completely remove it
-		if ( cg.time > mp->time + MARK_TOTAL_TIME ) {
+		if ( cg.time > mp->time + totalTime ) {
 			CG_FreeMarkPoly( mp );
 			continue;
 		}
@@ -251,7 +256,7 @@ void CG_AddMarks( void ) {
 		}
 
 		// fade all marks out with time
-		t = mp->time + MARK_TOTAL_TIME - cg.time;
+		t = mp->time + totalTime - cg.time;
 		if ( t < MARK_FADE_TIME ) {
 			fade = 255 * t / MARK_FADE_TIME;
 			if ( mp->alphaFade ) {
