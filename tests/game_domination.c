@@ -40,6 +40,8 @@ void trap_SetConfigstring(int index, const char *value) { (void)index; (void)val
 qboolean trap_InPVS(const vec3_t a, const vec3_t b) { return qtrue; }
 gentity_t *G_TempEntity(vec3_t origin, int type) { memset(&event,0,sizeof(event)); return &event; }
 void AddScore(gentity_t *ent, vec3_t origin, int score) { ent->client->ps.persistant[PERS_SCORE]+=score; }
+static int reportedMedals;
+void G_StatsReportMedal(const gentity_t *ent, const char *medal, int total) { (void)ent; (void)medal; (void)total; reportedMedals++; }
 void CalculateRanks(void) { }
 gentity_t *G_Find(gentity_t *from, int field, const char *name) {
  int i=from ? (int)(from-g_entities)+1 : 0;

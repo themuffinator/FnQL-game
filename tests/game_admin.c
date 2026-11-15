@@ -38,6 +38,7 @@ qboolean G_IsRoundBasedGametype(int mode) { (void)mode; return qfalse; }
 qboolean G_RoundCountingDown(void) { return qfalse; }
 void G_AutoAction(void) {}
 void CalculateRanks(void) {}
+void G_StatsReportRaceComplete(const gentity_t *ent, int raceTime, qboolean weaponsUsed) { (void)ent; (void)raceTime; (void)weaponsUsed; }
 const char *TeamName(team_t team) { static const char *names[]={"FREE","RED","BLUE","SPECTATOR"}; return names[team]; }
 int G_ForceTeam(gentity_t *ent,const char *team) { (void)ent; CHECK(!strcmp(team,"b")); ++forced; return TEAM_BLUE; }
 void AddScore(gentity_t *ent,vec3_t origin,int score) { (void)origin; ent->client->ps.persistant[PERS_SCORE]+=score; }

@@ -1399,7 +1399,11 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	}
 
 	CG_PositionRotatedEntityOnTag( &flash, &gun, weapon->weaponModel, "tag_flash" );
-	trap_R_AddRefEntityToScene( &flash );
+	// Retail 0x10052b61: the view weapon's flash needs cg_muzzleFlash and a
+	// drawn gun; other players' flashes always show.
+	if ( !ps || ( cg_muzzleFlash.integer && cg_drawGun.integer ) ) {
+		trap_R_AddRefEntityToScene( &flash );
+	}
 
 	// attach muzzle origin to tag_flash for grappling hook
 	if ( cg_drawGun.integer || cg.renderingThirdPerson || cent->currentState.number != cg.predictedPlayerState.clientNum ) {
@@ -1441,8 +1445,10 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 		else
 			radius = WEAPON_FLASH_RADIUS + (rand() & WEAPON_FLASH_RADIUS_MOD);
 
-		if ( weapon->flashDlightColor[0] || weapon->flashDlightColor[1] || weapon->flashDlightColor[2] ) {
-			trap_R_AddLightToScene( flash.origin, radius, 
+		// retail 0x10052c70: cg_muzzleFlash 0 also drops the view weapon's light
+		if ( ( weapon->flashDlightColor[0] || weapon->flashDlightColor[1] || weapon->flashDlightColor[2] )
+			&& ( !ps || cg_muzzleFlash.integer ) ) {
+			trap_R_AddLightToScene( flash.origin, radius,
 				weapon->flashDlightColor[0], weapon->flashDlightColor[1], weapon->flashDlightColor[2] );
 		}
 	}

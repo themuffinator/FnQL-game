@@ -4076,5 +4076,2367 @@
    "flags": 1343488,
    "announce": true
   }
+ ],
+ "cgameCvars": [
+  {
+   "name": "cg_armorTiered",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076a00"
+  },
+  {
+   "name": "cg_marks",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076a18"
+  },
+  {
+   "name": "cg_allowTaunt",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076a30"
+  },
+  {
+   "name": "cg_animspeed",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076a48"
+  },
+  {
+   "name": "cg_announcer",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "3",
+   "flags": 530433,
+   "row": "10076a60"
+  },
+  {
+   "name": "cg_announcerLastStandingVO",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076a78"
+  },
+  {
+   "name": "cg_announcerLeadsVO",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076a90"
+  },
+  {
+   "name": "cg_announcerRewardsVO",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076aa8"
+  },
+  {
+   "name": "cg_announcerTiesVO",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076ac0"
+  },
+  {
+   "name": "cg_autoAction",
+   "default": "3",
+   "minimum": "0",
+   "maximum": "3",
+   "flags": 530435,
+   "row": "10076ad8"
+  },
+  {
+   "name": "cg_autoHop",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 526339,
+   "row": "10076af0"
+  },
+  {
+   "name": "cg_autoswitch",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076b08"
+  },
+  {
+   "name": "cg_autoProjectileNudge",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076b20"
+  },
+  {
+   "name": "ui_bigFont",
+   "default": "0.4",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076b38"
+  },
+  {
+   "name": "cg_blood",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076b50"
+  },
+  {
+   "name": "cg_blueTeamName",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10076b68"
+  },
+  {
+   "name": "cg_bob",
+   "default": "0.25",
+   "minimum": "0.0",
+   "maximum": "1.0",
+   "flags": 530433,
+   "row": "10076b80"
+  },
+  {
+   "name": "cg_brassTime",
+   "default": "2500",
+   "minimum": "0",
+   "maximum": "10000",
+   "flags": 530433,
+   "row": "10076b98"
+  },
+  {
+   "name": "cg_bubbleTrail",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076bb0"
+  },
+  {
+   "name": "cg_buzzerSound",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076bc8"
+  },
+  {
+   "name": "com_cameraMode",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076be0"
+  },
+  {
+   "name": "cg_cameraOrbit",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076bf8"
+  },
+  {
+   "name": "cg_cameraOrbitDelay",
+   "default": "50",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076c10"
+  },
+  {
+   "name": "cg_cameraSmartMode",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076c28"
+  },
+  {
+   "name": "cg_cameraThirdPersonSmartMode",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076c40"
+  },
+  {
+   "name": "cg_centertime",
+   "default": "3",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076c58"
+  },
+  {
+   "name": "cg_chatbeep",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076c70"
+  },
+  {
+   "name": "cg_chatHistoryLength",
+   "default": "6",
+   "minimum": "0",
+   "maximum": "24",
+   "flags": 530433,
+   "row": "10076c88"
+  },
+  {
+   "name": "cg_complaintWarning",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076ca0"
+  },
+  {
+   "name": "cg_crosshairBrightness",
+   "default": "1.0",
+   "minimum": "0.0",
+   "maximum": "1.0",
+   "flags": 530433,
+   "row": "10076cb8"
+  },
+  {
+   "name": "cg_crosshairColor",
+   "default": "25",
+   "minimum": "1",
+   "maximum": "26",
+   "flags": 530433,
+   "row": "10076cd0"
+  },
+  {
+   "name": "cg_crosshairHealth",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076ce8"
+  },
+  {
+   "name": "cg_crosshairHitColor",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "26",
+   "flags": 530433,
+   "row": "10076d00"
+  },
+  {
+   "name": "cg_crosshairHitStyle",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "8",
+   "flags": 530433,
+   "row": "10076d18"
+  },
+  {
+   "name": "cg_crosshairHitTime",
+   "default": "200.0",
+   "minimum": "0.0",
+   "maximum": "1000.0",
+   "flags": 530433,
+   "row": "10076d30"
+  },
+  {
+   "name": "cg_crosshairPulse",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076d48"
+  },
+  {
+   "name": "cg_crosshairSize",
+   "default": "32",
+   "minimum": "0",
+   "maximum": "320",
+   "flags": 530433,
+   "row": "10076d60"
+  },
+  {
+   "name": "cg_crosshairX",
+   "default": "0",
+   "minimum": "-320",
+   "maximum": "320",
+   "flags": 530433,
+   "row": "10076d78"
+  },
+  {
+   "name": "cg_crosshairY",
+   "default": "0",
+   "minimum": "-240",
+   "maximum": "240",
+   "flags": 530433,
+   "row": "10076d90"
+  },
+  {
+   "name": "cg_currentSelectedPlayer",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10076da8"
+  },
+  {
+   "name": "cg_currentSelectedPlayerName",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10076dc0"
+  },
+  {
+   "name": "cg_damagePlum",
+   "default": "g mg sg gl rl lg rg pg bfg gh cg ng pl hmg",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10076dd8"
+  },
+  {
+   "name": "cg_damagePlumColorStyle",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "3",
+   "flags": 530433,
+   "row": "10076df0"
+  },
+  {
+   "name": "cg_deadBodyColor",
+   "default": "0x101010FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10076e08"
+  },
+  {
+   "name": "cg_deadBodyDarken",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076e20"
+  },
+  {
+   "name": "cg_debuganim",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076e38"
+  },
+  {
+   "name": "cg_debugevents",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076e50"
+  },
+  {
+   "name": "cg_debugFlags",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10076e68"
+  },
+  {
+   "name": "cg_deferPlayers",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10076e80"
+  },
+  {
+   "name": "cg_disableLoadout_g",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076e98"
+  },
+  {
+   "name": "cg_disableLoadout_mg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076eb0"
+  },
+  {
+   "name": "cg_disableLoadout_sg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076ec8"
+  },
+  {
+   "name": "cg_disableLoadout_gl",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076ee0"
+  },
+  {
+   "name": "cg_disableLoadout_rl",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076ef8"
+  },
+  {
+   "name": "cg_disableLoadout_lg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076f10"
+  },
+  {
+   "name": "cg_disableLoadout_rg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076f28"
+  },
+  {
+   "name": "cg_disableLoadout_pg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076f40"
+  },
+  {
+   "name": "cg_disableLoadout_bfg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076f58"
+  },
+  {
+   "name": "cg_disableLoadout_gh",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076f70"
+  },
+  {
+   "name": "cg_disableLoadout_ng",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076f88"
+  },
+  {
+   "name": "cg_disableLoadout_pl",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076fa0"
+  },
+  {
+   "name": "cg_disableLoadout_cg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076fb8"
+  },
+  {
+   "name": "cg_disableLoadout_hmg",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10076fd0"
+  },
+  {
+   "name": "cg_draw2D",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10076fe8"
+  },
+  {
+   "name": "cg_draw3dIcons",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077000"
+  },
+  {
+   "name": "cg_drawAmmoWarning",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077018"
+  },
+  {
+   "name": "cg_drawAttacker",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077030"
+  },
+  {
+   "name": "cg_drawCrosshair",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "29",
+   "flags": 530433,
+   "row": "10077048"
+  },
+  {
+   "name": "cg_drawCrosshairTeamHealth",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077060"
+  },
+  {
+   "name": "cg_drawCrosshairTeamHealthSize",
+   "default": "0.12",
+   "minimum": "0.10",
+   "maximum": "0.26",
+   "flags": 530433,
+   "row": "10077078"
+  },
+  {
+   "name": "cg_drawDeadFriendTime",
+   "default": "3000.0",
+   "minimum": "0.0",
+   "maximum": "5000.0",
+   "flags": 530433,
+   "row": "10077090"
+  },
+  {
+   "name": "cg_drawDemoHUD",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100770a8"
+  },
+  {
+   "name": "cg_drawFPS",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100770c0"
+  },
+  {
+   "name": "cg_drawFragMessages",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100770d8"
+  },
+  {
+   "name": "cg_drawFullWeaponBar",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100770f0"
+  },
+  {
+   "name": "cg_drawGun",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "3",
+   "flags": 530433,
+   "row": "10077108"
+  },
+  {
+   "name": "cg_drawHitFriendTime",
+   "default": "100",
+   "minimum": "0",
+   "maximum": "5000",
+   "flags": 530433,
+   "row": "10077120"
+  },
+  {
+   "name": "cg_drawIcons",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077138"
+  },
+  {
+   "name": "cg_drawInputCmds",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077150"
+  },
+  {
+   "name": "cg_drawInputCmdsSize",
+   "default": "24",
+   "minimum": "16",
+   "maximum": "200",
+   "flags": 530433,
+   "row": "10077168"
+  },
+  {
+   "name": "cg_drawInputCmdsX",
+   "default": "320",
+   "minimum": "0",
+   "maximum": "640",
+   "flags": 530433,
+   "row": "10077180"
+  },
+  {
+   "name": "cg_drawInputCmdsY",
+   "default": "240",
+   "minimum": "0",
+   "maximum": "480",
+   "flags": 530433,
+   "row": "10077198"
+  },
+  {
+   "name": "cg_drawItemPickups",
+   "default": "3",
+   "minimum": "0",
+   "maximum": "7",
+   "flags": 530433,
+   "row": "100771b0"
+  },
+  {
+   "name": "cg_drawPregameMessages",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 528384,
+   "row": "100771c8"
+  },
+  {
+   "name": "cg_drawProfileImages",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100771e0"
+  },
+  {
+   "name": "cg_drawCheckpointRemaining",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100771f8"
+  },
+  {
+   "name": "cg_drawRewards",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077210"
+  },
+  {
+   "name": "cg_drawRewardsRowSize",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "9",
+   "flags": 530433,
+   "row": "10077228"
+  },
+  {
+   "name": "cg_drawSnapshot",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077240"
+  },
+  {
+   "name": "cg_drawSpecMessages",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 528384,
+   "row": "10077258"
+  },
+  {
+   "name": "cg_drawSprites",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077270"
+  },
+  {
+   "name": "cg_drawSpriteSelf",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077288"
+  },
+  {
+   "name": "cg_drawStatus",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100772a0"
+  },
+  {
+   "name": "cg_drawTeamOverlay",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "100772b8"
+  },
+  {
+   "name": "cg_drawTeamOverlayOpacity",
+   "default": "0.75",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100772d0"
+  },
+  {
+   "name": "cg_drawTeamOverlaySize",
+   "default": "0.16",
+   "minimum": "0.12",
+   "maximum": "0.22",
+   "flags": 530433,
+   "row": "100772e8"
+  },
+  {
+   "name": "cg_drawTeamOverlayX",
+   "default": "0",
+   "minimum": "-640",
+   "maximum": "640",
+   "flags": 530433,
+   "row": "10077300"
+  },
+  {
+   "name": "cg_drawTeamOverlayY",
+   "default": "0",
+   "minimum": "-480",
+   "maximum": "480",
+   "flags": 530433,
+   "row": "10077318"
+  },
+  {
+   "name": "cg_drawTieredArmorAvailability",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077330"
+  },
+  {
+   "name": "g_enableDust",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 4,
+   "row": "10077348"
+  },
+  {
+   "name": "cg_enemyCrosshairNames",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077360"
+  },
+  {
+   "name": "cg_enemyCrosshairNamesOpacity",
+   "default": "0.75",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077378"
+  },
+  {
+   "name": "cg_enemyHeadColor",
+   "default": "0x2a8000FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077390"
+  },
+  {
+   "name": "cg_enemyLowerColor",
+   "default": "0x2a8000FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100773a8"
+  },
+  {
+   "name": "cg_enemyUpperColor",
+   "default": "0x2a8000FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100773c0"
+  },
+  {
+   "name": "cg_errordecay",
+   "default": "100",
+   "minimum": "0",
+   "maximum": "100",
+   "flags": 528384,
+   "row": "100773d8"
+  },
+  {
+   "name": "cg_filter_angles",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "100773f0"
+  },
+  {
+   "name": "cg_flagStyle",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077408"
+  },
+  {
+   "name": "cg_followKiller",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 4096,
+   "row": "10077420"
+  },
+  {
+   "name": "cg_followPowerup",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 4096,
+   "row": "10077438"
+  },
+  {
+   "name": "cg_footsteps",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077450"
+  },
+  {
+   "name": "cg_forceBlueTeamModel",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077468"
+  },
+  {
+   "name": "cg_forceDrawCrosshair",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077480"
+  },
+  {
+   "name": "cg_forceEnemyModel",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077498"
+  },
+  {
+   "name": "cg_forceEnemySkin",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100774b0"
+  },
+  {
+   "name": "cg_forceEnemyWeaponColor",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100774c8"
+  },
+  {
+   "name": "cg_forceRedTeamModel",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100774e0"
+  },
+  {
+   "name": "cg_forceTeamModel",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100774f8"
+  },
+  {
+   "name": "cg_forceTeamSkin",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077510"
+  },
+  {
+   "name": "cg_forceTeamWeaponColor",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077528"
+  },
+  {
+   "name": "cg_fov",
+   "default": "100",
+   "minimum": "10",
+   "maximum": "130",
+   "flags": 530433,
+   "row": "10077540"
+  },
+  {
+   "name": "cg_gameInfo1",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077558"
+  },
+  {
+   "name": "cg_gameInfo2",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077570"
+  },
+  {
+   "name": "cg_gameInfo3",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077588"
+  },
+  {
+   "name": "cg_gameInfo4",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "100775a0"
+  },
+  {
+   "name": "cg_gameInfo5",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "100775b8"
+  },
+  {
+   "name": "cg_gameInfo6",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "100775d0"
+  },
+  {
+   "name": "cg_gametype",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "100775e8"
+  },
+  {
+   "name": "cg_gunX",
+   "default": "0",
+   "minimum": "-10",
+   "maximum": "10",
+   "flags": 530433,
+   "row": "10077600"
+  },
+  {
+   "name": "cg_gunY",
+   "default": "0",
+   "minimum": "-10",
+   "maximum": "20",
+   "flags": 530433,
+   "row": "10077618"
+  },
+  {
+   "name": "cg_gunZ",
+   "default": "0",
+   "minimum": "-8",
+   "maximum": "0",
+   "flags": 530433,
+   "row": "10077630"
+  },
+  {
+   "name": "cg_hitBeep",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "3",
+   "flags": 530433,
+   "row": "10077648"
+  },
+  {
+   "name": "cg_hudFiles",
+   "default": "ui/hud.txt",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526336,
+   "row": "10077660"
+  },
+  {
+   "name": "cg_ignoreMouseInput",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077678"
+  },
+  {
+   "name": "cg_impactMarkTime",
+   "default": "10000",
+   "minimum": "0",
+   "maximum": "10000",
+   "flags": 530433,
+   "row": "10077690"
+  },
+  {
+   "name": "cg_impactSparks",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100776a8"
+  },
+  {
+   "name": "cg_impactSparksLifetime",
+   "default": "250",
+   "minimum": "0",
+   "maximum": "1000",
+   "flags": 530433,
+   "row": "100776c0"
+  },
+  {
+   "name": "cg_impactSparksSize",
+   "default": "8",
+   "minimum": "2",
+   "maximum": "16",
+   "flags": 530433,
+   "row": "100776d8"
+  },
+  {
+   "name": "cg_impactSparksVelocity",
+   "default": "128",
+   "minimum": "-128",
+   "maximum": "128",
+   "flags": 530433,
+   "row": "100776f0"
+  },
+  {
+   "name": "cg_itemFx",
+   "default": "7",
+   "minimum": "0",
+   "maximum": "7",
+   "flags": 530433,
+   "row": "10077708"
+  },
+  {
+   "name": "cg_itemTimers",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077720"
+  },
+  {
+   "name": "cg_kickScale",
+   "default": "0.25",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077738"
+  },
+  {
+   "name": "cg_killBeep",
+   "default": "7",
+   "minimum": "0",
+   "maximum": "8",
+   "flags": 530433,
+   "row": "10077750"
+  },
+  {
+   "name": "cg_lagometer",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077768"
+  },
+  {
+   "name": "cg_lastmsg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077780"
+  },
+  {
+   "name": "cg_latchedHookOffset",
+   "default": "1.0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077798"
+  },
+  {
+   "name": "cg_levelTimerDirection",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100777b0"
+  },
+  {
+   "name": "cg_lightningImpact",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100777c8"
+  },
+  {
+   "name": "cg_lightningImpactCap",
+   "default": "192",
+   "minimum": "0",
+   "maximum": "768",
+   "flags": 530433,
+   "row": "100777e0"
+  },
+  {
+   "name": "cg_lightningStyle",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "5",
+   "flags": 530433,
+   "row": "100777f8"
+  },
+  {
+   "name": "cg_loadout",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077810"
+  },
+  {
+   "name": "cg_lowAmmoWarningPercentile",
+   "default": "0.20",
+   "minimum": "0.01",
+   "maximum": "1.00",
+   "flags": 530433,
+   "row": "10077828"
+  },
+  {
+   "name": "cg_lowAmmoWarningSound",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077840"
+  },
+  {
+   "name": "cg_lowAmmoWeaponBarWarning",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077858"
+  },
+  {
+   "name": "cg_muzzleFlash",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077870"
+  },
+  {
+   "name": "cg_noplayeranims",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077888"
+  },
+  {
+   "name": "cg_nopredict",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 6144,
+   "row": "100778a0"
+  },
+  {
+   "name": "g_obeliskRespawnDelay",
+   "default": "10",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "100778b8"
+  },
+  {
+   "name": "cg_obituaryRowSize",
+   "default": "5",
+   "minimum": "0",
+   "maximum": "5",
+   "flags": 6145,
+   "row": "100778d0"
+  },
+  {
+   "name": "cg_overheadNamesWidth",
+   "default": "75",
+   "minimum": "50",
+   "maximum": "100",
+   "flags": 530433,
+   "row": "100778e8"
+  },
+  {
+   "name": "cl_paused",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077900"
+  },
+  {
+   "name": "cg_preferredStartingWeapons",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077918"
+  },
+  {
+   "name": "cg_plasmaStyle",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077930"
+  },
+  {
+   "name": "cg_playerLean",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 528385,
+   "row": "10077948"
+  },
+  {
+   "name": "cg_playerTeam",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077960"
+  },
+  {
+   "name": "cg_playVoiceChats",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077978"
+  },
+  {
+   "name": "cg_poiMaxWidth",
+   "default": "32.0",
+   "minimum": "16.0",
+   "maximum": "32.0",
+   "flags": 530433,
+   "row": "10077990"
+  },
+  {
+   "name": "cg_poiMinWidth",
+   "default": "16.0",
+   "minimum": "2.0",
+   "maximum": "16.0",
+   "flags": 530433,
+   "row": "100779a8"
+  },
+  {
+   "name": "cg_flagPOIs",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100779c0"
+  },
+  {
+   "name": "cg_powerupPOIs",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "100779d8"
+  },
+  {
+   "name": "cg_predictItems",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526339,
+   "row": "100779f0"
+  },
+  {
+   "name": "cg_predictLocalRailshots",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077a08"
+  },
+  {
+   "name": "cg_projectileNudge",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077a20"
+  },
+  {
+   "name": "cg_raceBeep",
+   "default": "7",
+   "minimum": "0",
+   "maximum": "8",
+   "flags": 530433,
+   "row": "10077a38"
+  },
+  {
+   "name": "cg_railStyle",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077a50"
+  },
+  {
+   "name": "cg_railTrailTime",
+   "default": "400",
+   "minimum": "0",
+   "maximum": "2000",
+   "flags": 530433,
+   "row": "10077a68"
+  },
+  {
+   "name": "ui_recordSPDemo",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077a80"
+  },
+  {
+   "name": "ui_recordSPDemoName",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077a98"
+  },
+  {
+   "name": "cg_redTeamName",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077ab0"
+  },
+  {
+   "name": "cg_rocketStyle",
+   "default": "1",
+   "minimum": "1",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077ac8"
+  },
+  {
+   "name": "cg_scalePlayerModelsToBB",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077ae0"
+  },
+  {
+   "name": "cg_scorePlums",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077af8"
+  },
+  {
+   "name": "cg_screenDamage",
+   "default": "0x700000C8",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077b10"
+  },
+  {
+   "name": "cg_screenDamage_Self",
+   "default": "0x00000000",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077b28"
+  },
+  {
+   "name": "cg_screenDamage_Team",
+   "default": "0x700000C8",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077b40"
+  },
+  {
+   "name": "cg_screenDamageAlpha",
+   "default": "200",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077b58"
+  },
+  {
+   "name": "cg_screenDamageAlpha_Team",
+   "default": "200",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077b70"
+  },
+  {
+   "name": "cg_selfOnTeamOverlay",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077b88"
+  },
+  {
+   "name": "cg_shadows",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077ba0"
+  },
+  {
+   "name": "cg_showmiss",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077bb8"
+  },
+  {
+   "name": "cg_showVoiceText",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077bd0"
+  },
+  {
+   "name": "cg_simpleItems",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077be8"
+  },
+  {
+   "name": "cg_simpleItemsBob",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077c00"
+  },
+  {
+   "name": "cg_simpleItemsHeightOffset",
+   "default": "8",
+   "minimum": "0",
+   "maximum": "18",
+   "flags": 530433,
+   "row": "10077c18"
+  },
+  {
+   "name": "cg_simpleItemsRadius",
+   "default": "15",
+   "minimum": "8",
+   "maximum": "24",
+   "flags": 530433,
+   "row": "10077c30"
+  },
+  {
+   "name": "ui_singlePlayerActive",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 2,
+   "row": "10077c48"
+  },
+  {
+   "name": "ui_singlePlayerActive",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 2,
+   "row": "10077c60"
+  },
+  {
+   "name": "g_skipTrainingEnable",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10077c78"
+  },
+  {
+   "name": "ui_smallFont",
+   "default": "0.25",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077c90"
+  },
+  {
+   "name": "cg_smoke_SG",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077ca8"
+  },
+  {
+   "name": "cg_smokeRadius_dust",
+   "default": "24",
+   "minimum": "0",
+   "maximum": "32",
+   "flags": 530433,
+   "row": "10077cc0"
+  },
+  {
+   "name": "cg_smokeRadius_flight",
+   "default": "8",
+   "minimum": "0",
+   "maximum": "16",
+   "flags": 530433,
+   "row": "10077cd8"
+  },
+  {
+   "name": "cg_smokeRadius_GL",
+   "default": "64",
+   "minimum": "0",
+   "maximum": "64",
+   "flags": 530433,
+   "row": "10077cf0"
+  },
+  {
+   "name": "cg_smokeRadius_haste",
+   "default": "8",
+   "minimum": "0",
+   "maximum": "16",
+   "flags": 530433,
+   "row": "10077d08"
+  },
+  {
+   "name": "cg_smokeRadius_NG",
+   "default": "16",
+   "minimum": "0",
+   "maximum": "16",
+   "flags": 530433,
+   "row": "10077d20"
+  },
+  {
+   "name": "cg_smokeRadius_RL",
+   "default": "32",
+   "minimum": "0",
+   "maximum": "32",
+   "flags": 530433,
+   "row": "10077d38"
+  },
+  {
+   "name": "cg_spectating",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10077d50"
+  },
+  {
+   "name": "cg_specDuelHealthArmor",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077d68"
+  },
+  {
+   "name": "cg_specDuelHealthColor",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077d80"
+  },
+  {
+   "name": "cg_specFov",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077d98"
+  },
+  {
+   "name": "cg_specItemTimers",
+   "default": "7",
+   "minimum": "0",
+   "maximum": "15",
+   "flags": 530433,
+   "row": "10077db0"
+  },
+  {
+   "name": "cg_specItemTimersSize",
+   "default": "0.24",
+   "minimum": "0.12",
+   "maximum": "0.35",
+   "flags": 530433,
+   "row": "10077dc8"
+  },
+  {
+   "name": "cg_specItemTimersX",
+   "default": "10",
+   "minimum": "0",
+   "maximum": "640",
+   "flags": 530433,
+   "row": "10077de0"
+  },
+  {
+   "name": "cg_specItemTimersY",
+   "default": "200",
+   "minimum": "0",
+   "maximum": "480",
+   "flags": 530433,
+   "row": "10077df8"
+  },
+  {
+   "name": "cg_specNames",
+   "default": "2",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077e10"
+  },
+  {
+   "name": "cg_specTeamVitals",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077e28"
+  },
+  {
+   "name": "cg_specTeamVitalsHealthColor",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077e40"
+  },
+  {
+   "name": "cg_specTeamVitalsWidth",
+   "default": "100",
+   "minimum": "60",
+   "maximum": "120",
+   "flags": 530433,
+   "row": "10077e58"
+  },
+  {
+   "name": "cg_specTeamVitalsY",
+   "default": "85",
+   "minimum": "0",
+   "maximum": "480",
+   "flags": 530433,
+   "row": "10077e70"
+  },
+  {
+   "name": "cg_speedometer",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "4",
+   "flags": 530433,
+   "row": "10077e88"
+  },
+  {
+   "name": "cg_stats",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077ea0"
+  },
+  {
+   "name": "cg_stereoSeparation",
+   "default": "0.4",
+   "minimum": "",
+   "maximum": "",
+   "flags": 1,
+   "row": "10077eb8"
+  },
+  {
+   "name": "cg_swingSpeed",
+   "default": "0.3",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10077ed0"
+  },
+  {
+   "name": "cg_switchOnEmpty",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077ee8"
+  },
+  {
+   "name": "cg_switchToEmpty",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077f00"
+  },
+  {
+   "name": "cg_teamChatBeep",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077f18"
+  },
+  {
+   "name": "cg_teamChatHeight",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "8",
+   "flags": 530433,
+   "row": "10077f30"
+  },
+  {
+   "name": "cg_teamChatsOnly",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077f48"
+  },
+  {
+   "name": "cg_teamChatTime",
+   "default": "3000",
+   "minimum": "0",
+   "maximum": "5000",
+   "flags": 530433,
+   "row": "10077f60"
+  },
+  {
+   "name": "cg_teamHeadColor",
+   "default": "0x808080FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077f78"
+  },
+  {
+   "name": "cg_teamLowerColor",
+   "default": "0x808080FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077f90"
+  },
+  {
+   "name": "cg_teamUpperColor",
+   "default": "0x808080FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10077fa8"
+  },
+  {
+   "name": "cg_teammateCrosshairNames",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077fc0"
+  },
+  {
+   "name": "cg_teammateCrosshairNamesOpacity",
+   "default": "0.75",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10077fd8"
+  },
+  {
+   "name": "cg_teammateNames",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10077ff0"
+  },
+  {
+   "name": "cg_teammatePOIs",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078008"
+  },
+  {
+   "name": "cg_teammatePOIsMaxWidth",
+   "default": "24.0",
+   "minimum": "16.0",
+   "maximum": "32.0",
+   "flags": 530433,
+   "row": "10078020"
+  },
+  {
+   "name": "cg_teammatePOIsMinWidth",
+   "default": "4.0",
+   "minimum": "2.0",
+   "maximum": "16.0",
+   "flags": 530433,
+   "row": "10078038"
+  },
+  {
+   "name": "cg_thirdPerson",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078050"
+  },
+  {
+   "name": "cg_thirdPersonAngle",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078068"
+  },
+  {
+   "name": "cg_thirdPersonPitch",
+   "default": "-1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078080"
+  },
+  {
+   "name": "cg_thirdPersonRange",
+   "default": "80",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078098"
+  },
+  {
+   "name": "timescale",
+   "default": "1",
+   "minimum": "0.1",
+   "maximum": "10",
+   "flags": 4096,
+   "row": "100780b0"
+  },
+  {
+   "name": "cg_timescaleFadeEnd",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "100780c8"
+  },
+  {
+   "name": "cg_timescaleFadeSpeed",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "100780e0"
+  },
+  {
+   "name": "cg_tracerchance",
+   "default": "0.4",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "100780f8"
+  },
+  {
+   "name": "cg_tracerlength",
+   "default": "100",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078110"
+  },
+  {
+   "name": "cg_tracerwidth",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078128"
+  },
+  {
+   "name": "cg_trackPlayer",
+   "default": "-1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078140"
+  },
+  {
+   "name": "g_training",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 0,
+   "row": "10078158"
+  },
+  {
+   "name": "cg_trueLightning",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078170"
+  },
+  {
+   "name": "cg_trueShotgun",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078188"
+  },
+  {
+   "name": "cg_useItemMessage",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "100781a0"
+  },
+  {
+   "name": "cg_useItemWarning",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "100781b8"
+  },
+  {
+   "name": "cg_viewsize",
+   "default": "100",
+   "minimum": "30",
+   "maximum": "100",
+   "flags": 530433,
+   "row": "100781d0"
+  },
+  {
+   "name": "cg_vignette",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "100781e8"
+  },
+  {
+   "name": "cg_voiceChatIndicator",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "10078200"
+  },
+  {
+   "name": "ui_votestring",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 512,
+   "row": "10078218"
+  },
+  {
+   "name": "cg_waterWarp",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078230"
+  },
+  {
+   "name": "cg_weaponBar",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "4",
+   "flags": 530433,
+   "row": "10078248"
+  },
+  {
+   "name": "cg_weaponColor_grenade",
+   "default": "0x007000FF",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078260"
+  },
+  {
+   "name": "cg_weaponConfig",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078278"
+  },
+  {
+   "name": "cg_weaponConfig_g",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078290"
+  },
+  {
+   "name": "cg_weaponConfig_mg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100782a8"
+  },
+  {
+   "name": "cg_weaponConfig_sg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100782c0"
+  },
+  {
+   "name": "cg_weaponConfig_gl",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100782d8"
+  },
+  {
+   "name": "cg_weaponConfig_rl",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100782f0"
+  },
+  {
+   "name": "cg_weaponConfig_lg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078308"
+  },
+  {
+   "name": "cg_weaponConfig_rg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078320"
+  },
+  {
+   "name": "cg_weaponConfig_pg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078338"
+  },
+  {
+   "name": "cg_weaponConfig_bfg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078350"
+  },
+  {
+   "name": "cg_weaponConfig_gh",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078368"
+  },
+  {
+   "name": "cg_weaponConfig_ng",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078380"
+  },
+  {
+   "name": "cg_weaponConfig_pl",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "10078398"
+  },
+  {
+   "name": "cg_weaponConfig_cg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100783b0"
+  },
+  {
+   "name": "cg_weaponConfig_hmg",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526337,
+   "row": "100783c8"
+  },
+  {
+   "name": "cg_weaponPrimary",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "100783e0"
+  },
+  {
+   "name": "cg_weaponPrimaryQueued",
+   "default": "",
+   "minimum": "",
+   "maximum": "",
+   "flags": 256,
+   "row": "100783f8"
+  },
+  {
+   "name": "cg_zoomfov",
+   "default": "30",
+   "minimum": "10",
+   "maximum": "130",
+   "flags": 530433,
+   "row": "10078410"
+  },
+  {
+   "name": "cg_zoomOutOnDeath",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078428"
+  },
+  {
+   "name": "cg_zoomScaling",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078440"
+  },
+  {
+   "name": "cg_zoomSensitivity",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "10",
+   "flags": 530433,
+   "row": "10078458"
+  },
+  {
+   "name": "cg_zoomToggle",
+   "default": "0",
+   "minimum": "0",
+   "maximum": "1",
+   "flags": 530433,
+   "row": "10078470"
+  },
+  {
+   "name": "com_maxfps",
+   "default": "125",
+   "minimum": "30",
+   "maximum": "250",
+   "flags": 530433,
+   "row": "10078488"
+  },
+  {
+   "name": "s_ambient",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 526369,
+   "row": "100784a0"
+  },
+  {
+   "name": "s_killBeepVolume",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "4",
+   "flags": 530433,
+   "row": "100784b8"
+  },
+  {
+   "name": "s_announcerVolume",
+   "default": "1",
+   "minimum": "0",
+   "maximum": "2",
+   "flags": 530433,
+   "row": "100784d0"
+  },
+  {
+   "name": "sv_fps",
+   "default": "40",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "100784e8"
+  },
+  {
+   "name": "ui_endMapVotingDisabled",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078500"
+  },
+  {
+   "name": "ui_gameTypeVotingDisabled",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078518"
+  },
+  {
+   "name": "ui_intermission",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078530"
+  },
+  {
+   "name": "ui_mainmenu",
+   "default": "1",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078548"
+  },
+  {
+   "name": "ui_mapVotingDisabled",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078560"
+  },
+  {
+   "name": "ui_voteactive",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078578"
+  },
+  {
+   "name": "ui_warmup",
+   "default": "0",
+   "minimum": "",
+   "maximum": "",
+   "flags": 64,
+   "row": "10078590"
+  }
  ]
 }

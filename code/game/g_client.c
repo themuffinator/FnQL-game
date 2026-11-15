@@ -1189,6 +1189,7 @@ random stream in step with retail.
 void G_ResetClientStats( gclient_t *client ) {
 	memset( &client->stats, 0, sizeof( client->stats ) );
 	client->stats.startTime = level.time;
+	client->stats.stamp = level.time;
 	client->stats.startMatchTime = level.time - level.startTime;
 	client->stats.key = level.time + rand();
 }
@@ -1338,6 +1339,8 @@ const char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 		if ( g_gametype.integer >= GT_TEAM && client->sess.sessionTeam != TEAM_SPECTATOR ) {
 			BroadcastTeamChange( client, -1 );
 		}
+		// and the stats report hears of it, bots included (0x1003afb5)
+		G_StatsReportConnect( ent );
 	}
 
 	// count current clients and rank for scoreboard
@@ -2045,6 +2048,12 @@ void ClientDisconnect( int clientNum ) {
 		return;
 	}
 
+	// a player leaving the match reports its statistics first (retail
+	// qagamex86 0x1003c812; the builder skips spectators)
+	if ( ent->client->ps.pm_type != PM_INTERMISSION ) {
+		G_StatsReportPlayer( ent->client, qfalse, qtrue );
+	}
+
 	// the team overlay is resent a second later (retail qagamex86 0x1003c870)
 	level.teamInfoTime = level.time + 1000;
 
@@ -2081,6 +2090,7 @@ void ClientDisconnect( int clientNum ) {
 	G_RevertVote( ent->client );
 
 	G_LogPrintf( "ClientDisconnect: %i\n", clientNum );
+	G_StatsReportDisconnect( ent );		// retail 0x1003cac3
 
 	// if we are playing in tourney mode and losing, give a win to the other player
 	if ( (g_gametype.integer == GT_TOURNAMENT )

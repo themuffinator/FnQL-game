@@ -1110,7 +1110,7 @@ void Cmd_LevelShot_f( gentity_t *ent ) {
 	if ( !ent->client->pers.localClient )
 	{
 		trap_SendServerCommand( ent - g_entities,
-			"print \"The levelshot command must be executed by a local client\n\"" );
+			"print \"Must be executed by a local client\n\"" );	// retail string 0x10083258
 		return;
 	}
 
@@ -1367,6 +1367,9 @@ void G_ExecuteTeamChange( gentity_t *ent, team_t team, spectatorState_t specStat
 	// (qagamex86 0x10040543), except when red rover moves a player between
 	// the playing teams
 	if ( g_gametype.integer != GT_RED_ROVER || team == TEAM_SPECTATOR ) {
+		// the period that ends here goes to the stats report first, as a
+		// player who left the match (0x10040535)
+		G_StatsReportPlayer( client, qfalse, qtrue );
 		G_ResetClientStats( client );
 	}
 
@@ -1409,6 +1412,9 @@ void G_ExecuteTeamChange( gentity_t *ent, team_t team, spectatorState_t specStat
 
 	if ( level.shuffling && g_gametype.integer == GT_RED_ROVER ) G_RespawnForShuffle(ent);
 	else ClientBegin( clientNum );
+
+	// the last thing a team change does (retail 0x100406b8)
+	G_StatsReportSwitchTeam( ent, oldTeam, team );
 }
 
 
@@ -1908,6 +1914,20 @@ static void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chat
 	// Retail 0x100417a5: speaking counts as activity for the inactivity timer.
 	ent->client->inactivityMsec = 0;
 
+	// Retail 0x100417b5-0x10041840: a note for text over the limit, then the
+	// text every recipient and the log get: team chat and tells, as typed
+	// (before a team message turns public below), expand chat tokens; the
+	// rest is cut to MAX_SAY_TEXT - 1 characters.
+	if ( strlen( chatText ) > MAX_SAY_TEXT ) {
+		G_Printf( "G_Say: truncate at %d characters\n", MAX_SAY_TEXT );
+	}
+	if ( mode == SAY_TEAM || mode == SAY_TELL ) {
+		G_ExpandChatTokens( &ent->client->ps, ent->client->sess.sessionTeam == TEAM_SPECTATOR,
+			chatText, text, sizeof( text ) );
+	} else {
+		Q_strncpyz( text, chatText, sizeof( text ) );
+	}
+
 	// Retail 0x10041880: outside the team modes team chat becomes public,
 	// except a spectator's, which stays among the spectators.
 	if ( g_gametype.integer < GT_TEAM && mode == SAY_TEAM && ent->client->sess.sessionTeam != TEAM_SPECTATOR ) {
@@ -1917,12 +1937,12 @@ static void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chat
 	switch ( mode ) {
 	default:
 	case SAY_ALL:
-		G_LogPrintf( "say: %s: %s\n", ent->client->pers.netname, chatText );
+		G_LogPrintf( "say: %s: %s\n", ent->client->pers.netname, text );
 		Com_sprintf (name, sizeof(name), "%s%c%c"EC": ", ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE );
 		color = COLOR_GREEN;
 		break;
 	case SAY_TEAM:
-		G_LogPrintf( "sayteam: %s: %s\n", ent->client->pers.netname, chatText );
+		G_LogPrintf( "sayteam: %s: %s\n", ent->client->pers.netname, text );
 		if (Team_GetLocationMsg(ent, location, sizeof(location)))
 			Com_sprintf (name, sizeof(name), EC"(%s%c%c"EC") (%s^7)"EC": ",
 				ent->client->pers.netname, Q_COLOR_ESCAPE, COLOR_WHITE, location);
@@ -1941,8 +1961,6 @@ static void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chat
 		color = COLOR_MAGENTA;
 		break;
 	}
-
-	Q_strncpyz( text, chatText, sizeof(text) );
 
 	if ( target ) {
 		G_SayTo( ent, target, mode, color, name, text );

@@ -261,6 +261,10 @@ static void RoundEnter( int state ) {
 				if ( shots > 0 && (cl->accuracy_hits - cl->pers.roundHitsBase) * 100 / shots > 50 ) G_AwardMedal(&g_entities[i], MEDAL_ACCURACY);
 				if ( !cl->adDamaged ) G_AwardMedal(&g_entities[i], MEDAL_PERFECT);
 			}
+			// The stats report's ROUND_OVER follows the medals.  Retail passes
+			// the round number less one here before it has counted the round
+			// (0x10036053), so the first Attack and Defend round reads -1.
+			G_StatsReportRoundOver( level.roundNumber - 1, winner );
 			CalculateRanks();
 			AttackScores(qfalse);
 			Team_ResetFlags();
@@ -340,6 +344,10 @@ static void RoundEnter( int state ) {
 		}
 		level.roundWinner = winner;
 		if ( !rover ) level.roundNumber++;
+		// ROUND_OVER after the medals: the round just counted, less one
+		// (retail 0x1003882a, 0x1004c9c9); Red Rover, which counts its
+		// rounds elsewhere, passes the same expression (0x1006511d)
+		G_StatsReportRoundOver( level.roundNumber - 1, winner );
 		level.roundNextState = RoundExitReason() ? ROUND_EXIT : rover ? ROUND_SHUFFLE : ROUND_COUNTDOWN;
 		level.roundDeadline = RoundDeadline(level.roundNextState == ROUND_EXIT ? 1500 : freeze ? (g_freezeRoundDelay.integer < 3500 ? g_freezeRoundDelay.integer : 3500) : 3500);
 		if ( rover || level.roundNextState != ROUND_EXIT ) {
@@ -440,6 +448,7 @@ static void FreezeThaw( gentity_t *ent, gentity_t *helper ) {
 		AddScore(helper, ent->r.currentOrigin, 2);
 		helper->client->pers.teamState.assists++;
 		helper->client->stats.assists++;
+		G_StatsReportMedal( helper, "ASSIST", helper->client->stats.assists );	// retail 0x1004d0a5
 		helper->client->ps.persistant[PERS_ASSIST_COUNT]++;
 		helper->client->ps.eFlags = (helper->client->ps.eFlags & ~EF_AWARDS) | EF_AWARD_ASSIST;
 		helper->client->rewardTime = level.time + REWARD_SPRITE_TIME;

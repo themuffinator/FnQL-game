@@ -116,6 +116,9 @@ game_sources = files(
   'code/game/g_bot.c',
   'code/game/g_client.c',
   'code/game/g_names.c',
+  'code/game/g_chattokens.c',
+  'code/game/g_json.c',
+  'code/game/g_statsreport.c',
   'code/game/g_cmds.c',
   'code/game/g_vote.c',
   'code/game/g_admin.c',
@@ -511,6 +514,12 @@ test('game-runes', game_runes, suite: 'unit')
 game_names = executable('game_names', files('tests/game_names.c', 'code/game/g_names.c'),
   c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-names', game_names, suite: 'unit')
+game_chattokens = executable('game_chattokens', files('tests/game_chattokens.c', 'code/game/g_chattokens.c'),
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('game-chattokens', game_chattokens, suite: 'unit')
+game_json = executable('game_json', files('tests/game_json.c', 'code/game/g_json.c'),
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('game-json', game_json, suite: 'unit')
 game_session = executable('game_session', files('tests/game_session.c', 'code/game/g_session.c'),
   c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-session', game_session, suite: 'unit')
@@ -605,6 +614,44 @@ if get_option('fnql-dedicated') != ''
   endif
   test('combat-soak', python, args: soak_args, depends: qagame,
     suite: 'runtime', timeout: 240, is_parallel: false)
+
+  # Match statistics reports: a bot match from ready-up to the closing
+  # report, every document held to docs/contract/stats_events.json.  Where
+  # the retail qagame can be hosted (x86) the same run hosts it first, which
+  # checks the schema against the install, and compares the documents that
+  # do not depend on play.  Each variant is the factory, its map, the limit
+  # that ends the match, the longest wait, and the event types the run must
+  # produce.  The CTF run is time-boxed and does not wait for a report:
+  # FnQL-game's bots do not yet play the flag as retail's do (docs/PLAN.md,
+  # M9), so a capture cannot be counted on to end the match.
+  stats_match = 'PLAYER_CONNECT,PLAYER_SWITCHTEAM,PLAYER_KILL,PLAYER_DEATH,MATCH_STARTED'
+  stats_variants = {
+    'ffa': ['ffa', 'campgrounds', '5', '300', stats_match + ',PLAYER_STATS,MATCH_REPORT'],
+    'ca': ['ca', 'campgrounds', '5', '300', stats_match + ',PLAYER_STATS,MATCH_REPORT,ROUND_OVER'],
+    'ctf': ['ctf', 'spidercrossings', '8', '100', 'PLAYER_CONNECT,PLAYER_SWITCHTEAM,MATCH_STARTED,FLAG_STATUS'],
+    # a player kicked, then the map changed under the match: the leaver's
+    # statistics, everyone else's marked aborted, and the aborted report
+    'abort': ['ffa', 'campgrounds', '50', '150',
+      'PLAYER_CONNECT,PLAYER_DISCONNECT,PLAYER_STATS,MATCH_STARTED,MATCH_REPORT',
+      '--expect-abort', '--script', 'wait 700; clientkick 0; wait 80; map campgrounds ffa'],
+  }
+  foreach name, variant : stats_variants
+    stats_args = [files('scripts/stats_probe.py'),
+      '--engine', get_option('fnql-dedicated'), '--module', qagame.full_path(),
+      '--factory', variant[0], '--map', variant[1], '--fraglimit', variant[2], '--seconds', variant[3],
+      '--require', variant[4]]
+    foreach index : range(5, variant.length())
+      stats_args += [variant[index]]
+    endforeach
+    if get_option('retail-ql') != ''
+      stats_args += ['--retail', get_option('retail-ql')]
+    endif
+    if retail_modules_hostable
+      stats_args += ['--compare']
+    endif
+    test('stats-events-' + name, python, args: stats_args, depends: qagame,
+      suite: 'stats', timeout: 1200, is_parallel: false)
+  endforeach
 
   # Every stock map must load (G1 sweep); slow, so it is its own suite.
   sweep_args = [files('scripts/sweep_maps.py'),
@@ -758,6 +805,8 @@ if get_option('fnql-dedicated') != ''
     'spec-chat-tdm-disabled': ['tdm_spec_chat', '--factory', 'tdm', '--frames', '120',
       '--set', 'g_teamSpecSayEnable', '0'],
     'spec-chat-duel': ['duel_spec_chat', '--factory', 'duel', '--frames', '700'],
+    'chat-tokens-tdm': ['tdm_chat_tokens', '--factory', 'tdm', '--frames', '160'],
+    'chat-tokens-ffa': ['tdm_chat_tokens', '--frames', '160'],
     'team-join': ['tdm_team_join', '--factory', 'tdm', '--frames', '800', '--set', 'teamsize', '2'],
     'sudden-death': ['ffa_sudden_death', '--frames', '3000', '--set', 'g_doWarmup', '0',
       '--set', 'g_warmup', '0', '--set', 'g_suddenDeathRespawn', '1',

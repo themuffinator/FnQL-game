@@ -43,10 +43,7 @@ void AddScore( gentity_t *ent, vec3_t origin, int score ) {
 	if ( g_gametype.integer == GT_RACE ) {
 		return;
 	}
-	if ( !level.firstScorer[0] ) {
-		Q_strncpyz( level.firstScorer, ent->client->pers.netname, sizeof( level.firstScorer ) );
-	}
-	Q_strncpyz( level.lastScorer, ent->client->pers.netname, sizeof( level.lastScorer ) );
+	G_StatsNoteScorer( ent );
 
 	if ( g_gametype.integer == GT_RED_ROVER ) {
 		ent->client->roundScore += score;
@@ -334,6 +331,10 @@ void CheckAlmostCapture( gentity_t *self, gentity_t *attacker ) {
 				self->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
 				if ( attacker->client ) {
 					attacker->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
+					// retail 0x100470a9: an enemy's near-capture stopped, for the stats report
+					if ( self->client->sess.sessionTeam != attacker->client->sess.sessionTeam ) {
+						attacker->client->stats.holyShits++;
+					}
 				}
 			}
 		}
@@ -367,11 +368,21 @@ void CheckAlmostScored( gentity_t *self, gentity_t *attacker ) {
 				self->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
 				if ( attacker->client ) {
 					attacker->client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_HOLYSHIT;
+					if ( self->client->sess.sessionTeam != attacker->client->sess.sessionTeam ) {	// retail 0x100471ef
+						attacker->client->stats.holyShits++;
+					}
 				}
 			}
 		}
 	}
 }
+
+// the medals' names in the stats report, by medal_t
+static const char *const medalReportNames[MEDAL_NUM_MEDALS] = {
+	"COMBOKILL", "RAMPAGE", "MIDAIR", "REVENGE", "PERFORATED", "HEADSHOT", "ACCURACY",
+	"QUADGOD", "FIRSTFRAG", "PERFECT"
+};
+typedef char medalReportNamesCheck[ ( MEDAL_COMBOKILL == 0 && MEDAL_ACCURACY == 6 && MEDAL_PERFECT == 9 ) ? 1 : -1 ];
 
 /*
 ==================
@@ -392,6 +403,17 @@ void G_AwardMedal( gentity_t *ent, medal_t medal ) {
 	te->s.generic1 = medal;
 	te->s.modelindex2 = client->medals[medal];
 	client->rewardTime = level.time + REWARD_SPRITE_TIME;
+
+	// Every medal goes to the stats report with the player's new total
+	// (retail 0x100477de-0x100483ed and the round ends).  Observed in retail:
+	// the first frag reports the constant 1, and the quad god medal reports
+	// the perforated counter (0x10047c6d reads +0x218, not +0x224).
+	if ( medal >= 0 && medal < (int)ARRAY_LEN( medalReportNames ) ) {
+		G_StatsReportMedal( ent, medalReportNames[medal],
+			medal == MEDAL_FIRSTFRAG ? 1
+			: medal == MEDAL_QUADGOD ? client->medals[MEDAL_PERFORATED]
+			: client->medals[medal] );
+	}
 }
 
 
@@ -410,6 +432,13 @@ static void G_AwardSprite( gentity_t *ent, int persistant, int eFlag ) {
 	client->ps.eFlags &= ~EF_AWARDS;
 	client->ps.eFlags |= eFlag;
 	client->rewardTime = level.time + REWARD_SPRITE_TIME;
+
+	// retail 0x1004784c and 0x100478d8: the stats report's names for them
+	if ( persistant == PERS_GAUNTLET_FRAG_COUNT ) {
+		G_StatsReportMedal( ent, "GAUNTLET", client->ps.persistant[persistant] );
+	} else if ( persistant == PERS_EXCELLENT_COUNT ) {
+		G_StatsReportMedal( ent, "EXCELLENT", client->ps.persistant[persistant] );
+	}
 }
 
 
@@ -681,7 +710,13 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	self->enemy = attacker;
 
 	client->ps.persistant[PERS_KILLED]++;
-	G_StatsKill( self, attacker, meansOfDeath );
+	// Retail 0x1004751a: the kill goes to the stats report and into the
+	// match statistics here, before any scoring.  Neither happens for the
+	// deaths of a shuffle or of a red rover infection move (0x1007271c).
+	if ( !level.shuffling ) {
+		G_StatsReportKill( self, attacker, meansOfDeath );
+		G_StatsKill( self, attacker, meansOfDeath );
+	}
 
 	if ( !attacker || !attacker->client ) {
 		AddScore( self, self->r.currentOrigin, -1 );
@@ -970,6 +1005,9 @@ void G_StatsDamage( gentity_t *targ, gentity_t *attacker, int mod, int damage ) 
 		if ( weapon != WP_NONE ) {
 			victim->stats.weaponDamageTaken[weapon] += taken;
 		}
+		// what the victim had before this damage: a kill reports them (+0x810, +0x814)
+		victim->stats.lastHealth = victim->ps.stats[STAT_HEALTH];
+		victim->stats.lastArmor = victim->ps.stats[STAT_ARMOR];
 	}
 
 	if ( weapon != WP_NONE && killer && victim && ( targ->health > 0 || g_instaGib.integer )
@@ -1009,6 +1047,13 @@ void G_StatsKill( gentity_t *victim, gentity_t *attacker, int mod ) {
 			client->stats.maxKillStreak = client->stats.killStreak;
 		}
 		client->stats.killStreak = 0;
+	}
+
+	// in the round modes a kill by a player also names the match's first
+	// and latest scorers, warmup or not (0x10073e7c)
+	if ( attacker && attacker->client && ( g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_FREEZE
+			|| g_gametype.integer == GT_ATTACK_DEFEND || g_gametype.integer == GT_RED_ROVER ) ) {
+		G_StatsNoteScorer( attacker );
 	}
 }
 
@@ -1326,6 +1371,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		// Retail 0x10048e44: the hook's periodic-damage timestamp (+0x370)
 		// distinguishes its weaker sustained pull from the initial impact.
 		if ( mod == MOD_GRAPPLE && inflictor->wait != 0.0f ) knockback = (int)( knockback * 0.2 );
+	}
+	// a racer pushed by a weapon: its run reports WEAPONS_USED (retail
+	// 0x10048e14 sets gclient +0xab8 in race when the knockback is positive)
+	if ( client && knockback > 0 && g_gametype.integer == GT_RACE ) {
+		client->raceWeaponsUsed = qtrue;
 	}
 	if ( knockback > g_max_knockback.integer ) {
 		knockback = g_max_knockback.integer;

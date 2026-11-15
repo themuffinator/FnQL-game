@@ -486,10 +486,10 @@ box-query behavior. Jump-pad touch now sets doubleJumped and event parm zero,
 accepts frozen players and ignores hooked players (0x1002d540/0x1006b5d0);
 the ordinary-movement `ffa_jumppad` pair reaches the stock campgrounds pad.
 
-Still deferred to
-M5/M6: retail's Steam
-achievements and ZMQ stats reports (engine
-imports 185/186 and 201-204, under the online-services rules).
+The match statistics reports (engine imports 185/186) are implemented under
+M5 below. Still deferred: the Steam statistics and achievements retail
+awards from the game module itself (imports 201, 203 and 204; the call
+sites are listed in the stats notes below), under the online-services rules.
 Freeze Tag thawing, Red Rover infection scoring and CA/FT/RR respawn rules
 are implemented and gated under M6 below.
 
@@ -509,9 +509,10 @@ Exit: G3 differential over combat and item scenarios.
   host definitions. The `factory-contract` suite requires zero divergence
   for factory-aware map votes and checks identity across transitions (see
   the progress entry below).
-- Stats events (`MATCH_STARTED`, `PLAYER_*`, `ROUND_OVER`, `TEAM_WON`, …)
-  through imports 185/186, under FnQL's online-services rules (explicit,
-  default-off where services are involved).
+- Stats events (`MATCH_STARTED`, `PLAYER_*`, `ROUND_OVER`, `FLAG_STATUS`,
+  …) and the closing match report. Implemented (2026-11-15) through FnQL's
+  JSON-text imports; see the progress entry below. Publication stays the
+  engine's and is default-off there (`zmq_stats_enable`, `sv_statsJournal`).
 
 Exit: G3 over full matches; first G5 runs with retail clients on an FnQL
 server.
@@ -821,6 +822,104 @@ console; it stops the server before cancelling the client's ticket and
 restores the retail configuration and logs. Both settings are registered in
 the opt-in `retail-client` suite. This closes the live-join validation blocker
 for the qagame fixes; it does not claim M10's complete full-match matrix.
+
+Match statistics reports (2026-11-15): retail describes a match to the
+engine as eleven events and one closing report (qagamex86
+0x100716a0-0x10078931; a byte scan finds exactly eleven calls of import 186
+and one of import 185). The engine publishes them on its stats socket, where
+community tools read them, and derives the players' Steam statistics from
+them. Until now FnQL-game reported nothing.
+
+- **Transport.** Retail passes JsonCpp `Json::Value` objects built by its
+  own VC10 runtime, which a source-built module cannot produce. FnQL now
+  offers the same two calls taking JSON text (`trap_StatsReportJson_FnQL`,
+  `trap_StatsEventJson_FnQL`, found through `trap_GetValue`; FnQL
+  `docs/fnql/GAME_MODULES.md`, "Match statistics"). The engine validates the
+  text and then treats it exactly as a serialized retail document. On an
+  engine without the imports (the retail engine, an older FnQL) nothing is
+  reported, and slots 185/186 are never called.
+- **Documents** (`g_statsreport.c`, written from the retail builders):
+  `PLAYER_CONNECT`, `PLAYER_DISCONNECT`, `PLAYER_SWITCHTEAM`, `PLAYER_KILL`
+  and `PLAYER_DEATH` (one document sent twice), `PLAYER_MEDAL`,
+  `FLAG_STATUS`, `ROUND_OVER`, `PLAYER_RACECOMPLETE`, `PLAYER_STATS`,
+  `MATCH_STARTED` and the match report. `g_json.c` is a bounded writer that
+  gives what JsonCpp's maps gave retail: members sorted by key, the last
+  value of a key written twice, and reals that always read as reals.
+- **When** each one fires follows the retail call sites: kills before any
+  scoring and before the victim's streak resets (0x1004751a), a team change
+  as kill and death, `PLAYER_STATS` (quit), re-key, `PLAYER_SWITCHTEAM`
+  (0x10040440), a disconnect as `PLAYER_STATS` (quit) then
+  `PLAYER_DISCONNECT`, the match end as every ranked player's `PLAYER_STATS`
+  and then the report, once, and never from the warmup level the countdown
+  restarts (0x10057574); a level shut down under its match reports it as
+  aborted (0x10055610). `MATCH_STARTED` goes out when the countdown expires,
+  before the restart (0x10058860).
+- **Observed retail quirks kept:** the quad god medal reports the perforated
+  counter (0x10047c6d); `PICKUPS.INVULNERABILITY` is the holdable's count,
+  written over the powerup's; `FLAG_STATUS` fires on every status-setter
+  call, changed or not; `ROUND_OVER` carries the round number less one, which
+  is -1 for the first Attack and Defend round; the ranks and `WIN`/`LOSE`/
+  `QUIT` are numbers, not booleans; a world kill has a null `KILLER`.
+- **Bookkeeping added** for fields the reports read: play time and time per
+  weapon (0x10078960), health and armor at the last enemy damage, flags
+  taken from base, near-captures stopped, the last team scorer and when the
+  lead last changed hands (0x10056587). The first and latest scorers are now
+  the cleaned userinfo names retail stores. Kill statistics no longer count
+  the deaths of a shuffle or a red rover infection move, as retail's do not
+  (0x1007271c).
+- **Gates.** `game-json` (unit) covers the writer. `stats-events-ffa` and
+  `-ca` (`scripts/stats_probe.py`, suite `stats`) host a bot match through
+  ready-up, countdown, match and report with the engine's
+  `sv_statsJournal`, `-ctf` a time-boxed one for the flag events, and
+  `-abort` kicks a player and changes the map under the match (the leaver's
+  `PLAYER_STATS` with `QUIT` 1 and rank -1 ahead of its `PLAYER_DISCONNECT`,
+  the others' marked aborted, and the report with `ABORTED` true, `RESTARTED`
+  1 and `EXIT_MSG` "Shutdown": observed identical, field for field, in the
+  retail run). Each holds every journalled document to
+  `docs/contract/stats_events.json` (412 key paths, their JSON types, and
+  retail's vocabularies). Observed with both providers: a plain `quit` of
+  the server process publishes no report. On x86 the same run hosts the retail qagame first,
+  which keeps the schema honest against the install, and requires
+  `MATCH_STARTED` and `PLAYER_CONNECT` to be equal value for value. A bot
+  match is not deterministic, so the gate proves shape and vocabulary, not
+  the numbers; lockstep cannot compare these documents, because it runs
+  without the Steam provider that reads the retail objects.
+- **Found on the way** (FnQL Steam provider, not this repository): the
+  provider's retail JSON adapter reads JsonCpp's 32-bit integers as 64-bit,
+  so retail-hosted integers are published with stale upper halves (`TIME` 11
+  as 12884901899). The probe repairs them when it reads the retail run.
+- **Open:** the Steam statistics and achievements retail awards from the
+  module (imports 201/203/204: weapon shots and hits, and the achievement
+  tests inside the kill, medal and stats builders); a `stats-events` run in
+  Race, Domination and Red Rover.
+
+Chat tokens (2026-11-15): team chat and tells expand `#h`, `#a` and `#w` to
+the speaker's health, armor and weapon with its ammo; `##` is a literal `#`
+and any other character after `#` drops the `#`; a spectator's text is
+copied as typed (0x10041450, called from G_Say at 0x10041800 for the mode as
+typed). The log lines carry the rewritten text. Observed in retail: an
+expansion is appended with `Q_strcat` at a write position that was never
+terminated (0x1004155f), so it lands after whatever stale stack bytes precede
+the next NUL; two retail runs of one message print different text, and the
+retail-twice self-check diverges on any expanding token. FnQL-game implements
+the evident intent and bounds the output. `game-chattokens` covers the
+expansions and every bound; the `chat-tokens-tdm` and `chat-tokens-ffa` G3
+pairs cover what retail does deterministically (non-expanding tokens, the
+spectator copy, public chat). The `levelshot` refusal now uses retail's
+wording (0x10083258).
+
+Key doors (2026-11-15): `func_door` spawnflags 16 and 32 lock a door to the
+silver or the gold key, and the master key opens both (retail 0x1005fd1b
+chooses the key door's own trigger, 0x1005f400; its touch, 0x1005f300, tests
+`STAT_KEY_MASK` for 1|4 or 2|4 and keeps the key). A key door cannot be shot
+open, opens with `door_silver.wav` or `door_gold.wav` in place of the mover's
+sound (0x1005ec68), and lets a spectator through at most once a second. The
+map may name any door's sounds with `startsound` and `endsound`
+(0x1005fa25). FnQL-game picked the keys up and returned them on death but
+had no door that asked for one, and treated spawnflag 32 as a silent door,
+which retail does not have. Covered by the stock-map and differential gates
+for doors without keys; no stock map carries a key door, so a hand-authored
+G3 fixture for one is still to be added.
 
 ### M6 — Round-based and special modes
 
@@ -1186,6 +1285,25 @@ The cache no longer discards corrected jump/crouch timing or QL sidecars.
 The live prediction probe accepts FnQL cgame with both qagame providers;
 the full G4 live/demo corpus is still required.
 
+Cvar table (2026-11-15): the cgame now registers retail's cvar table row for
+row (cgamex86 0x100769e8, 295 rows of name, default, bounds and flags). 123
+retail cvars were missing, four defaults differed (`cg_drawTeamOverlay` 1,
+`cg_scorePlums` 0, `cg_thirdPersonRange` 80, `cg_trueLightning` 1), and most
+flags did: retail's archived settings carry 0x81801, whose engine bits
+(protected, module-created, profile-stored) decide how the engine guards and
+saves them. Three non-retail cvars reached the server: the Quake III
+`teamoverlay` userinfo key (neither retail module contains the string),
+`cg_scorePlums` and `cg_smoothClients` as userinfo, and `g_redteam`/
+`g_blueteam` as userinfo and serverinfo. They are gone or local now. Gate G2
+holds `cg_cvar.h` to `retail_tables.json` "cgameCvars" and the remaining
+non-retail locals to a fixed, wire-free allowlist. Behaviour wired to the
+newly registered cvars from retail: the damage kick (`cg_kickScale`, which
+scales only the deflection, 0x1004d232), the velocity lean and bob
+(`cg_bob`, replacing five Quake III cvars; crouching doubles the swing and
+the height stops at 5 units, 0x1004d2d9), `cg_muzzleFlash` (0x10052b61),
+`cg_bubbleTrail` (0x10012c5e) and `cg_allowTaunt` (0x1001a2c6). Most of the
+other newly registered cvars are registered only; their readers remain open.
+
 A retail-ABI `fnql_cgamex86.dll`:
 
 - 128 import slots; 21 exports including the reserved NULL slot 16.
@@ -1229,6 +1347,33 @@ The FFA movement/restart slice passes G3: `BotInputToUserCommand` now
 preserves retail's projected speed, wide arithmetic before command-byte
 truncation, and integer-absolute vertical projection. This focused gate
 does not establish complete bot AI parity across modes or maps.
+
+Hunting in the itemless round modes (2026-11-15): retail's long term goal
+has a branch for Clan Arena and Red Rover (0x10008dc9 calling 0x10020730):
+the nearest living enemy, as an 8-unit goal that follows it, renewed every
+five seconds until the target dies (0x10020600). The Quake III code here
+only roamed between items, of which those modes have none, so a bot stood
+where it spawned until an enemy came into view: in a 2v2 Clan Arena bot
+match on campgrounds FnQL-game's bots made one kill in five minutes where
+retail's finished two rounds in 46 seconds. With the branch the same match
+plays out as retail's does (`stats-events-ca`: seven kills, two rounds, the
+report, in 47 seconds).
+
+Observed while gating the stats reports, still open:
+
+- Capture the Flag. On spidercrossings (2v2, capture limit 1) retail's bots
+  took a flag after 37 seconds and captured after 69; FnQL-game's first took
+  one after 195 seconds and had not captured after seven minutes, fighting
+  as in a deathmatch (28 kills). The flag events themselves match retail's
+  sequence. The team goals and orders of the flag modes are this milestone.
+- Joining a team. Added without a team argument in a team mode, retail's
+  four bots all stayed spectators for five minutes; two of FnQL-game's
+  joined. Neither is a match anyone can use, so the probes add bots with
+  their sides.
+- Retail's instagib node ("insta gib!", 0x100133c0, entered from
+  BotDeathmatchAI at 0x1001f328 when `g_instaGib` is set and the bot has no
+  enemy) and its training nodes ("seek teammate", "lead teammate",
+  "torment human", the tour points) are not implemented.
 
 Quake Live bot behavior over FnQL's botlib:
 
@@ -1318,5 +1463,5 @@ licenses as that document describes.
 - Baseline files keep their headers. New files carry the FnQL-game GPL header.
 - Enabled targets only (x86; x86_64 on Windows and Linux). Validate each
   target with its own artifacts.
-- Probes run windowed (`+set r_fullscreen 0`) and as cheaply as the question
+- Probes run headless (`AGENTS.md` rule 13) and as cheaply as the question
   allows. Dedicated server first.

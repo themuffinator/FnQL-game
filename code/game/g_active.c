@@ -1141,6 +1141,8 @@ void ClientThink_real( gentity_t *ent ) {
 
 	// perform once-a-second actions
 	ClientTimerActions( ent, msec );
+	// retail 0x100353cb: play time and weapon time for the stats report
+	G_StatsAccountTime( ent );
 }
 
 

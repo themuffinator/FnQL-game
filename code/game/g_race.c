@@ -64,6 +64,7 @@ static void RacePointTouch( gentity_t *point, gentity_t *runner, trace_t *trace 
 		client->raceSplitCount = 0;
 		client->raceStartTime = level.time;
 		client->raceActive = qtrue;
+		client->raceWeaponsUsed = qfalse;	// retail 0x10063717
 		return;
 	}
 	if ( !client->raceActive || client->raceNext != point ) return;
@@ -86,6 +87,7 @@ static void RacePointTouch( gentity_t *point, gentity_t *runner, trace_t *trace 
 	}
 	if ( elapsed == INT_MAX ) { G_ResetRace(client); return; }
 	client->flagCarryTime = client->raceLastTime = elapsed;
+	G_StatsReportRaceComplete( runner, elapsed, client->raceWeaponsUsed );	// retail 0x100637be
 	if ( level.numPlayingClients && elapsed < level.clients[level.sortedClients[0]].ps.persistant[PERS_SCORE] ) {
 		gentity_t *notice = G_TempEntity(client->ps.origin, EV_NEW_HIGH_SCORE);
 		notice->r.svFlags |= SVF_BROADCAST;

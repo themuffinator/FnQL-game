@@ -52,10 +52,12 @@ static void DomAwards( gentity_t *point, gentity_t **players, int count ) {
 		if ( capture ) {
 			cl->pers.teamState.captures++;
 			cl->stats.captures++;
+			G_StatsReportMedal( player, "CAPTURE", cl->stats.captures );	// retail 0x1004abcc
 			cl->ps.persistant[PERS_CAPTURES]++;
 		} else {
 			cl->pers.teamState.assists++;
 			cl->stats.assists++;
+			G_StatsReportMedal( player, "ASSIST", cl->stats.assists );
 			cl->ps.persistant[PERS_ASSIST_COUNT]++;
 		}
 		cl->ps.eFlags = (cl->ps.eFlags & ~EF_AWARDS) | (capture ? EF_AWARD_CAP : EF_AWARD_ASSIST);
@@ -192,6 +194,7 @@ void G_DominationDefense( gentity_t *attacker, gentity_t *victim ) {
 		if ( VectorLength(distance) >= 500 || !trap_InPVS(point->r.currentOrigin, victim->r.currentOrigin) ) continue;
 		attacker->client->pers.teamState.basedefense++;
 		attacker->client->stats.defends++;
+		G_StatsReportMedal( attacker, "DEFENSE", attacker->client->stats.defends );	// retail 0x1004baf4
 		AddScore(attacker, victim->r.currentOrigin, 10);
 		attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
 		attacker->client->ps.eFlags = (attacker->client->ps.eFlags & ~EF_AWARDS) | EF_AWARD_DEFEND;

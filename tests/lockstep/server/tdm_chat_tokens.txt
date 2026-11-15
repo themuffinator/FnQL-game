@@ -1,0 +1,27 @@
+# Gate G3 scenario (scripts/server_lockstep.py [--factory tdm] --frames 160):
+# chat tokens (retail qagamex86 0x10041450, from G_Say at 0x10041800).  In
+# team chat and tells "##" is a literal '#', any other non-token character
+# after '#' drops the '#', and a spectator's text is copied as typed.  Public
+# chat is never rewritten.  Outside the team modes team chat turns public
+# but has already been rewritten.
+# The expanding tokens (#h, #a, #w) are deliberately absent: retail appends
+# an expansion with Q_strcat at a write position it never terminated
+# (0x1004155f), so its output depends on stale stack bytes and two retail
+# runs of the same message differ.  tests/game_chattokens.c covers them.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+client carol name Carol
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+
+clientcmd 60 alpha say_team 100## done #x#q trailing #
+clientcmd 70 alpha tell 1 odds 50## and #Z#
+clientcmd 80 alpha say public #h #a #w ## stays as typed
+clientcmd 90 bravo say_team #H #A #W upper case
+clientcmd 100 bravo tell 2 to carol ## #!
+clientcmd 110 carol say_team spectator #h #a #w ##
+clientcmd 120 carol tell 0 spectator tell #h ##

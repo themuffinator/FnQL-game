@@ -309,6 +309,83 @@ int BotGetItemLongTermGoal(bot_state_t *bs, int tfl, bot_goal_t *goal) {
 
 /*
 ==================
+BotHuntTargetCurrent
+
+Retail qagamex86 0x10020600: while the hunt's five seconds run, the goal
+follows its target (an 8-unit box at the target's origin) and the time is
+renewed; a dead target ends the hunt at once.
+==================
+*/
+static int BotHuntTargetCurrent(bot_state_t *bs) {
+	aas_entityinfo_t entinfo;
+
+	if (bs->ltg_time < FloatTime()) {
+		return qfalse;
+	}
+	BotEntityInfo(bs->teamgoal.entitynum, &entinfo);
+	if (!entinfo.valid) {
+		return qtrue;
+	}
+	if (EntityIsDead(&entinfo)) {
+		bs->ltg_time = 0;
+		return qfalse;
+	}
+	bs->ltg_time = FloatTime() + 5;
+	VectorCopy(entinfo.origin, bs->teamgoal.origin);
+	bs->teamgoal.areanum = BotPointAreaNum(entinfo.origin);
+	VectorSet(bs->teamgoal.mins, -8, -8, -8);
+	VectorSet(bs->teamgoal.maxs, 8, 8, 8);
+	bs->teamgoal.flags = 0;
+	return qtrue;
+}
+
+/*
+==================
+BotGetHuntLongTermGoal
+
+Retail qagamex86 0x10020730, the long term goal of Clan Arena and Red Rover
+(0x10008dc9), which have no items to roam between: the nearest living enemy,
+held until it dies and chosen again every time the hunt lapses.  Without it
+a bot in those modes stands where it spawned until an enemy walks into view.
+==================
+*/
+static int BotGetHuntLongTermGoal(bot_state_t *bs, bot_goal_t *goal) {
+	aas_entityinfo_t entinfo;
+	vec3_t dir;
+	float dist, bestDist = 0;
+	int i, best = -1;
+
+	if (!BotHuntTargetCurrent(bs)) {
+		for (i = 0; i < level.maxclients; i++) {
+			if (i == bs->client || BotSameTeam(bs, i)) {
+				continue;
+			}
+			BotEntityInfo(i, &entinfo);
+			if (!entinfo.valid || EntityIsDead(&entinfo)) {
+				continue;
+			}
+			VectorSubtract(bs->origin, entinfo.origin, dir);
+			dist = VectorLengthSquared(dir);
+			if (best < 0 || dist < bestDist) {
+				best = i;
+				bestDist = dist;
+			}
+		}
+		if (best < 0) {
+			return qfalse;
+		}
+		bs->ltgtype = LTG_KILL;
+		bs->ltg_time = FloatTime() + 5;
+		bs->teamgoal_time = FloatTime() + 60;
+		bs->teamgoal.entitynum = best;
+		BotHuntTargetCurrent(bs);
+	}
+	memcpy(goal, &bs->teamgoal, sizeof(bot_goal_t));
+	return qtrue;
+}
+
+/*
+==================
 BotGetLongTermGoal
 
 we could also create a seperate AI node for every long term goal type
@@ -323,6 +400,11 @@ int BotGetLongTermGoal(bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal) 
 	float croucher;
 	aas_entityinfo_t entinfo, botinfo;
 	bot_waypoint_t *wp;
+
+	// the itemless round modes hunt instead (retail 0x10008dc9)
+	if (gametype == GT_CLAN_ARENA || gametype == GT_RED_ROVER) {
+		return BotGetHuntLongTermGoal(bs, goal);
+	}
 
 	if (bs->ltgtype == LTG_TEAMHELP && !retreat) {
 		//check for bot typing status message

@@ -24,6 +24,9 @@ void trap_SendServerCommand(int client,const char *text) { CHECK(client>=-1 && c
 void trap_SetConfigstring(int index,const char *text) { CHECK(index==CS_RACE_RECORDS); Q_strncpyz(recordCount,text,sizeof(recordCount)); }
 void trap_Argv(int n,char *b,int size) { Q_strncpyz(b,n==1 && argc>1?action:"",size); }
 void CalculateRanks(void) { ++ranks; }
+static int reportedRuns, reportedRunTime;
+static qboolean reportedRunWeapons;
+void G_StatsReportRaceComplete(const gentity_t *ent, int raceTime, qboolean weaponsUsed) { (void)ent; ++reportedRuns; reportedRunTime = raceTime; reportedRunWeapons = weaponsUsed; }
 void G_FreeEntity(gentity_t *ent) { ent->inuse=qfalse; }
 gentity_t *G_Find(gentity_t *from,int offset,const char *match) {
 	int i=from?(int)(from-g_entities)+1:0;
@@ -79,16 +82,23 @@ int main(void) {
 	touch(finish,50); CHECK(clients[0].raceNext==split && !ranks);
 	touch(start,999); CHECK(clients[0].flagCarryTime==999);
 	touch(split,500); CHECK(clients[0].raceSplitCount==1 && lastEvent->s.time==0 && !lastEvent->s.generic1);
+	CHECK(!reportedRuns);
 	touch(finish,1250); CHECK(ranks==1 && clients[0].ps.persistant[PERS_SCORE]==1250 && clients[0].raceBestSplits[0]==500);
+	/* every finished run goes to the stats report with its time; a fresh run starts without weapon use */
+	CHECK(reportedRuns==1 && reportedRunTime==1250 && !reportedRunWeapons);
 	CHECK(!clients[0].raceActive && !clients[0].raceNext && strstr(message,"Personal best") && strstr(message,"0:01.250"));
 	touch(start,0); touch(split,700); CHECK(lastEvent->s.time==200 && lastEvent->s.generic1==1);
 	touch(finish,1500); CHECK(clients[0].ps.persistant[PERS_SCORE]==1250 && clients[0].raceBestSplits[0]==500 && !strstr(message,"Personal best"));
 	clients[1].ps.persistant[PERS_SCORE]=1000;
-	touch(start,0); touch(split,400); touch(finish,1000);
+	touch(start,0); clients[0].raceWeaponsUsed=qtrue; touch(split,400); touch(finish,1000);
 	CHECK(clients[0].raceLastTime==1001 && clients[0].ps.persistant[PERS_SCORE]==1001 && clients[0].raceBestSplits[0]==400);
+	/* the report carries the time made unique (1001), and a weapon push during the run */
+	CHECK(reportedRuns==3 && reportedRunTime==1001 && reportedRunWeapons);
 	G_RaceInfo(&g_entities[1],&clients[0]); CHECK(strstr(message,"race_info 0 1000 1001 1 -1"));
 	touch(start,0); touch(split,61000); touch(finish,63001); CHECK(strstr(message,"1:03.001") && clients[0].ps.persistant[PERS_SCORE]==1001);
+	CHECK(reportedRuns==4 && reportedRunTime==63001 && !reportedRunWeapons);	/* the new run started clean */
 	touch(start,0); touch(split,100); touch(finish,INT_MAX); CHECK(!clients[0].raceActive && clients[0].ps.persistant[PERS_SCORE]==1001);
+	CHECK(reportedRuns==4);	/* a run that cannot be timed is not reported */
 	touch(start,0); G_ResetRace(&clients[0]); CHECK(!clients[0].raceActive && !clients[0].raceFollowing && clients[0].ps.persistant[PERS_SCORE]==1001);
 	bad=point(NULL,"missing"); touch(bad,0); CHECK(!clients[0].raceActive);
 	bad->target="split"; split->target="split"; touch(bad,0);

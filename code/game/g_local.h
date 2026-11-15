@@ -348,6 +348,13 @@ typedef struct {
 	int			powerupPickups[PW_NUM_POWERUPS];
 	int			holdablePickups[HI_NUM_HOLDABLE];
 	int			denies;				// powerups taken from under an enemy's nose
+	// read by the match statistics reports (g_statsreport.c)
+	int			stamp;				// level.time of the last play-time accounting (retail +0x56c)
+	int			playMsec;			// msec in the match outside the intermission (+0x574)
+	int			weaponTime[WP_MAX_WEAPONS];	// msec each weapon was in hand (+0x7b8)
+	int			holyShits;			// near-captures stopped or suffered (+0x804)
+	int			lastHealth, lastArmor;	// health and armor when an enemy last did damage (+0x810, +0x814)
+	int			flagPickups[3];		// red, blue and neutral flags taken from their base (+0x868)
 } clientStats_t;
 
 // unlagged
@@ -368,6 +375,7 @@ struct gclient_s {
 	// the rest of the structure is private to game
 	clientPersistant_t	pers;
 	qboolean raceActive;
+	qboolean raceWeaponsUsed;	// a weapon pushed the racer during this run (retail gclient +0xab8)
 	int raceStartTime, raceLastTime, raceSplitCount;
 	int raceBestSplits[64], raceSplits[64];
 	gentity_t *raceNext, *raceFollowing;
@@ -586,6 +594,9 @@ typedef struct {
 	char		firstScorer[MAX_NETNAME + 4];	// the match's first and latest scorers
 	char		lastScorer[MAX_NETNAME + 4];
 	char		firstFragger[MAX_NETNAME + 4];	// whoever took the first frag
+	char		lastTeamScorer[MAX_NETNAME + 4];	// whoever last captured a flag (retail 0x105df2a0)
+	int			lastLeadChangeTime;		// when the lead last changed hands (retail 0x105e19d4)
+	int			leadHolder;				// the leading client, or side in the team modes (0x105e19d8)
 
 	int			teamStats[TEAM_STAT_NUM][TEAM_NUM_TEAMS];	// item control by team (retail 0x105df424)
 	int			duelRowClient;			// the lower-numbered duelist when two last played
@@ -834,6 +845,28 @@ team_t PickTeam( int ignoreClientNum );
 void SetClientViewAngle( gentity_t *ent, vec3_t angle );
 void G_CleanPlayerName( const char *input, char *output, int outputSize );
 qboolean G_PlayerNamesEqual( const char *a, const char *b );
+// g_statsreport.c: the match statistics events and report (retail imports 185/186)
+void G_StatsNoteScorer( const gentity_t *ent );
+void G_StatsNoteTeamScorer( const gentity_t *ent );
+void G_StatsAccountTime( gentity_t *ent );
+void G_StatsLeadChange( void );
+void G_StatsReportConnect( const gentity_t *ent );
+void G_StatsReportDisconnect( const gentity_t *ent );
+void G_StatsReportSwitchTeam( const gentity_t *ent, int oldTeam, int newTeam );
+void G_StatsReportKill( const gentity_t *victim, const gentity_t *attacker, int mod );
+void G_StatsReportMedal( const gentity_t *ent, const char *medal, int total );
+void G_StatsReportFlagStatus( const gentity_t *player, int team, int status );
+void G_StatsReportRoundOver( int round, int winner );
+void G_StatsReportRaceComplete( const gentity_t *ent, int raceTime, qboolean weaponsUsed );
+void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean quit );
+void G_StatsReportMatchStarted( void );
+void G_StatsReportMatch( qboolean aborted, int restarted, const char *exitMessage );
+qboolean trap_StatsAvailable( void );
+void trap_StatsReportJson( const char *json );
+void trap_StatsEventJson( unsigned long long steamId, const char *eventName, const char *json );
+const char *G_ChatWeaponName( int weapon );
+qboolean G_ExpandChatTokens( const playerState_t *ps, qboolean spectator,
+	const char *input, char *output, int outputSize );
 gentity_t *SelectSpawnPoint( gentity_t *ent, vec3_t avoidPoint, vec3_t origin, vec3_t angles );
 void CopyToBodyQue( gentity_t *ent );
 void respawn (gentity_t *ent);

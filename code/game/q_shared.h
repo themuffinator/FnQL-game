@@ -702,6 +702,15 @@ default values.
 // configstring; CVAR_GAMERULE marks game-rule cvars.  Bit 0x40000 appears
 // on a subset of retail pmove cvars with no identified meaning yet; it is
 // passed through unchanged.
+// The retail client modules pass three more engine bits with most of their
+// cvars (the retail cgame table at 0x100769e8 carries 0x81801 on its archived
+// settings).  The names and meanings are FnQL's: an engine-managed setting,
+// a cvar created or guarded by a module, a bounded cvar that snaps to its
+// endpoints, and a setting stored with the player's profile.
+#define CVAR_PROTECTED				0x00000800
+#define CVAR_VM_CREATED				0x00001000
+#define CVAR_BOUNDED_DISCRETE		0x00002000
+#define CVAR_CLOUD					0x00080000
 #define CVAR_QL_PMOVE_SETTINGS		0x00004000	// CS_PMOVE_SETTINGS
 #define CVAR_QL_WEAPON_RELOAD		0x00008000	// CS_WEAPON_SETTINGS
 #define CVAR_QL_PLAYER_APPEARANCE	0x00010000	// CS_APPEARANCE_SETTINGS

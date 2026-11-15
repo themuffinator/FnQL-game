@@ -41,6 +41,8 @@ static cvarTable_t gameCvarTable[] = {
 static void G_InitGame( int levelTime, int randomSeed, int restart );
 static void G_RunFrame( int levelTime );
 static void G_ShutdownGame( int restart );
+static qboolean G_MatchEndUnreported( void );
+static void G_ReportMatchEnd( qboolean aborted, int restarted, const char *message );
 static void CheckExitRules( void );
 static void G_WarmupEnd( void );
 static qboolean G_ShouldForfeit( void );
@@ -714,9 +716,20 @@ static void G_InitGame( int levelTime, int randomSeed, int restart ) {
 G_ShutdownGame
 =================
 */
-static void G_ShutdownGame( int restart ) 
+static void G_ShutdownGame( int restart )
 {
+	char	message[MAX_STRING_CHARS];
+
 	G_Printf ("==== ShutdownGame ====\n");
+
+	// Retail 0x10055610: a level shut down while it runs closes the match
+	// for the stats report as aborted, unless the match already ended or
+	// this is the countdown's restart into it (G_ReportMatchEnd).  The
+	// reason is the engine's error message, or "Shutdown".
+	if ( level.time != 0 ) {
+		trap_Cvar_VariableStringBuffer( "com_errorMessage", message, sizeof( message ) );
+		G_ReportMatchEnd( qtrue, restart, message[0] ? message : "Shutdown" );
+	}
 
 	if ( level.logFile != FS_INVALID_HANDLE ) {
 		G_LogPrintf("ShutdownGame:\n" );
@@ -1245,6 +1258,9 @@ void CalculateRanks( void ) {
 			trap_SetConfigstring( CS_DUEL_NAME1, level.clients[first].pers.netname );
 		}
 	}
+
+	// when the lead last changed hands, for the stats report (retail 0x10056587)
+	G_StatsLeadChange();
 
 	// if we are at the intermission, send the new info to everyone
 	if ( level.intermissiontime ) {
@@ -1815,9 +1831,9 @@ LogExit
 Retail qagamex86 0x10057510: the end of the match is logged with every
 player's score, the intermission is queued, and everyone hears the result
 (the winning team, or the game-over call).  The first end since the match
-started also goes to the online stats report, which FnQL-game leaves to
-milestone 11; a flawless duel winner earns the Steam achievement when an
-online provider backs it.
+started also goes to the stats report: every ranked player's statistics,
+then the closing report (g_statsreport.c); a flawless duel winner earns the
+Steam achievement when an online provider backs it.
 ================
 */
 void LogExit( const char *string ) {
@@ -1833,7 +1849,7 @@ void LogExit( const char *string ) {
 		G_LogPrintf( "red:%i  blue:%i\n", level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE] );
 	}
 
-	report = !level.matchReported && trap_Cvar_VariableValue( "g_restarted" ) == 0.0f;
+	report = G_MatchEndUnreported();
 
 	for ( i = 0; i < level.numConnectedClients; i++ ) {
 		clientNum = level.sortedClients[i];
@@ -1851,6 +1867,10 @@ void LogExit( const char *string ) {
 		ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
 		G_LogPrintf( "score: %i  ping: %i  client: %i %s stats: %d \n",
 			cl->ps.persistant[PERS_SCORE], ping, clientNum, cl->pers.netname, cl->stats.key );
+		// each ranked player's statistics, in rank order (0x100576eb)
+		if ( report ) {
+			G_StatsReportPlayer( cl, qfalse, qfalse );
+		}
 	}
 
 	if ( G_IsTeamGametype( g_gametype.integer ) ) {
@@ -1861,9 +1881,52 @@ void LogExit( const char *string ) {
 	}
 	te->r.svFlags |= SVF_BROADCAST;
 
+	// and the report that closes the match (0x10057785)
 	if ( report ) {
+		G_StatsReportMatch( qfalse, 0, string );
 		level.matchReported = qtrue;
 	}
+}
+
+
+/*
+================
+G_MatchEndUnreported
+
+Retail 0x10057574: a match is reported once, and never from the warmup
+level that the countdown is restarting (g_restarted).
+================
+*/
+static qboolean G_MatchEndUnreported( void ) {
+	return !level.matchReported && trap_Cvar_VariableValue( "g_restarted" ) == 0.0f;
+}
+
+
+/*
+================
+G_ReportMatchEnd
+
+The stats half of retail's exit logger (0x10057510), for the one caller that
+is not a match ending in play: a level shut down under its match.  Every
+ranked player's statistics go out, then the report, all marked aborted.
+================
+*/
+static void G_ReportMatchEnd( qboolean aborted, int restarted, const char *message ) {
+	const gclient_t	*cl;
+	int				i;
+
+	if ( !G_MatchEndUnreported() ) {
+		return;
+	}
+	for ( i = 0; i < level.numConnectedClients; i++ ) {
+		cl = &level.clients[level.sortedClients[i]];
+		if ( cl->pers.connected == CON_CONNECTING || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		G_StatsReportPlayer( cl, aborted, qfalse );
+	}
+	G_StatsReportMatch( aborted, restarted, message );
+	level.matchReported = qtrue;
 }
 
 
@@ -2085,11 +2148,11 @@ G_WarmupEnd
 Retail qagamex86 0x10058860: the countdown is over, so the level restarts
 straight into the match (G_InitGame reads g_restarted).  The warmup clock
 moves on ten seconds so that nothing counts down again before the restart
-runs.  Retail first reports the match start to the online stats service,
-which FnQL-game leaves to milestone 11.
+runs.  The match start goes to the stats report first.
 ==================
 */
 static void G_WarmupEnd( void ) {
+	G_StatsReportMatchStarted();	// retail 0x10058860, before anything else
 	level.warmupTime += 10000;
 	trap_Cvar_Set( "g_restarted", "1" );
 	trap_SendConsoleCommand( EXEC_APPEND, "map_restart 0\n" );

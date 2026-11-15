@@ -323,19 +323,20 @@ static void CG_OffsetFirstPersonView( void ) {
 	// add angles based on weapon kick
 	VectorAdd (angles, cg.kick_angles, angles);
 
-	// add angles based on damage kick
-	if ( cg.damageTime ) {
+	// add angles based on damage kick.  Retail (cgame 0x1004d232-0x1004d2d7)
+	// has no kick at all with cg_kickScale 0, and scales only the deflection
+	// by it: the return phase, which joins after the multiply (0x1004d2c9 to
+	// 0x1004d289), starts from the whole angle.
+	if ( cg.damageTime && cg_kickScale.value != 0.0f ) {
 		ratio = cg.time - cg.damageTime;
 		if ( ratio < DAMAGE_DEFLECT_TIME ) {
-			ratio /= DAMAGE_DEFLECT_TIME;
+			ratio = ratio * cg_kickScale.value / DAMAGE_DEFLECT_TIME;
 			angles[PITCH] += ratio * cg.v_dmg_pitch;
 			angles[ROLL] += ratio * cg.v_dmg_roll;
-		} else {
+		} else if ( ratio < DAMAGE_DEFLECT_TIME + DAMAGE_RETURN_TIME ) {
 			ratio = 1.0 - ( ratio - DAMAGE_DEFLECT_TIME ) / DAMAGE_RETURN_TIME;
-			if ( ratio > 0 ) {
-				angles[PITCH] += ratio * cg.v_dmg_pitch;
-				angles[ROLL] += ratio * cg.v_dmg_roll;
-			}
+			angles[PITCH] += ratio * cg.v_dmg_pitch;
+			angles[ROLL] += ratio * cg.v_dmg_roll;
 		}
 	}
 
@@ -347,30 +348,42 @@ static void CG_OffsetFirstPersonView( void ) {
 	angles[PITCH] += ratio * cg.fall_value;
 #endif
 
-	// add angles based on velocity
-	VectorCopy( cg.predictedPlayerState.velocity, predictedVelocity );
+	// Velocity lean and bob.  Retail (cgame 0x1004d2d9-0x1004d47c) drives all
+	// of it from one cvar, cg_bob (table row 10076b80, default 0.25), where
+	// Quake III had cg_runpitch, cg_runroll, cg_bobpitch, cg_bobroll and
+	// cg_bobup: zero turns the lean off with the bob; otherwise the lean keeps
+	// Quake III's constants (0.002 pitch, 0.005 roll, the float constants at
+	// 0x10073c40 and 0x10073c38), and the bob angles and height are the one
+	// cg_bob-scaled swing times 0.002 and 0.005.  Crouching doubles the swing
+	// (Quake III tripled it) and the height stops at 5 units (Quake III: 6).
+	if ( cg_bob.value != 0.0f ) {
+		// make sure the bob is visible even at low speeds
+		speed = cg.xyspeed > 200 ? cg.xyspeed : 200;
+		delta = cg.bobfracsin * cg_bob.value * speed;
 
-	delta = DotProduct ( predictedVelocity, cg.refdef.viewaxis[0]);
-	angles[PITCH] += delta * cg_runpitch.value;
-	
-	delta = DotProduct ( predictedVelocity, cg.refdef.viewaxis[1]);
-	angles[ROLL] -= delta * cg_runroll.value;
+		VectorCopy( cg.predictedPlayerState.velocity, predictedVelocity );
+		angles[PITCH] += DotProduct( predictedVelocity, cg.refdef.viewaxis[0] ) * 0.002f;
+		angles[ROLL] -= DotProduct( predictedVelocity, cg.refdef.viewaxis[1] ) * 0.005f;
 
-	// add angles based on bob
+		if ( cg.predictedPlayerState.pm_flags & PMF_DUCKED ) {
+			delta += delta;		// crouching
+		}
+		angles[PITCH] += delta * 0.002f;
+		if ( cg.bobcycle & 1 ) {
+			angles[ROLL] -= delta * 0.002f;
+		} else {
+			angles[ROLL] += delta * 0.002f;
+		}
 
-	// make sure the bob is visible even at low speeds
-	speed = cg.xyspeed > 200 ? cg.xyspeed : 200;
-
-	delta = cg.bobfracsin * cg_bobpitch.value * speed;
-	if (cg.predictedPlayerState.pm_flags & PMF_DUCKED)
-		delta *= 3;		// crouching
-	angles[PITCH] += delta;
-	delta = cg.bobfracsin * cg_bobroll.value * speed;
-	if (cg.predictedPlayerState.pm_flags & PMF_DUCKED)
-		delta *= 3;		// crouching accentuates roll
-	if (cg.bobcycle & 1)
-		delta = -delta;
-	angles[ROLL] += delta;
+		// add bob height
+		bob = delta * 0.005f;
+		if ( bob < 0 ) {
+			bob = 0;
+		} else if ( bob > 5 ) {
+			bob = 5;
+		}
+		origin[2] += bob;
+	}
 
 //===================================
 
@@ -380,17 +393,9 @@ static void CG_OffsetFirstPersonView( void ) {
 	// smooth out duck height changes
 	timeDelta = cg.time - cg.duckTime;
 	if ( timeDelta < DUCK_TIME) {
-		cg.refdef.vieworg[2] -= cg.duckChange 
+		cg.refdef.vieworg[2] -= cg.duckChange
 			* (DUCK_TIME - timeDelta) / DUCK_TIME;
 	}
-
-	// add bob height
-	bob = cg.bobfracsin * cg.xyspeed * cg_bobup.value;
-	if (bob > 6) {
-		bob = 6;
-	}
-
-	origin[2] += bob;
 
 
 	// add fall height

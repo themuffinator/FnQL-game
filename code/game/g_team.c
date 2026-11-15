@@ -22,6 +22,10 @@ gentity_t	*neutralObelisk;
 
 static void Team_SetFlagStatus( team_t team, flagStatus_t status );
 
+// whoever is taking a flag while its status is set, for the stats report
+// (retail passes the player to the setter, 0x10069f41)
+static const gentity_t *flagStatusPlayer;
+
 void Team_InitGame( void ) {
 	memset(&teamgame, 0, sizeof teamgame);
 
@@ -189,6 +193,10 @@ static char oneFlagStatusRemap[] = { '0', '1', '2', '3', '4' };
 static void Team_SetFlagStatus( team_t team, flagStatus_t status ) {
 	qboolean modified = qfalse;
 
+	// Retail's setter (0x10068770) tells the stats report first, before it
+	// looks whether anything changes, so every call is reported.
+	G_StatsReportFlagStatus( flagStatusPlayer, team, status );
+
 	switch( team ) {
 	case TEAM_RED:	// CTF
 		if ( teamgame.redStatus != status ) {
@@ -278,6 +286,7 @@ the score, then the defend award and its sprite.
 */
 static void Team_DefenseAward( gentity_t *attacker, gentity_t *targ, int bonus ) {
 	attacker->client->stats.defends++;
+	G_StatsReportMedal( attacker, "DEFENSE", attacker->client->stats.defends );	// retail 0x10069056
 	AddScore( attacker, targ->r.currentOrigin, bonus );
 	attacker->client->ps.persistant[PERS_DEFEND_COUNT]++;
 	attacker->client->ps.eFlags &= ~EF_AWARDS;
@@ -826,6 +835,10 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team,
 	cl->ps.powerups[enemyFlag] = 0;
 	cl->pers.teamState.captures++;
 	cl->stats.captures++;
+	// the stats report: the medal before the capture scores, and the
+	// capturer as the match's latest team scorer (retail 0x10069b72, 0x10069aea)
+	G_StatsReportMedal( other, "CAPTURE", cl->stats.captures );
+	G_StatsNoteTeamScorer( other );
 
 	teamgame.last_flag_capture = level.time;
 	teamgame.last_capture_team = team;
@@ -858,6 +871,7 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team,
 			// retail credits the assist to the capturer's count, as Quake III did
 			cl->pers.teamState.assists++;
 			player->client->stats.assists++;
+			G_StatsReportMedal( player, "ASSIST", player->client->stats.assists );	// retail 0x10069dbf
 			AddScore( player, ent->r.currentOrigin, CTF_RETURN_FLAG_ASSIST_BONUS );
 			G_AwardCapture( player, PERS_ASSIST_COUNT, EF_AWARD_ASSIST );
 		}
@@ -937,16 +951,22 @@ static int Team_TouchEnemyFlag( gentity_t *ent, gentity_t *other, team_t team ) 
 	if ( g_gametype.integer == GT_1FCTF ) {
 		PrintMsg( NULL, "%s" S_COLOR_YELLOW " got the flag!\n", cl->pers.netname );
 		cl->ps.powerups[PW_NEUTRALFLAG] = INT_MAX; // flags never expire
+		flagStatusPlayer = other;
 		Team_SetFlagStatus( TEAM_FREE, team == TEAM_RED ? FLAG_TAKEN_RED : FLAG_TAKEN_BLUE );
+		flagStatusPlayer = NULL;
 	} else {
 		PrintMsg( NULL, "%s" S_COLOR_YELLOW " got the %s flag!\n", cl->pers.netname, TeamName( team ) );
 		cl->ps.powerups[team == TEAM_RED ? PW_REDFLAG : PW_BLUEFLAG] = INT_MAX; // flags never expire
+		flagStatusPlayer = other;
 		Team_SetFlagStatus( team, FLAG_TAKEN );
+		flagStatusPlayer = NULL;
 	}
 
 	if ( !( ent->flags & FL_DROPPED_ITEM ) ) {
 		AddScore( other, ent->r.currentOrigin, CTF_FLAG_BONUS );
 		level.teamStats[TEAM_STAT_FLAG_PICKUPS][cl->sess.sessionTeam]++;
+		// a flag taken from its base, for the stats report (retail +0x868 onwards)
+		cl->stats.flagPickups[g_gametype.integer == GT_1FCTF ? 2 : team == TEAM_RED ? 0 : 1]++;
 	} else if ( g_droppedFlagBonus.integer && ent->activator && ent->activator != other ) {
 		// Retail 0x10069f51: this cvar enables the fixed pickup bonus.
 		AddScore( other, ent->r.currentOrigin, CTF_FLAG_BONUS );

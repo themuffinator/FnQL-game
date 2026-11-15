@@ -29,6 +29,40 @@ typedef qboolean ( QDECL *gameNativeGetValue_t )( char *value, int valueSize, co
 static gameNativeGetValue_t g_nativeGetValue;
 static qboolean g_nativeExtensionsProbed;
 
+// FnQL's JSON-text stats imports.  Retail's slots 185/186 take a JsonCpp
+// object built by the retail module's own VC10 runtime; a source-built
+// module cannot make one, so FnQL offers the same two calls taking the
+// document as text.  Absent (the retail engine, an older FnQL): no reports.
+typedef void ( QDECL *gameNativeStatsReportJson_t )( const char *json );
+typedef void ( QDECL *gameNativeStatsEventJson_t )( unsigned int steamIdLow, unsigned int steamIdHigh,
+	const char *eventName, const char *json );
+static gameNativeStatsReportJson_t g_nativeStatsReportJson;
+static gameNativeStatsEventJson_t g_nativeStatsEventJson;
+
+/*
+================
+G_NativeExtensionSlot
+
+An FnQL extension import: trap_GetValue answers the key with a Quake3e-style
+syscall number, and the function sits at that number in the compatibility
+slab.  Numbers at or below trap_GetValue's own are the legacy imports, never
+an extension, and the slab is not read beyond a sane distance.
+================
+*/
+static void *G_NativeExtensionSlot( void * const *slots, const char *key ) {
+	char	value[ MAX_CVAR_VALUE_STRING ];
+	int		number;
+
+	if ( !g_nativeGetValue || !g_nativeGetValue( value, sizeof( value ), key ) ) {
+		return NULL;
+	}
+	number = atoi( value );
+	if ( number <= G_NATIVE_COM_TRAP_GETVALUE || number > G_NATIVE_COM_TRAP_GETVALUE + 64 ) {
+		return NULL;
+	}
+	return slots[ G_NATIVE_COMPAT_BASE + number ];
+}
+
 /*
 ================
 G_NativeInitExtensions
@@ -47,6 +81,8 @@ static void G_NativeInitExtensions( void ) {
 	}
 	g_nativeExtensionsProbed = qtrue;
 	g_nativeGetValue = NULL;
+	g_nativeStatsReportJson = NULL;
+	g_nativeStatsEventJson = NULL;
 
 	gi->Cvar_VariableStringBuffer( "//trap_GetValue", value, sizeof( value ) );
 	if ( atoi( value ) != G_NATIVE_COM_TRAP_GETVALUE ) {
@@ -55,10 +91,29 @@ static void G_NativeInitExtensions( void ) {
 
 	slots = (void * const *)gi;
 	g_nativeGetValue = (gameNativeGetValue_t)slots[ G_NATIVE_COMPAT_BASE + G_NATIVE_COM_TRAP_GETVALUE ];
+
+	g_nativeStatsReportJson = (gameNativeStatsReportJson_t)G_NativeExtensionSlot( slots, "trap_StatsReportJson_FnQL" );
+	g_nativeStatsEventJson = (gameNativeStatsEventJson_t)G_NativeExtensionSlot( slots, "trap_StatsEventJson_FnQL" );
 }
 
 qboolean G_NativeHasEngineExtensions( void ) {
 	return g_nativeGetValue ? qtrue : qfalse;
+}
+
+qboolean trap_StatsAvailable( void ) {
+	return ( g_nativeStatsReportJson && g_nativeStatsEventJson ) ? qtrue : qfalse;
+}
+
+void trap_StatsReportJson( const char *json ) {
+	if ( g_nativeStatsReportJson && json ) {
+		g_nativeStatsReportJson( json );
+	}
+}
+
+void trap_StatsEventJson( unsigned long long steamId, const char *eventName, const char *json ) {
+	if ( g_nativeStatsEventJson && eventName && json ) {
+		g_nativeStatsEventJson( (unsigned int)( steamId & 0xffffffffu ), (unsigned int)( steamId >> 32 ), eventName, json );
+	}
 }
 
 qboolean G_NativeGetValue( char *value, int valueSize, const char *key ) {
@@ -325,6 +380,8 @@ DLLEXPORT void QDECL dllEntry( void **exports, const void *imports, int *apiVers
 	gi = (const gameNativeImports_t *)imports;
 	g_nativeExtensionsProbed = qfalse;
 	g_nativeGetValue = NULL;
+	g_nativeStatsReportJson = NULL;
+	g_nativeStatsEventJson = NULL;
 
 	g_nativeExports[ GAME_NATIVE_EXPORT_SHUTDOWN ] = (void *)G_NativeShutdown;
 	g_nativeExports[ GAME_NATIVE_EXPORT_RUN_FRAME ] = (void *)G_NativeRunFrame;

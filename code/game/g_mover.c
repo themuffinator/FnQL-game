@@ -605,6 +605,12 @@ void Reached_BinaryMover( gentity_t *ent ) {
 }
 
 
+// Quake Live's key doors (retail func_door 0x1005fd1b, Use_BinaryMover
+// 0x1005ec68): spawnflags 16 and 32 lock a door to the silver or the gold
+// key; the master key opens both.
+#define DOOR_KEY_SILVER	16
+#define DOOR_KEY_GOLD	32
+
 /*
 ================
 Use_BinaryMover
@@ -627,9 +633,16 @@ void Use_BinaryMover( gentity_t *ent, gentity_t *other, gentity_t *activator ) {
 		// triggered, level.time hasn't been advanced yet
 		MatchTeam( ent, MOVER_1TO2, level.time + 50 );
 
-		// starting sound
+		// starting sound: a key door (retail 0x1005ec68, spawnflags 16 and 32)
+		// opens with its key's sound in place of the mover's own
 		if ( ent->sound1to2 ) {
-			G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+			if ( ent->spawnflags & DOOR_KEY_SILVER ) {
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_SoundIndex( "sound/movers/doors/door_silver.wav" ) );
+			} else if ( ent->spawnflags & DOOR_KEY_GOLD ) {
+				G_AddEvent( ent, EV_GENERAL_SOUND, G_SoundIndex( "sound/movers/doors/door_gold.wav" ) );
+			} else {
+				G_AddEvent( ent, EV_GENERAL_SOUND, ent->sound1to2 );
+			}
 		}
 
 		// looping sound
@@ -858,6 +871,39 @@ void Touch_DoorTrigger( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 
 
 /*
+================
+Touch_KeyDoorTrigger
+
+Retail qagamex86 0x1005f300, the trigger of a key door: it opens for a
+player carrying the door's key or the master key (silver 1, gold 2, master
+4 in STAT_KEY_MASK), and for nobody else.  The key is kept.  A spectator
+passes through a closed one like through any door, at most once a second
+(retail keeps the time in the spectator's own timestamp).
+================
+*/
+static void Touch_KeyDoorTrigger( gentity_t *ent, gentity_t *other, trace_t *trace ) {
+	gentity_t	*door = ent->parent;
+	int			keys;
+
+	if ( !other->client || !door || door->moverState == MOVER_1TO2 ) {
+		return;
+	}
+	if ( other->client->ps.pm_type == PM_SPECTATOR ) {
+		if ( door->moverState != MOVER_POS2 && other->timestamp < level.time ) {
+			other->timestamp = level.time + 1000;
+			Touch_DoorTriggerSpectator( ent, other, trace );
+		}
+		return;
+	}
+	keys = other->client->ps.stats[STAT_KEY_MASK];
+	if ( ( ( door->spawnflags & DOOR_KEY_SILVER ) && ( keys & ( KEY_SILVER | KEY_MASTER ) ) )
+		|| ( ( door->spawnflags & DOOR_KEY_GOLD ) && ( keys & ( KEY_GOLD | KEY_MASTER ) ) ) ) {
+		Use_BinaryMover( door, ent, other );
+	}
+}
+
+
+/*
 ======================
 Think_SpawnNewDoorTrigger
 
@@ -865,7 +911,7 @@ All of the parts of a door have been spawned, so create
 a trigger that encloses all of them
 ======================
 */
-void Think_SpawnNewDoorTrigger( gentity_t *ent ) {
+static void SpawnDoorTrigger( gentity_t *ent, qboolean keyed ) {
 	gentity_t		*other;
 	vec3_t		mins, maxs;
 	int			i, best;
@@ -874,9 +920,10 @@ void Think_SpawnNewDoorTrigger( gentity_t *ent ) {
 		return;
 	}
 
-	// set all of the slaves as shootable
+	// set all of the slaves as shootable; a key door cannot be shot open
+	// (retail 0x1005f420 clears the flag down the team)
 	for ( other = ent ; other ; other = other->teamchain ) {
-		other->takedamage = qtrue;
+		other->takedamage = keyed ? qfalse : qtrue;
 	}
 
 	// find the bounds of everything on the team
@@ -905,12 +952,21 @@ void Think_SpawnNewDoorTrigger( gentity_t *ent ) {
 	VectorCopy (maxs, other->r.maxs);
 	other->parent = ent;
 	other->r.contents = CONTENTS_TRIGGER;
-	other->touch = Touch_DoorTrigger;
+	other->touch = keyed ? Touch_KeyDoorTrigger : Touch_DoorTrigger;
 	// remember the thinnest axis
 	other->count = best;
 	trap_LinkEntity (other);
 
 	MatchTeam( ent, ent->moverState, level.time );
+}
+
+void Think_SpawnNewDoorTrigger( gentity_t *ent ) {
+	SpawnDoorTrigger( ent, qfalse );
+}
+
+// retail 0x1005f400: the same trigger, answering only to the door's key
+static void Think_SpawnKeyDoorTrigger( gentity_t *ent ) {
+	SpawnDoorTrigger( ent, qtrue );
 }
 
 void Think_MatchTeam( gentity_t *ent ) {
@@ -940,13 +996,14 @@ void SP_func_door (gentity_t *ent) {
 	vec3_t	size;
 	float	lip;
 
-	if ( ent->spawnflags & 32 ) {
-		ent->sound1to2 = ent->sound2to1 = 0;
-		ent->soundPos1 = ent->soundPos2 = 0;
-	} else {
-	ent->sound1to2 = ent->sound2to1 = G_SoundIndex("sound/movers/doors/dr1_strt.wav");
-	ent->soundPos1 = ent->soundPos2 = G_SoundIndex("sound/movers/doors/dr1_end.wav");
-	}
+	char	*startSound, *endSound;
+
+	// Retail 0x1005fa25: the map may name the door's sounds.  Spawnflag 32
+	// does not silence a door, as it did here before: it is the gold key.
+	G_SpawnString( "startsound", "sound/movers/doors/dr1_strt.wav", &startSound );
+	G_SpawnString( "endsound", "sound/movers/doors/dr1_end.wav", &endSound );
+	ent->sound1to2 = ent->sound2to1 = G_SoundIndex( startSound );
+	ent->soundPos1 = ent->soundPos2 = G_SoundIndex( endSound );
 
 	ent->blocked = Blocked_Door;
 
@@ -1001,7 +1058,10 @@ void SP_func_door (gentity_t *ent) {
 		if ( health ) {
 			ent->takedamage = qtrue;
 		}
-		if ( ent->targetname || health ) {
+		if ( ent->spawnflags & ( DOOR_KEY_SILVER | DOOR_KEY_GOLD ) ) {
+			// a key door always has its own trigger (retail 0x1005fd4c)
+			ent->think = Think_SpawnKeyDoorTrigger;
+		} else if ( ent->targetname || health ) {
 			// non touch/shoot doors
 			ent->think = Think_MatchTeam;
 		} else {

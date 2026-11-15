@@ -19,7 +19,8 @@ void CG_BubbleTrail( const vec3_t start, const vec3_t end, float spacing ) {
 	float		len;
 	int			i;
 
-	if ( cg_noProjectileTrail.integer ) {
+	// retail 0x10012c5e: cg_bubbleTrail (default 1) is the whole function's gate
+	if ( cg_noProjectileTrail.integer || !cg_bubbleTrail.integer ) {
 		return;
 	}
 

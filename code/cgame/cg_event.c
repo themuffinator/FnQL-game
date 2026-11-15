@@ -388,17 +388,26 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 			trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*jump1.wav" ) );
 		break;
 
+	// Retail's cg_allowTaunt (default 1) silences the taunt and its yes/no
+	// variants only (0x1001a2c6, 0x1001a2ff, 0x1001a332); the team orders
+	// below always play.
 	case EV_TAUNT:
-		trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*taunt.wav" ) );
+		if ( cg_allowTaunt.integer ) {
+			trap_S_StartSound (NULL, es->number, CHAN_VOICE, CG_CustomSound( es->number, "*taunt.wav" ) );
+		}
 		break;
 
 #ifdef MISSIONPACK
 	case EV_TAUNT_YES:
-		CG_VoiceChatLocal(SAY_TEAM, qfalse, es->number, COLOR_CYAN, VOICECHAT_YES);
+		if ( cg_allowTaunt.integer ) {
+			CG_VoiceChatLocal(SAY_TEAM, qfalse, es->number, COLOR_CYAN, VOICECHAT_YES);
+		}
 		break;
 
 	case EV_TAUNT_NO:
-		CG_VoiceChatLocal(SAY_TEAM, qfalse, es->number, COLOR_CYAN, VOICECHAT_NO);
+		if ( cg_allowTaunt.integer ) {
+			CG_VoiceChatLocal(SAY_TEAM, qfalse, es->number, COLOR_CYAN, VOICECHAT_NO);
+		}
 		break;
 
 	case EV_TAUNT_FOLLOWME:

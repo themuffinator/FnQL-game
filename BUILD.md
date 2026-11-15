@@ -165,6 +165,16 @@ meson test -C build/win32-x86
   `meson test -C build/win32-x86 --suite stock-maps`.
 - `map-sweep` (suite `sweep`, slow) loads every stock map. It runs with
   `-Dfnql-dedicated`.
+- `stats-events-ffa`, `-ca`, `-ctf` and `-abort` (suite `stats`, with
+  `-Dfnql-dedicated`) host bot matches with the engine's `sv_statsJournal`
+  on and hold every match statistics document the module reports to
+  `docs/contract/stats_events.json`. On x86 each run hosts the retail qagame
+  first and compares the documents that do not depend on play. They need an
+  FnQL engine with the JSON-text stats imports (FnQL `docs/fnql/GAME_MODULES.md`,
+  "Match statistics"), and for the retail half the 32-bit FnQL Steam provider;
+  without its retail JSON adapter the test skips (exit 77). `game-json` and
+  `game-chattokens` (suite `unit`) cover the JSON writer underneath and the
+  chat tokens. Run `meson test -C build/win32-x86 --suite stats`.
 - `retail-cgame-probe` (suite `interop`) runs when `-Dfnql-client=<path to
   x86 fnql.exe>` is set. A windowed FnQL client hosts FnQL-game's qagame and
   runs the retail cgame against it.

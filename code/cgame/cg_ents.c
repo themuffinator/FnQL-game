@@ -771,13 +771,13 @@ CG_CalcEntityLerpPositions
 */
 static void CG_CalcEntityLerpPositions( centity_t *cent ) {
 
-	// if this player does not want to see extrapolated players
-	if ( !cg_smoothClients.integer ) {
-		// make sure the clients use TR_INTERPOLATE
-		if ( cent->currentState.number < MAX_CLIENTS ) {
-			cent->currentState.pos.trType = TR_INTERPOLATE;
-			cent->nextState.pos.trType = TR_INTERPOLATE;
-		}
+	// Players are never extrapolated: make sure the clients use
+	// TR_INTERPOLATE.  Quake III made this optional through cg_smoothClients,
+	// a userinfo cvar retail's cgame does not have (it is absent from the
+	// retail cvar table); this is that cvar's default behaviour.
+	if ( cent->currentState.number < MAX_CLIENTS ) {
+		cent->currentState.pos.trType = TR_INTERPOLATE;
+		cent->nextState.pos.trType = TR_INTERPOLATE;
 	}
 
 	if ( cent->interpolate && cent->currentState.pos.trType == TR_INTERPOLATE ) {

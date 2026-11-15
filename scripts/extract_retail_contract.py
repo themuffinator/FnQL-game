@@ -218,6 +218,37 @@ def extract_cvars(image: PeImage) -> list[dict]:
     return rows
 
 
+def extract_cgame_cvars(image: PeImage) -> list[dict]:
+    """Rows of the cgame cvar table: name, default, bounds and flags.
+
+    Cgame rows are 24 bytes too, but shaped {vmCvar *, name, default, minimum,
+    maximum, flags}: the bounds are strings (empty for an unbounded cvar) and
+    go to the engine's range-registering import.  The table is found through
+    the row naming cg_autoHop and walked while rows keep that shape.
+    """
+    def row(va: int) -> dict | None:
+        if image.offset(va) is None or image.offset(va + 20) is None:
+            return None
+        vm, name_va, default_va, minimum_va, maximum_va, flags = (image.dword(va + 4 * i) for i in range(6))
+        name = image.string(name_va)
+        if name is None or not image.base <= vm < image.base + 0x02000000 or flags >= 0x01000000:
+            return None
+        return {"name": name, "default": image.string(default_va) or "",
+                "minimum": image.string(minimum_va) or "", "maximum": image.string(maximum_va) or "",
+                "flags": flags, "row": f"{va:08x}"}
+
+    anchor = next(ref - 4 for ref in image.references(image.string_va("cg_autoHop"))
+                  if row(ref - 4) is not None)
+    start = anchor
+    while row(start - CVAR_ROW_STRIDE) is not None:
+        start -= CVAR_ROW_STRIDE
+    rows, cursor = [], start
+    while (entry := row(cursor)) is not None:
+        rows.append(entry)
+        cursor += CVAR_ROW_STRIDE
+    return rows
+
+
 def extract_bot_item_indices(retail: Path) -> dict[str, int]:
     with zipfile.ZipFile(retail / "baseq3" / "pak00.pk3") as package:
         text = package.read("botfiles/inv.h").decode("latin-1")
@@ -275,6 +306,7 @@ def extract(retail: Path) -> dict:
         "playerKeys": extract_player_keys(qagame),
         "warmupFormat": "\\time\\%i" if qagame.data.find(b"\\time\\%i\x00") >= 0 else None,
         "cvars": extract_cvars(qagame),
+        "cgameCvars": extract_cgame_cvars(cgame),
     }
 
 

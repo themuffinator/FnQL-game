@@ -186,20 +186,11 @@ void CG_UpdateCvars( void ) {
 
 	// check for modications here
 
-	// If team overlay is on, ask for updates from the server.  If its off,
-	// let the server know so we don't receive it
-	if ( drawTeamOverlayModificationCount != cg_drawTeamOverlay.modificationCount ) {
-		drawTeamOverlayModificationCount = cg_drawTeamOverlay.modificationCount;
-#if 0
-		if ( cg_drawTeamOverlay.integer > 0 ) {
-			trap_Cvar_Set( "teamoverlay", "1" );
-		} else {
-			trap_Cvar_Set( "teamoverlay", "0" );
-		}
-#endif
-		// FIXME E3 HACK
-		trap_Cvar_Set( "teamoverlay", "1" );
-	}
+	// Quake III told the server through a "teamoverlay" userinfo key whether
+	// to send team information.  Retail has no such key (neither module
+	// contains the string): its qagame sends tinfo regardless, and a retail
+	// server must not see a key no retail client sends.
+	drawTeamOverlayModificationCount = cg_drawTeamOverlay.modificationCount;
 
 	// if model changed
 	if ( forceModelModificationCount != cg_forceModel.modificationCount 

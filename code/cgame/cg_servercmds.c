@@ -870,7 +870,8 @@ void CG_VoiceChat( int mode ) {
 	color = atoi(CG_Argv(3));
 	cmd = CG_Argv(4);
 
-	if (cg_noTaunt.integer != 0) {
+	// retail's cg_allowTaunt (table row 10076a30, default 1) replaces Quake III's cg_noTaunt
+	if (cg_allowTaunt.integer == 0) {
 		if (!strcmp(cmd, VOICECHAT_KILLINSULT)  || !strcmp(cmd, VOICECHAT_TAUNT) || \
 			!strcmp(cmd, VOICECHAT_DEATHINSULT) || !strcmp(cmd, VOICECHAT_KILLGAUNTLET) || \
 			!strcmp(cmd, VOICECHAT_PRAISE)) {

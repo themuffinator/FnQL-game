@@ -284,6 +284,50 @@ def main() -> int:
         if flags & info_mask and name.lower() not in retail_by_lower and name not in engine_owned:
             failures.append(f"cvar {name} is in serverinfo/systeminfo but retail does not register it")
 
+    # the cgame registers retail's cvar table row for row: the userinfo keys a
+    # server sees, the defaults a fresh profile plays with, the bounds, and
+    # the engine flag bits (protected, module-created, profile-stored) that
+    # decide how the engine guards and saves each setting
+    cgame_rows = []
+    cgame_source = (ROOT / "code" / "cgame" / "cg_cvar.h").read_text(encoding="latin-1")
+    for ranged, name, default, rest in re.findall(
+            r'^CG_CVAR(_RANGE)?\(\s*\w+,\s*"(\w+)",\s*("(?:[^"\\]|\\.)*"|\w+),\s*(.*?)\)\s*(?://.*)?$',
+            cgame_source, re.M):
+        if ranged:
+            minimum, maximum, flags = re.match(r'"([^"]*)",\s*"([^"]*)",\s*(.*)', rest).groups()
+        else:
+            minimum, maximum, flags = "", "", rest.rsplit(",", 1)[0]
+        value = 0
+        for token in flags.split("|"):
+            token = token.strip()
+            value |= int(token, 0) if token[:1].isdigit() else flag_values[token]
+        cgame_rows.append({"name": name, "default": default.strip('"'), "minimum": minimum,
+                           "maximum": maximum, "flags": value})
+    retail_cgame = [{key: row[key] for key in ("name", "default", "minimum", "maximum", "flags")}
+                    for row in tables["cgameCvars"]]
+    if cgame_rows[:len(retail_cgame)] != retail_cgame:
+        for index, expected in enumerate(retail_cgame):
+            ours = cgame_rows[index] if index < len(cgame_rows) else None
+            if ours != expected:
+                failures.append(f"cgame cvar row {index}: ours {ours} != retail {expected}")
+                break
+    # what follows the retail rows is local to FnQL-game: a fixed list that
+    # may shrink, and that never reaches a server or its browser entry
+    cgame_locals = {
+        "cg_drawTimer", "cg_drawSpeed", "cg_drawWeaponSelect", "cg_railTrailRadius", "cg_gun_frame",
+        "cg_debugposition",
+        "cg_forceModel", "cg_noVoiceChats", "cg_noVoiceText", "com_buildScript", "g_redteam",
+        "g_blueteam", "g_enableBreath", "cg_noProjectileTrail", "cg_oldRail", "cg_oldRocket",
+        "cg_oldPlasma", "cg_enemyModel", "cg_enemyColors", "cg_teamModel", "cg_teamColors",
+        "cg_fovAdjust",
+    }
+    wire_mask = flag_values["CVAR_USERINFO"] | flag_values["CVAR_SERVERINFO"] | flag_values["CVAR_SYSTEMINFO"]
+    for row in cgame_rows[len(retail_cgame):]:
+        if row["name"] not in cgame_locals:
+            failures.append(f"cgame cvar {row['name']} is not in retail's table nor in the local allowlist")
+        if row["flags"] & wire_mask:
+            failures.append(f"cgame cvar {row['name']} is local but would reach the server (flags {row['flags']:#x})")
+
     # curated string lists (e.g. the spawn filter gametype tokens)
     for list_name, spec in enums.get("lists", {}).items():
         file_name, symbol = spec["source"].split()
@@ -300,7 +344,7 @@ def main() -> int:
         return 1
     checks = len(tables["items"]) + len(mods) + sum(len(g["values"]) for g in enums["groups"].values()) \
         + len(spawns) + len(tables["botItemIndices"]) + sum(len(keys) for keys in tables["playerKeys"].values()) \
-        + 1 + len(retail_published) + retail_checked
+        + 1 + len(retail_published) + retail_checked + len(retail_cgame)
     print(f"wire contract OK: {checks} retail values match")
     return 0
 
