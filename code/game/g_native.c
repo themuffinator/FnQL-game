@@ -428,7 +428,9 @@ static const fnqlModuleInfo_t g_moduleInfo = {
 	"qagame",
 	FNQL_GAME_VERSION_STRING,
 	__DATE__ " " __TIME__,
-	0u,	// no retail wire parity claimed yet; see docs/PLAN.md milestone 2+
+	// retail wire parity: G2, the G3 differentials and G5 pass (docs/PLAN.md
+	// M2-M6, M10); extensions only through negotiated channels (g_fnql_ext.c)
+	FNQL_MODULE_CAP_RETAIL_WIRE | FNQL_MODULE_CAP_EXTENSIONS,
 	GAME_NATIVE_API_VERSION
 };
 

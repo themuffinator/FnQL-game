@@ -346,7 +346,8 @@ int main(void) {
     assert(version == 8 && exports && sizeof(imports) == 97 * sizeof(void (*)(void)));
     for (before = 0; before < 14; ++before) assert(exports[before]);
     assert(!strcmp(FnQL_GetModuleInfo()->module, "ui"));
-    assert(!(FnQL_GetModuleInfo()->capabilities & FNQL_MODULE_CAP_RETAIL_WIRE));
+    /* M10: the ui claims retail parity (M8's gates) and negotiates nothing */
+    assert(FnQL_GetModuleInfo()->capabilities == FNQL_MODULE_CAP_RETAIL_WIRE);
     assert(offsetof(uiNativeImports_t, AppendCommand) == 20 * sizeof(void *));
     assert(offsetof(uiNativeImports_t, MeasureText) == 95 * sizeof(void *));
     trap_Cmd_ExecuteText(EXEC_APPEND, "echo native\n"); assert(!strcmp(command, "echo native\n"));

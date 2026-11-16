@@ -258,10 +258,12 @@ preset list stored numeric values as written, where retail's preset apply
 stores them as `%f`. Retail's multi writer (0x1001847d..0x100184f4, `%i` at
 0x10025920 for whole values, else `%f`) already matched.
 
-Client provider
-selection and honest pure-server packaging remain the separate M10 engine
-integration contract. Do not replace the installed retail DLL or advertise
-this development module as a retail-authenticated pure package.
+Since M10, FnQL selects
+the module with `vm_uiProvider`, and on a pure server only from the FnQL-game
+client package the server lists in `sv_fnqlClientPaks`
+([`COMPATIBILITY.md`](COMPATIBILITY.md)). Never replace the installed retail
+DLL; the `retail-client-dropin` gates run the module inside the retail
+engine from a scratch base path instead.
 
 ## Gates
 

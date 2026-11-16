@@ -306,6 +306,12 @@ typedef struct {
 	int			readyToPlay;		// rp
 	int			privileges;			// p
 	char		country[24];		// c, userinfo "country"
+
+	// FnQL extension channel (g_fnql_ext.c), not retail: the extensions
+	// this client enabled by answering fnql_game, and whether its cgame has
+	// acknowledged this level's handshake.
+	unsigned	fnqlExtensions;
+	qboolean	fnqlExtConfirmed;
 } clientPersistant_t;
 
 // One controlled item's pickups (retail gclient +0x81c onwards): those that
@@ -841,6 +847,16 @@ qboolean CheckGauntletAttack( gentity_t *ent );
 void Weapon_HookFree (gentity_t *ent);
 void Weapon_HookThink (gentity_t *ent);
 
+
+//
+// g_fnql_ext.c -- FnQL extension channels (bg_fnql_ext.h), not retail
+//
+unsigned G_FnQLExtensions( int clientNum );
+qboolean G_FnQLExtSend( int clientNum, unsigned extension, const char *text );
+int G_FnQLExtBroadcast( unsigned extension, const char *text );
+void G_FnQLExtUserinfo( int clientNum, const char *userinfo );
+void G_FnQLExtBegin( int clientNum );
+qboolean G_FnQLExtCommand( gentity_t *ent, const char *cmd );
 
 //
 // g_client.c

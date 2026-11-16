@@ -1053,6 +1053,9 @@ qboolean ClientUserinfoChanged( int clientNum ) {
 		return qtrue;
 	}
 
+	// FnQL extension channel: the fnql_cg answer (never sent by retail clients)
+	G_FnQLExtUserinfo( clientNum, userinfo );
+
 	// check for local client
 	s = Info_ValueForKey( userinfo, "ip" );
 	if ( !strcmp( s, "localhost" ) ) {
@@ -1431,6 +1434,9 @@ void ClientBegin( int clientNum ) {
 	}
 
 	G_LogPrintf( "ClientBegin: %i\n", clientNum );
+
+	// FnQL extension handshake, to negotiated clients only
+	G_FnQLExtBegin( clientNum );
 
 	// count current clients and rank for scoreboard
 	CalculateRanks();

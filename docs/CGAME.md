@@ -4,8 +4,10 @@ The x86 `fnql_cgamex86.dll` builds and runs through active play in FnQL with
 retail or FnQL-game qagame. Milestone 7's exit gates pass (2026-11-16): live
 prediction (suite `cgame-prediction`, both server providers, VQL and PQL) and
 frame-locked visual parity against the retail cgame (suite `cgame-parity`,
-below). The module still advertises capability bits **zero**; claiming
-`FNQL_MODULE_CAP_RETAIL_WIRE` is milestone 10's negotiation work.
+below). Since milestone 10 it claims `FNQL_MODULE_CAP_RETAIL_WIRE` and
+`FNQL_MODULE_CAP_EXTENSIONS`: FnQL selects it with `vm_cgameProvider`, and it
+answers an FnQL-game server's `fnql_game` key with `fnql_cg`
+(`cg_fnql_ext.c`, [`COMPATIBILITY.md`](COMPATIBILITY.md)).
 
 ## Visual parity gate (2026-11-16)
 
@@ -1364,9 +1366,8 @@ now prints retail-format obituary lines in an FFA bot match
   and never sent a packet (the server logged none). The probe now launches
   with `com_ignoreCrash 1` and restores `profile.pid`; all four
   retail-client gates pass back to back.
-- FnQL provider, purity and capability negotiation (M10).
-
-Do not enable automatic selection or retail-wire parity until these gates pass.
+- FnQL provider, purity and capability negotiation: done in M10 (suites
+  `interop-fnql` and `retail-client`, [`PLAN.md`](PLAN.md)).
 
 ## Event bring-up evidence (2026-11-05)
 

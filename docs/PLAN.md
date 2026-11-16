@@ -59,7 +59,7 @@ exists.
 | G4v cgame visual parity | `scripts/cgame_parity_probe.py` (suite `cgame-parity`): a recorded bot match replayed under `timedemo` through the retail cgame and FnQL-game's gives matching captures, gameplay and scoreboard, per mode and screen shape | M7 |
 | G5a Retail cgame probe | `scripts/listen_probe.py`: the retail cgame joins an FnQL-game listen server, reaches CS_ACTIVE, no errors | M2 |
 | G5b Retail client join | `scripts/retail_client_probe.py` (opt-in suite `retail-client`): the user's retail `quakelive_steam.exe`, launched windowed through Steam, joins an FnQL dedicated server running FnQL-game (pure) and stays in the game | M3 |
-| G5 Interop matrix | Retail client ↔ FnQL server, and FnQL client ↔ retail server, both pure and unpure, scripted where possible and manual (Steam) otherwise | M5, M10 |
+| G5 Interop matrix | Retail client ↔ FnQL server, FnQL client ↔ FnQL server and FnQL client ↔ retail server, both pure and unpure, with and without the FnQL-game client package and the drop-in modules in the retail engine: suites `interop-fnql` (`scripts/client_package_probe.py`) and opt-in `retail-client` (`retail_client_probe.py`, `retail_server_probe.py`) | M5, M10 |
 | G6 Engine non-regression | FnQL's suites, including the retail-module provider tests, stay green on every engine change | M1 |
 
 ## Milestones
@@ -1766,27 +1766,105 @@ Quake Live bot behavior over FnQL's botlib:
 - gametype goals for every mode;
 - chat.
 
-### M10 — Engine integration completion (FnQL)
+### M10 — Engine integration completion (FnQL) (complete)
 
 - `vm_cgameProvider` and `vm_uiProvider` with honest purity. On a pure server,
   an FnQL-game client module is used only when the server lists the FnQL-game
   client package. The client then reports that package's checksum and FnQL
   servers accept it. Retail pure servers always get retail client modules.
+  **Done** (FnQL `docs/fnql/GAME_MODULES.md`, "Client modules under a pure
+  server"). A pure FnQL server lists the loaded paks holding the FnQL-game
+  cgame in the `sv_fnqlClientPaks` systeminfo key. The key is empty, and so
+  absent, without such a pak or with `sv_fnqlClientModules 0`. The client
+  reads the key from each gamestate. It loads an FnQL-game cgame or ui under a
+  pure server only from a listed pak, reading the bytes from that pak itself,
+  and reports its checksum where retail reports the `cgamex86.dll` pak. In
+  every other case it loads the retail image it pinned beforehand.
 - Separate server and client packages:
   - server packages are never referenced to clients (done in M1 for the
     module file);
   - client packages are never required of retail clients.
+
+  **Done.** The build makes `fnql_game_client.pk3` (cgame and ui) and
+  `fnql_game_server.pk3` (qagame) with `scripts/make_package.py`: sorted
+  entries, fixed timestamps, so the same modules give the same checksum.
+  FnQL never marks a pak referenced for reading any FnQL-game module.
 - Capability negotiation:
   - `fnql_game` serverinfo key (server side);
   - an FnQL-game cgame userinfo key (client side);
   - per-client extension channels;
   - the first FnQL extensions.
+
+  **Done** ([`COMPATIBILITY.md`](COMPATIBILITY.md), "Extension channels";
+  `bg_fnql_ext.h`, `g_fnql_ext.c`, `cg_fnql_ext.c`). The cgame answers
+  `fnql_game` with the `fnql_cg` userinfo key and withdraws it on shutdown
+  and on any other server. The qagame enables a channel for that client
+  alone, never for bots or retail clients. The first extension is the
+  handshake (`fnql_hello` / `fnql_ack`), which confirms the channel and the
+  peers' versions each level. `game-fnql-ext` gates the channel rules. That
+  is one extension so far: later ones take the next mask bits.
 - An `auto` provider value that selects FnQL-game only for modules declaring
-  `FNQL_MODULE_CAP_RETAIL_WIRE`.
+  `FNQL_MODULE_CAP_RETAIL_WIRE`. **Done** for all three slots. The modules
+  now claim the bit (qagame and cgame also `FNQL_MODULE_CAP_EXTENSIONS`),
+  on the strength of G2, the G3 differentials, G4, G4v, the ui-hosting gates
+  and this milestone's G5 matrix.
 - Verification that the same binaries also run as drop-ins in the retail
-  engine.
+  engine. **Done.** The retail engine runs FnQL-game's cgame and ui
+  (`retail-client-dropin`, `-unpure`; the handshake completes through it)
+  and hosts FnQL-game's qagame (`retail-server-dropin-qagame`, `-unpure`).
+  Each loads from a scratch base path whose `bin.pk3` swaps in the module,
+  and the gate checks the loaded module's SHA-256.
 
 Exit: G5 matrix complete, pure and unpure.
+
+G5 matrix (2026-11-16, x86; FnQL `m10-client-providers` client and dedicated
+server, the dedicated server with FnQL's Steam provider staged for the
+retail-client rows and without it for `interop-fnql`). The table in
+[`COMPATIBILITY.md`](COMPATIBILITY.md) maps each row to its gates.
+
+- **FnQL ↔ FnQL (`interop-fnql`, 11 rows, headless, over UDP):** all pass.
+  - Pure with the package: the client ran FnQL-game's cgame and ui from the
+    listed pak, the server logged it pure by the package, and the handshake
+    confirmed mask 1. Provider `auto` behaves the same.
+  - Pure without the package, with the package refused
+    (`sv_fnqlClientModules 0`) or with only loose modules: the retail cgame
+    and ui, accepted, no handshake.
+  - The retail qagame: the package is accepted pure, there is no handshake,
+    and the server's copy of the userinfo has no `fnql_cg`.
+  - Unpure, loose modules or package: FnQL-game's cgame and handshake.
+  - Provider `retail`: the retail cgame throughout.
+  - Negative control: the pre-M10 FnQL client fails the pure-package row (the
+    retail cgame and ui, no acceptance, no handshake).
+- **Retail client ↔ FnQL server (`retail-client`):**
+  - `retail-client-package` and `-unpure`: the retail client joined with the
+    FnQL-game client package loaded and published on the server, with Steam
+    session validation, never reported the package, and never took part in
+    negotiation.
+  - `retail-client-dropin` and `-unpure`: the retail client ran FnQL-game's
+    cgame and ui (SHA-256 checked) and completed the handshake.
+- **Retail engine as the server:** `retail-server-dropin-qagame` and
+  `-unpure` pass. The `retail-server-fnql-client*` rows skip on this machine,
+  for an observed reason. The retail engine refused the FnQL client with "No
+  Steam auth token.", because a directly started FnQL client cannot
+  initialize Steam here (the stale `ActiveProcess` PID; the user declined
+  that registry fix). That is the retail server's legitimate decision, so
+  those rows report it instead of passing. They pass where the FnQL client
+  can get a Steam ticket. The pure variant must also show the FnQL client
+  falling back to the retail cgame, because retail servers never publish
+  `sv_fnqlClientPaks`.
+
+Non-regression on the same builds: `unit` and `contract` (G0 against the M10
+engine headers, G2) pass 60 of 60. `runtime`, `interop`, `interop-fnql` and
+`interop-modes` pass 28 of 28. The G3 `differential` suite and
+`interop-play` pass 138 of 138. FnQL's own suite passes 108, with the two
+opt-in runtime probes skipped.
+
+Defaults stay `retail` on x86, as M12 plans. On targets with no retail
+client modules, FnQL defaults `vm_cgameProvider` and `vm_uiProvider` to
+`fnql`. The FnQL release packages still carry the loose modules only.
+Adding `fnql_game_client.pk3` to them, so that pure FnQL servers and clients
+can use the FnQL-game client modules out of the box, belongs to M12's
+packaging work.
 
 ### M11 — Architecture and platform range
 

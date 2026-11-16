@@ -165,7 +165,8 @@ DLLEXPORT void QDECL dllEntry(void **table, const void *imports, int *version) {
 }
 static const fnqlModuleInfo_t moduleInfo = {
     sizeof(fnqlModuleInfo_t), FNQL_MODULE_INFO_VERSION, FNQL_MODULE_PRODUCT,
-    "ui", FNQL_GAME_VERSION_STRING, __DATE__ " " __TIME__, 0u, 8
+    /* retail parity: the ui-hosting gates and G2's ui tables pass (docs/PLAN.md M8) */
+    "ui", FNQL_GAME_VERSION_STRING, __DATE__ " " __TIME__, FNQL_MODULE_CAP_RETAIL_WIRE, 8
 };
 DLLEXPORT const fnqlModuleInfo_t *QDECL FnQL_GetModuleInfo(void) { return &moduleInfo; }
 typedef char import_size[(sizeof(uiNativeImports_t) == 97 * sizeof(void (*)(void))) ? 1 : -1];

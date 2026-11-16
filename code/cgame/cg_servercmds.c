@@ -1060,6 +1060,11 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	// FnQL extension commands (sent only to clients that answered fnql_game)
+	if ( CG_FnQLExtCommand( cmd ) ) {
+		return;
+	}
+
 	if ( !strcmp( cmd, "cs" ) ) {
 		CG_ConfigStringModified();
 		return;

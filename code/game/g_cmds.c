@@ -2561,6 +2561,11 @@ void ClientCommand( int clientNum ) {
 		return;	// not fully in game yet
 	}
 
+	// FnQL extension commands, from negotiated clients only (not retail)
+	if ( G_FnQLExtCommand( ent, cmd ) ) {
+		return;
+	}
+
 	// the match and admin commands come first (retail qagamex86 0x10045e28)
 	if ( G_AdminCommand( ent, cmd ) ) {
 		return;

@@ -537,7 +537,9 @@ DLLEXPORT void QDECL dllEntry(void **table, const void *imports, int *version) {
 static const fnqlModuleInfo_t moduleInfo = {
     sizeof(fnqlModuleInfo_t), FNQL_MODULE_INFO_VERSION, FNQL_MODULE_PRODUCT,
     "cgame", FNQL_GAME_VERSION_STRING, __DATE__ " " __TIME__,
-    0u, CGAME_NATIVE_API_VERSION /* G4/visual parity not yet established. */
+    /* retail wire parity: G4 prediction and G4v visual parity pass (docs/PLAN.md
+     * M7) and G5 joins pass (M10); extensions only after fnql_game (cg_fnql_ext.c) */
+    FNQL_MODULE_CAP_RETAIL_WIRE | FNQL_MODULE_CAP_EXTENSIONS, CGAME_NATIVE_API_VERSION
 };
 DLLEXPORT const fnqlModuleInfo_t *QDECL FnQL_GetModuleInfo(void) { return &moduleInfo; }
 

@@ -115,6 +115,7 @@ game_sources = files(
   'code/game/g_arenas.c',
   'code/game/g_bot.c',
   'code/game/g_client.c',
+  'code/game/g_fnql_ext.c',
   'code/game/g_names.c',
   'code/game/g_chattokens.c',
   'code/game/g_json.c',
@@ -221,6 +222,7 @@ cgame = shared_library(module_prefix + 'cgame' + module_arch,
     'code/cgame/cg_scorecells.c',
     'code/cgame/cg_info.c',
     'code/cgame/cg_localents.c',
+    'code/cgame/cg_fnql_ext.c',
     'code/cgame/cg_main.c',
     'code/cgame/cg_marks.c',
     'code/cgame/cg_native.c',
@@ -530,6 +532,10 @@ test('game-runes', game_runes, suite: 'unit')
 game_names = executable('game_names', files('tests/game_names.c', 'code/game/g_names.c'),
   c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-names', game_names, suite: 'unit')
+game_fnql_ext = executable('game_fnql_ext', files('tests/game_fnql_ext.c', 'code/game/g_fnql_ext.c',
+    'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('game-fnql-ext', game_fnql_ext, suite: 'unit')
 game_numbers = executable('game_numbers', files('tests/game_numbers.c',
     'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
   c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
@@ -573,6 +579,19 @@ test('game-voting', game_voting, suite: 'unit')
 
 # Gate G0: shared structure layouts must match the FnQL engine headers.
 python = find_program('python3', 'python')
+
+# The FnQL-game packages (docs/PLAN.md M10): the client package holds only the
+# cgame and ui, which an FnQL client runs on a pure FnQL server that lists the
+# package in sv_fnqlClientPaks; the server package holds only the qagame.
+# Neither is ever referenced to clients (FnQL docs/fnql/GAME_MODULES.md).
+client_package = custom_target('fnql-game-client-package',
+  output: 'fnql_game_client.pk3', input: [cgame, ui],
+  command: [python, files('scripts/make_package.py'), '@OUTPUT@', '@INPUT@'],
+  build_by_default: true, install: true, install_dir: 'baseq3')
+server_package = custom_target('fnql-game-server-package',
+  output: 'fnql_game_server.pk3', input: [qagame],
+  command: [python, files('scripts/make_package.py'), '@OUTPUT@', '@INPUT@'],
+  build_by_default: true, install: true, install_dir: 'baseq3')
 fnql_root = get_option('fnql-root')
 if fnql_root == ''
   fnql_root = meson.project_source_root() / '..' / 'FnQL'
@@ -713,6 +732,49 @@ if get_option('fnql-dedicated') != ''
   test('retail-client-cgame-unpure', python,
     args: retail_client_args + ['--pure', '0', '--cgame', cgame.full_path()],
     depends: [qagame, cgame], suite: 'retail-client', timeout: 400, is_parallel: false)
+  # Milestone M10.  The FnQL-game client package loaded on the server is
+  # offered to FnQL clients, but the retail client neither downloads, holds
+  # nor reports it, and never takes part in the extension negotiation.
+  foreach pure : ['1', '0']
+    test('retail-client-package' + (pure == '0' ? '-unpure' : ''), python,
+      args: retail_client_args + ['--pure', pure, '--require-auth',
+        '--server-package', client_package.full_path(), '--expect-handshake', 'no'],
+      depends: [qagame, client_package], suite: 'retail-client', timeout: 400, is_parallel: false)
+    # The drop-in check: FnQL-game's cgame and ui run inside the retail
+    # engine, and the cgame answers fnql_game there too, so the extension
+    # handshake completes through the retail engine.
+    test('retail-client-dropin' + (pure == '0' ? '-unpure' : ''), python,
+      args: retail_client_args + ['--pure', pure, '--require-auth', '--cgame', cgame.full_path(),
+        '--ui', ui.full_path(), '--expect-handshake', 'yes'],
+      depends: [qagame, cgame, ui], suite: 'retail-client', timeout: 400, is_parallel: false)
+  endforeach
+  # The retail engine as the server (retail_server_probe.py): it hosts
+  # FnQL-game's qagame as a drop-in, pure and unpure, and an FnQL client joins
+  # a retail-engine server.  The retail engine admits remote players only with
+  # a Steam ticket; a client that cannot get one is refused, and those rows
+  # then skip (77) with the server's answer.
+  retail_server_args = [files('scripts/retail_server_probe.py'), '--package', client_package.full_path()]
+  if get_option('retail-ql') != ''
+    retail_server_args += ['--retail', get_option('retail-ql')]
+  endif
+  foreach pure : ['1', '0']
+    suffix = pure == '0' ? '-unpure' : ''
+    test('retail-server-dropin-qagame' + suffix, python,
+      args: retail_server_args + ['--pure', pure, '--qagame', qagame.full_path(),
+        '--expect-cgame', pure == '1' ? 'retail' : 'fnql', '--expect-handshake', pure == '1' ? 'no' : 'yes'],
+      depends: [qagame, client_package], suite: 'retail-client', timeout: 400, is_parallel: false)
+    if get_option('fnql-client') != ''
+      test('retail-server-fnql-client' + suffix, python,
+        args: retail_server_args + ['--pure', pure, '--client', get_option('fnql-client'),
+          '--expect-cgame', pure == '1' ? 'retail' : 'fnql', '--expect-handshake', 'no'],
+        depends: client_package, suite: 'retail-client', timeout: 400, is_parallel: false)
+      test('retail-server-fnql-client-dropin' + suffix, python,
+        args: retail_server_args + ['--pure', pure, '--client', get_option('fnql-client'),
+          '--qagame', qagame.full_path(),
+          '--expect-cgame', pure == '1' ? 'retail' : 'fnql', '--expect-handshake', pure == '1' ? 'no' : 'yes'],
+        depends: [qagame, client_package], suite: 'retail-client', timeout: 400, is_parallel: false)
+    endif
+  endforeach
   # G5 per mode (milestone M6): the retail client plays each round-based and
   # special mode on a pure server.  Admin put places it on a team, the bots
   # take the other side, the forced ready-up starts the match (its
@@ -1718,6 +1780,51 @@ if get_option('fnql-client') != '' and retail_modules_hostable
   endif
   test('retail-cgame-probe', python, args: probe_args + ['--expect-gametype', '0'], depends: qagame,
     suite: 'interop', timeout: 240, is_parallel: false)
+  # Gate G5, FnQL <-> FnQL (milestone M10): an FnQL client joins an FnQL
+  # dedicated server over UDP, pure and unpure.  It checks which cgame and ui
+  # the client ran, that a pure server accepts an FnQL-game cgame only from
+  # the client package it lists in sv_fnqlClientPaks (and the retail cgame
+  # otherwise), and the fnql_game / fnql_cg negotiation and handshake.  A
+  # server whose Steam provider demands a ticket the client cannot get makes
+  # the probe skip (77): that is the server's authorization decision.
+  if get_option('fnql-dedicated') != ''
+    package_args = [files('scripts/client_package_probe.py'),
+      '--engine', get_option('fnql-dedicated'), '--client', get_option('fnql-client'),
+      '--module', qagame.full_path(), '--cgame', cgame.full_path(), '--ui', ui.full_path(),
+      '--package', client_package.full_path()]
+    if get_option('retail-ql') != ''
+      package_args += ['--retail', get_option('retail-ql')]
+    endif
+    foreach row, o : {
+        'pure-package': ['--pure', '1', '--server-package', '--expect-cgame', 'fnql', '--expect-ui', 'fnql',
+                         '--expect-package', '--expect-handshake', 'yes'],
+        'pure-auto': ['--pure', '1', '--server-package', '--cgame-provider', 'auto', '--ui-provider', 'auto',
+                      '--expect-cgame', 'fnql', '--expect-ui', 'fnql', '--expect-package', '--expect-handshake', 'yes'],
+        'pure-no-package': ['--pure', '1', '--expect-cgame', 'retail', '--expect-ui', 'retail',
+                            '--expect-handshake', 'no'],
+        'pure-refused': ['--pure', '1', '--server-package', '--server-client-modules', '0',
+                         '--expect-cgame', 'retail', '--expect-ui', 'retail', '--expect-handshake', 'no'],
+        'pure-loose': ['--pure', '1', '--server-package', '--client-modules', 'loose',
+                       '--expect-cgame', 'retail', '--expect-ui', 'retail', '--expect-handshake', 'no'],
+        'pure-retail-qagame': ['--pure', '1', '--server-package', '--server-provider', 'retail',
+                               '--expect-cgame', 'fnql', '--expect-ui', 'fnql', '--expect-package',
+                               '--expect-handshake', 'no'],
+        'pure-retail-client': ['--pure', '1', '--server-package', '--cgame-provider', 'retail',
+                               '--ui-provider', 'retail', '--expect-cgame', 'retail', '--expect-ui', 'retail',
+                               '--expect-handshake', 'no'],
+        'unpure-loose': ['--pure', '0', '--client-modules', 'loose', '--expect-cgame', 'fnql',
+                         '--expect-ui', 'fnql', '--expect-handshake', 'yes'],
+        'unpure-package': ['--pure', '0', '--expect-cgame', 'fnql', '--expect-ui', 'fnql',
+                           '--expect-handshake', 'yes'],
+        'unpure-retail-qagame': ['--pure', '0', '--server-provider', 'retail', '--expect-cgame', 'fnql',
+                                 '--expect-ui', 'fnql', '--expect-handshake', 'no'],
+        'unpure-retail-client': ['--pure', '0', '--cgame-provider', 'retail', '--ui-provider', 'retail',
+                                 '--expect-cgame', 'retail', '--expect-ui', 'retail', '--expect-handshake', 'no']}
+      test('fnql-client-' + row, python, args: package_args + o,
+        depends: [qagame, cgame, ui, client_package], suite: 'interop-fnql',
+        timeout: 200, is_parallel: false)
+    endforeach
+  endif
   # Every qagame base mode must publish a gamestate the retail cgame can
   # initialize and render. These startup probes supplement full-server G3;
   # they do not replace the separately authenticated retail-client matrix.
