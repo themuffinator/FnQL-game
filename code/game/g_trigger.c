@@ -341,10 +341,12 @@ void hurt_touch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 		return;
 	}
 
+	// retail qagamex86 0x1006bac9: a server frame (1000 / sv_fps), not
+	// Quake III's 100 msec FRAMETIME, unless SLOW asks for a second
 	if ( self->spawnflags & 16 ) {
 		self->timestamp = level.time + 1000;
 	} else {
-		self->timestamp = level.time + FRAMETIME;
+		self->timestamp = level.time + (int)( 1000.0 / ( sv_fps.integer > 0 ? sv_fps.integer : 40 ) );
 	}
 
 	// play sound
@@ -371,9 +373,8 @@ void SP_trigger_hurt( gentity_t *self ) {
 
 	self->r.contents = CONTENTS_TRIGGER;
 
-	if ( self->spawnflags & 2 ) {
-		self->use = hurt_use;
-	}
+	// retail 0x1006bb9f: every hurt toggles when used, not only TOGGLE ones
+	self->use = hurt_use;
 
 	// link in to the world if starting active
 	if ( ! (self->spawnflags & 1) ) {

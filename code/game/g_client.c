@@ -425,16 +425,17 @@ G_SelectSpawnPoint
 Retail SelectSpawnPoint (qagamex86 0x10039730): duel and training maps take
 initial spots for a player's first spawn, and the base gametypes (clan arena
 through attack and defend) use the team spot classes, weighing the enemy team.
-Retail also draws one rand() here that it does not use.
+One rand() drawn first chooses the red or blue player starts that the
+modes without team starts fall back to.
 ===========
 */
 static gentity_t *G_SelectSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angles ) {
 	gclient_t	*client = ent->client;
 	qboolean	initial = qfalse;
-	int			weightTeam = 0, teamClass = 0;
+	int			weightTeam = 0, teamClass = 0, fallbackClass = 0;
 	gentity_t	*spot;
-
-	(void)rand();
+	// retail 0x10039769: the parity of one draw picks the fallback starts
+	const int	parity = rand() & 1;
 
 	if ( g_gametype.integer == GT_TOURNAMENT && !client->pers.initialSpawn ) {
 		client->pers.initialSpawn = qtrue;
@@ -457,6 +458,8 @@ static gentity_t *G_SelectSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angl
 		teamClass = client->sess.sessionTeam == TEAM_RED ? TEAM_RED : TEAM_BLUE;
 		weightTeam = client->sess.sessionTeam == TEAM_RED ? TEAM_BLUE : TEAM_RED;
 		if ( g_gametype.integer == GT_DOMINATION ) weightTeam = client->sess.sessionTeam;
+	} else {
+		fallbackClass = parity ? TEAM_BLUE : TEAM_RED;	// retail 0x10039882
 	}
 
 	if ( g_gametype.integer == GT_DOMINATION ) {
@@ -468,28 +471,29 @@ static gentity_t *G_SelectSpawnPoint( gentity_t *ent, vec3_t origin, vec3_t angl
 		return spot;
 	}
 	spot = G_PickSpawnPoint( weightTeam, initial, teamClass, !level.trainingMap, origin, angles );
-	if ( g_gametype.integer == GT_ATTACK_DEFEND ) {
-		if ( !spot && client->deferredSpawns >= g_maxDeferredSpawns.integer ) spot = G_PickSpawnPoint(weightTeam, qfalse, 0, qfalse, origin, angles);
-		return spot;
-	}
-	// Retail 0x100398ee permits CA/FT to fall back to deathmatch starts;
-	// only flag modes and Attack & Defend require team-specific starts.
-	if ( !spot && ( g_gametype.integer == GT_CLAN_ARENA || g_gametype.integer == GT_FREEZE ) ) {
-		spot = G_PickSpawnPoint( 0, qtrue, 0, qtrue, origin, angles );
-	}
-	if ( !spot ) {
-		// retail retries with the initial spots, then, past
-		// g_maxDeferredSpawns, takes any spot; it defers the spawn in between
-		// (not yet: the spawn goes ahead at the closest acceptable spot)
-		spot = G_PickSpawnPoint( 0, qtrue, teamClass, qtrue, origin, angles );
+	// Retail 0x100398d5-0x10039933: the flag modes and Attack and Defend
+	// wait for their own starts.  The others retry, still keeping
+	// g_spawnMinDistance: an initial spawn takes any spot of its class, then
+	// come the initial and then any starts of fallbackClass, which is the
+	// deathmatch class in the round modes and otherwise the red or blue
+	// player starts by the parity drawn above (basesiege's FFA puts a second
+	// player on team_CTF_redplayer when its one deathmatch spot is taken).
+	if ( !spot && !( ( g_gametype.integer >= GT_CTF && g_gametype.integer <= GT_HARVESTER )
+		|| g_gametype.integer == GT_ATTACK_DEFEND ) ) {
+		if ( initial ) {
+			spot = G_PickSpawnPoint( 0, qfalse, teamClass, qtrue, origin, angles );
+		}
 		if ( !spot ) {
-			spot = G_PickSpawnPoint( 0, qfalse, teamClass, qfalse, origin, angles );
+			spot = G_PickSpawnPoint( 0, qtrue, fallbackClass, qtrue, origin, angles );
+		}
+		if ( !spot ) {
+			spot = G_PickSpawnPoint( 0, qfalse, fallbackClass, qtrue, origin, angles );
 		}
 	}
-	// after g_maxDeferredSpawns deferrals any deathmatch spot will do
-	// (retail qagamex86 0x1003994f)
+	// past g_maxDeferredSpawns deferrals any deathmatch spot will do, at any
+	// distance (retail qagamex86 0x1003994f); otherwise the spawn is deferred
 	if ( !spot && client->deferredSpawns >= g_maxDeferredSpawns.integer ) {
-		spot = G_PickSpawnPoint( 0, qfalse, 0, qfalse, origin, angles );
+		spot = G_PickSpawnPoint( weightTeam, qfalse, 0, qfalse, origin, angles );
 	}
 	return spot;
 }

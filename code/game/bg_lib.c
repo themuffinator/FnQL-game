@@ -5,7 +5,16 @@
 // bg_lib,c -- standard C library replacement routines used by code
 // compiled for the virtual machine
 
+#if !defined( Q3_VM ) && !defined( _WIN32 ) && !defined( _GNU_SOURCE )
+#define _GNU_SOURCE	// strtod_l and newlocale (atof)
+#endif
 #include "q_shared.h"
+#if !defined( Q3_VM )
+#include <locale.h>
+#if defined( __APPLE__ )
+#include <xlocale.h>
+#endif
+#endif
 
 /*-
  * Copyright (c) 1992, 1993
@@ -589,6 +598,7 @@ int		rand( void ) {
 	return ( randSeed >> 16 ) & 0x7fff;
 }
 
+#if defined( Q3_VM )
 double atof( const char *string ) {
 	float sign;
 	float value;
@@ -655,6 +665,89 @@ double atof( const char *string ) {
 
 	return value * sign;
 }
+#else
+/*
+==============
+atof
+
+The retail modules import atof from the Microsoft C runtime (MSVCR100.dll;
+HLIL qagamex86 0x100602c8, 0x10050a61).  baseq3a's QVM replacement above
+sums the digits in float and can land an ulp away once the result is
+stored: fluorescent's target_speaker "angle" "-179.999985" became
+0xc333fffe where retail has 0xc333ffff, the nearest float (observed, G3
+stock-map sweep).  Inferred: the runtime rounds the decimal string to the
+nearest double, as strtod does on every platform; it is called
+under the "C" locale where the platform allows, so a library changing the
+process locale cannot move the decimal point.  That runtime reads only
+decimal digits with an optional fraction and exponent: hexadecimal, "inf"
+and "nan" give what their leading characters give there, so they are
+refused here before strtod could accept them.  Q_sscanf's %f reads its
+numbers the same way, as the runtime's sscanf does for retail's spawn
+vectors (0x10065e3a): jumpwerkz writes an armor shard's origin as
+"-2.42338e-027 608 504".
+==============
+*/
+static double BG_ParseDouble( const char *string, const char **end ) {
+	const char *p = string;
+	const char *digits;
+	char *stop = NULL;
+	double value;
+
+	*end = string;
+	if ( !p ) {
+		return 0.0;
+	}
+	while ( *p == ' ' || ( *p >= '\t' && *p <= '\r' ) ) {
+		p++;
+	}
+	digits = p;
+	if ( *digits == '+' || *digits == '-' ) {
+		digits++;
+	}
+	if ( !( ( *digits >= '0' && *digits <= '9' ) || ( *digits == '.' && digits[1] >= '0' && digits[1] <= '9' ) ) ) {
+		return 0.0;
+	}
+	if ( digits[0] == '0' && ( digits[1] == 'x' || digits[1] == 'X' ) ) {
+		*end = digits + 1;
+		return 0.0;	// the "0" before the x
+	}
+	value = 0.0;
+#if defined( _WIN32 )
+	{
+		static _locale_t numericC;
+
+		if ( !numericC ) {
+			numericC = _create_locale( LC_NUMERIC, "C" );
+		}
+		if ( numericC ) {
+			value = _strtod_l( p, &stop, numericC );
+		}
+	}
+#elif defined( __GLIBC__ ) || defined( __APPLE__ ) || defined( __FreeBSD__ ) || defined( __NetBSD__ ) || defined( __OpenBSD__ ) || defined( __DragonFly__ )
+	{
+		static locale_t numericC;
+
+		if ( !numericC ) {
+			numericC = newlocale( LC_NUMERIC_MASK, "C", (locale_t)0 );
+		}
+		if ( numericC ) {
+			value = strtod_l( p, &stop, numericC );
+		}
+	}
+#endif
+	if ( !stop ) {
+		value = strtod( p, &stop );
+	}
+	*end = stop;
+	return value;
+}
+
+double atof( const char *string ) {
+	const char *end;
+
+	return BG_ParseDouble( string, &end );
+}
+#endif
 
 
 #if defined ( Q3_VM )
@@ -1539,7 +1632,13 @@ static int _atoi( const char **stringPtr )
 }
 
 
-static float _atof( const char **stringPtr ) 
+#if !defined( Q3_VM )
+static float _atof( const char **stringPtr )
+{
+	return (float)BG_ParseDouble( *stringPtr, stringPtr );
+}
+#else
+static float _atof( const char **stringPtr )
 {
 	const char	*string;
 	float sign;
@@ -1611,6 +1710,7 @@ static float _atof( const char **stringPtr )
 
 	return value * sign;
 }
+#endif
 
 
 static void _atos( const char **stringPtr, char *buffer, int delimiter, int width ) 

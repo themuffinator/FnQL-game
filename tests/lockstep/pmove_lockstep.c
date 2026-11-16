@@ -589,6 +589,12 @@ static void P_Haste( int frame, playerState_t *ps ) {
 	ps->stats[STAT_PERSISTANT_POWERUP] = ( frame / 240 ) % 2 ? PP_SCOUT : PP_NONE;
 }
 
+// the battle suit, on and off, while the swimmer's head goes under and out
+// (retail 0x10031854 holds back EV_WATER_CLEAR under the suit)
+static void P_Battlesuit( int frame, playerState_t *ps ) {
+	ps->powerups[PW_BATTLESUIT] = ( frame / 60 ) % 2 ? 0 : 999999;
+}
+
 static void P_Chaingun( int frame, playerState_t *ps ) {
 	if ( frame < 0 ) {
 		ps->stats[STAT_WEAPONS] |= 1 << WP_CHAINGUN;
@@ -711,6 +717,10 @@ static const scenario_t scenarios[] = {
 	{ "weapons", { 0, 2000, 25 }, 0, 600, PM_NORMAL, 0, NULL, D_Weapons, 8 },
 	{ "knockback", { 0, -2000, 25 }, 0, 200, PM_NORMAL, PMF_TIME_KNOCKBACK, NULL, D_Run, 8, { 400, 200, 500 }, 300 },
 	{ "dead", { 0, -2500, 60 }, 0, 120, PM_DEAD, 0, NULL, D_Run, 8, { 200, 0, 100 } },
+	// waist deep in the pool, head out: the dead view height drops the head
+	// sample under water, and retail sends no head events for the dead
+	{ "dead-water", { -1100, 0, 80 }, 0, 160, PM_DEAD, 0, NULL, D_Run, 8, { 100, 0, 0 } },
+	{ "water-battlesuit", { -1100, 0, 25 }, 180, 400, PM_NORMAL, 0, NULL, D_Swim, 8, { 0, 0, 0 }, 0, P_Battlesuit },
 	{ "spectator", { 0, -3000, 60 }, 0, 200, PM_SPECTATOR, 0, NULL, D_Swim, 8 },
 	{ "noclip", { 0, -3000, 60 }, 0, 120, PM_NOCLIP, 0, NULL, D_Swim, 8 },
 	{ "fuzz-1", { 0, 0, 25 }, 0, 3000, PM_NORMAL, 0, NULL, D_Fuzz, 0 },

@@ -1204,7 +1204,9 @@ void G_CheckTeamItems( void ) {
 	// Set up team stuff
 	Team_InitGame();
 
-	if( g_gametype.integer == GT_CTF ) {
+	// Retail 0x1004fda2 checks Attack and Defend's two flags as CTF's. Its
+	// warnings have no newline (0x10085608); these keep the log readable.
+	if( g_gametype.integer == GT_CTF || g_gametype.integer == GT_ATTACK_DEFEND ) {
 		gitem_t	*item;
 
 		// check for the two flags
@@ -1377,12 +1379,34 @@ be on an entity that hasn't spawned yet.
 ============
 */
 static qboolean G_ItemAllowed( const gitem_t *item ) {
-	// Retail 0x1005084d keeps only flag objectives under instagib. Arena,
-	// race, domination and red rover suppress ordinary map pickups too
-	// (0x100508ad). Dynamic drops have their own creation path.
-	if ( g_instaGib.integer ) {
-		return item->giType == IT_TEAM && item->giTag >= PW_REDFLAG && item->giTag <= PW_NEUTRALFLAG;
+	const qboolean flag = item->giType == IT_TEAM && item->giTag >= PW_REDFLAG && item->giTag <= PW_NEUTRALFLAG;
+	const qboolean sideFlag = flag && item->giTag != PW_NEUTRALFLAG;
+
+	// Retail 0x1005084d keeps only flag objectives under instagib, and they
+	// still pass the mode checks below.
+	if ( g_instaGib.integer && !flag ) {
+		return qfalse;
 	}
+	// Retail 0x10050872-0x1005088f (table 0x10050bb8): a map's flags spawn
+	// only in race, CTF, one flag, Overload, Domination and Attack and
+	// Defend.
+	if ( flag && g_gametype.integer >= 0 && g_gametype.integer <= GT_RED_ROVER ) {
+		switch ( g_gametype.integer ) {
+		case GT_RACE: case GT_CTF: case GT_1FCTF: case GT_OBELISK:
+		case GT_DOMINATION: case GT_ATTACK_DEFEND:
+			break;
+		default:
+			return qfalse;
+		}
+	}
+	// Retail 0x10050896-0x100508a7: Attack and Defend spawns nothing from
+	// the map but the red and blue flags (a mode's own items come through
+	// G_SpawnItemForced or the dynamic drops).
+	if ( g_gametype.integer == GT_ATTACK_DEFEND && !sideFlag ) {
+		return qfalse;
+	}
+	// Arena, race, domination and red rover suppress ordinary map pickups
+	// (0x100508ad). Dynamic drops have their own creation path.
 	if ( g_gametype.integer == GT_RACE || g_gametype.integer == GT_CLAN_ARENA
 		|| g_gametype.integer == GT_DOMINATION || g_gametype.integer == GT_RED_ROVER ) {
 		return qfalse;
@@ -1408,6 +1432,9 @@ static qboolean G_ItemAllowed( const gitem_t *item ) {
 		return g_spawnItemPowerup.integer && ( g_gametype.integer != GT_FFA || !g_quadHog.integer );
 	case IT_HOLDABLE:
 		return g_spawnItemHoldable.integer != 0;
+	case IT_TEAM:
+		// retail 0x100509a0 (0x1002c980): only the three flags
+		return flag;
 	default:
 		return qtrue;
 	}

@@ -303,6 +303,13 @@ comments and docs/PLAN.md):
 - `bg_lib.c`'s `rand()` is the Microsoft C runtime's generator on every
   platform (baseq3a used a 69069 generator), the generator the retail
   modules draw from.
+- In native builds `bg_lib.c`'s `atof()` and `Q_sscanf`'s `%f` read numbers
+  correctly rounded, exponents included, under the "C" locale, as the
+  runtime the retail modules import does. baseq3a's float-summing QVM
+  parsers remain for `Q3_VM` builds only.
+- `trigger_hurt` repeats every server frame and is always usable;
+  `func_rotating` has the door's blocked handler; doors, buttons, bobbers
+  and pendulums compute their travel and timing in double.
 - `trigger_push` aims every frame through Quake Live's per-frame think
   (`frameThink`), and the push velocity is in whole units.
 - Items: only spawned items are registered; `g_spawnItem*`, `g_ammoPack`

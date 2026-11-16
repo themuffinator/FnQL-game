@@ -527,6 +527,10 @@ test('game-runes', game_runes, suite: 'unit')
 game_names = executable('game_names', files('tests/game_names.c', 'code/game/g_names.c'),
   c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-names', game_names, suite: 'unit')
+game_numbers = executable('game_numbers', files('tests/game_numbers.c',
+    'code/game/q_shared.c', 'code/game/q_math.c', 'code/game/bg_lib.c'),
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
+test('game-numbers', game_numbers, suite: 'unit')
 game_chattokens = executable('game_chattokens', files('tests/game_chattokens.c', 'code/game/g_chattokens.c'),
   c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'], dependencies: [math_dep])
 test('game-chattokens', game_chattokens, suite: 'unit')
@@ -1275,6 +1279,40 @@ if get_option('fnql-dedicated') != ''
       suite: 'combat-rules', timeout: 300, is_parallel: false)
   endforeach
 
+  # The shotgun, grenade launcher, plasma gun, BFG, nailgun and prox launcher,
+  # at retail defaults, with box traces, and with their tunables moved off the
+  # defaults (split so each run stays inside the engine's 32 '+' commands).
+  foreach name, options : {
+    'default': [],
+    'box': ['--set', 'g_playerCylinders', '0'],
+    'tuned-sg-gl': ['--set', 'g_damage_sg', '7', '--set', 'g_damage_sg_outer', '3',
+      '--set', 'g_damage_sg_falloff', '1', '--set', 'g_knockback_sg', '2',
+      '--set', 'g_velocity_gl', '1100', '--set', 'g_damage_gl', '60',
+      '--set', 'g_splashradius_gl', '220', '--set', 'g_splashdamage_gl', '70',
+      '--set', 'g_knockback_gl', '1.5', '--set', 'g_knockback_z', '40',
+      '--set', 'g_knockback_z_self', '12', '--set', 'g_splashdamageOffset', '0.2'],
+    'tuned-pg-bfg': ['--set', 'g_velocity_pg', '1400', '--set', 'g_damage_pg', '14',
+      '--set', 'g_splashradius_pg', '48', '--set', 'g_splashdamage_pg', '22',
+      '--set', 'g_knockback_pg_self', '2.2', '--set', 'g_velocity_bfg', '1200',
+      '--set', 'g_damage_bfg', '70', '--set', 'g_splashradius_bfg', '160',
+      '--set', 'g_splashdamage_bfg', '55', '--set', 'g_knockback_bfg', '1.7'],
+    'tuned-ng-pl': ['--set', 'g_nailcount', '6', '--set', 'g_nailspread', '250',
+      '--set', 'g_nailspeed', '1500', '--set', 'g_damage_ng', '9',
+      '--set', 'g_nailbouncepercentage', '90', '--set', 'g_knockback_ng', '1.4',
+      '--set', 'g_proxMineTimeout', '8', '--set', 'g_damage_pl', '40',
+      '--set', 'g_splashradius_pl', '190', '--set', 'g_splashdamage_pl', '60',
+      '--set', 'g_knockback_pl', '1.3'],
+  }
+    weapons_args = server_lockstep_args + ['--port', '27994', '--cheats',
+      '--factory', 'ffa', '--frames', '1500',
+      '--scenario', files('tests/lockstep/server/ffa_weapons.txt')] + options
+    test('combat-weapons-' + name + '-selfcheck', python,
+      args: weapons_args + ['--self-check'], suite: 'combat-rules', timeout: 300, is_parallel: false)
+    test('combat-weapons-' + name + '-differential', python,
+      args: weapons_args + ['--module', qagame.full_path()], depends: qagame,
+      suite: 'combat-rules', timeout: 300, is_parallel: false)
+  endforeach
+
   foreach name, options : {
     'default': [],
     'no-history': ['--set', 'g_lagHaxHistory', '0'],
@@ -1369,6 +1407,7 @@ if get_option('fnql-dedicated') != ''
   foreach name, options : {
     'brimstoneabbey': ['brimstoneabbey', 'dom'],
     'devilish': ['devilish', 'ca'],
+    'retribution': ['retribution', 'ffa'],
     'push-sounds': ['campgrounds', 'ffa'],
   }
     stock_args = server_lockstep_args + ['--port', '27994', '--map', options[0],
@@ -1383,6 +1422,45 @@ if get_option('fnql-dedicated') != ''
       args: stock_args + ['--module', qagame.full_path()], depends: qagame,
       suite: 'stock-maps', timeout: 300, is_parallel: false)
   endforeach
+
+  # Two players moving and firing on the stock maps that showed each spawn
+  # and map-entity divergence of the M4 sweep: the retail button travel
+  # (retribution), the runtime's number parsing (fluorescent angles,
+  # terminalheights phases, jumpwerkz exponent origins), the spawn fallback
+  # to the red and blue player starts (basesiege), bobber phase arithmetic
+  # (elder), trigger_hurt's frame rate and the dead's water events
+  # (wargrounds, reflux), and rotating movers clearing what blocks them
+  # (solarium).
+  foreach map : ['retribution', 'fluorescent', 'terminalheights', 'jumpwerkz', 'basesiege',
+                 'elder', 'wargrounds', 'reflux', 'solarium']
+    sweep_args = server_lockstep_args + ['--port', '27994', '--map', map, '--frames', '400',
+      '--scenario', files('tests/lockstep/server/ffa_two_players.txt')]
+    test('stock-map-play-' + map + '-selfcheck', python, args: sweep_args + ['--self-check'],
+      suite: 'stock-maps', timeout: 300, is_parallel: false)
+    test('stock-map-play-' + map + '-differential', python,
+      args: sweep_args + ['--module', qagame.full_path()], depends: qagame,
+      suite: 'stock-maps', timeout: 300, is_parallel: false)
+  endforeach
+
+  # The flag and objective modes on a map without their starts or flags:
+  # deferred spawns keep the location they spectated from, and Attack and
+  # Defend spawns no map items but its red and blue flags (zero divergence).
+  foreach factory : ['ctf', 'oneflag', 'har', 'ad']
+    deferred_args = server_lockstep_args + ['--port', '27994', '--cheats', '--factory', factory,
+      '--frames', '2400', '--scenario', files('tests/lockstep/server/ffa_kill_restart.txt')]
+    test('server-lockstep-deferred-' + factory + '-selfcheck', python,
+      args: deferred_args + ['--self-check'], suite: 'differential', timeout: 300, is_parallel: false)
+    test('server-lockstep-deferred-' + factory + '-differential', python,
+      args: deferred_args + ['--module', qagame.full_path()], depends: qagame,
+      suite: 'differential', timeout: 300, is_parallel: false)
+  endforeach
+  ad_items_args = server_lockstep_args + ['--port', '27994', '--cheats', '--factory', 'ad',
+    '--scenario', files('tests/lockstep/server/tdm_items.txt')]
+  test('server-lockstep-ad-items-selfcheck', python, args: ad_items_args + ['--self-check'],
+    suite: 'differential', timeout: 300, is_parallel: false)
+  test('server-lockstep-ad-items-differential', python,
+    args: ad_items_args + ['--module', qagame.full_path()], depends: qagame,
+    suite: 'differential', timeout: 300, is_parallel: false)
 
   # Every retail factory must host FnQL-game without a fatal error, even on a
   # map without the mode's spawns or items (meson test --suite factories).

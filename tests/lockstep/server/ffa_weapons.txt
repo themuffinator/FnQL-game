@@ -1,0 +1,104 @@
+# G3: ffa, cheats. The weapons no other scenario fires: the shotgun's
+# pellet ring, grenade bounces and fuse, plasma (direct, splash and self
+# splash), the BFG, nailgun spread and bounces, and prox mines (stuck to the
+# floor, triggered by a walker, stuck to a player), then restart with mines
+# still out. Bravo is healed and placed again before each weapon.
+fnql-lockstep 1
+client alpha name Alpha
+client bravo name Bravo
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+clientcmd 20 alpha setviewpos -260 320 40 180
+clientcmd 22 bravo setviewpos -700 320 40 0
+# Shotgun: one shot at range, one point blank.
+clientcmd 30 alpha give Shotgun
+at 40 alpha weapon=3
+at 60 alpha buttons=attack
+at 62 alpha buttons=0
+clientcmd 90 bravo setviewpos -500 320 40 0
+at 100 alpha buttons=attack
+at 102 alpha buttons=0
+# Grenades: one lobbed up (bounces, fuse), one straight at Bravo.
+clientcmd 140 bravo give health
+clientcmd 141 bravo setviewpos -700 320 40 0
+clientcmd 145 alpha give health
+clientcmd 146 alpha setviewpos -260 320 40 180
+clientcmd 150 alpha give Grenade Launcher
+at 160 alpha weapon=4
+at 180 alpha buttons=attack pitch=-30
+at 182 alpha buttons=0 pitch=0
+at 230 alpha buttons=attack
+at 232 alpha buttons=0
+# Plasma: a stream at Bravo, then into the floor at Alpha's feet.
+at 310 bravo buttons=attack
+at 312 bravo buttons=0
+clientcmd 330 bravo give health
+clientcmd 331 bravo setviewpos -700 320 40 0
+clientcmd 335 alpha give health
+clientcmd 336 alpha setviewpos -260 320 40 180
+clientcmd 340 alpha give Plasma Gun
+at 350 alpha weapon=8
+at 370 alpha buttons=attack
+at 378 alpha buttons=0
+at 420 alpha pitch=89 buttons=attack
+at 430 alpha buttons=0 pitch=0
+# BFG: two shots at Bravo, one at the floor in front of Alpha.
+at 460 bravo buttons=attack
+at 462 bravo buttons=0
+clientcmd 480 bravo give health
+clientcmd 481 bravo setviewpos -700 320 40 0
+clientcmd 485 alpha give health
+clientcmd 486 alpha setviewpos -260 320 40 180
+clientcmd 490 alpha give BFG10K
+at 500 alpha weapon=9
+at 520 alpha buttons=attack
+at 522 alpha buttons=0
+at 560 alpha buttons=attack
+at 562 alpha buttons=0
+at 600 alpha pitch=45 buttons=attack
+at 602 alpha buttons=0 pitch=0
+# Nailgun: a burst at Bravo, then a burst bouncing off the floor.
+at 640 bravo buttons=attack
+at 642 bravo buttons=0
+clientcmd 660 bravo give health
+clientcmd 661 bravo setviewpos -700 320 40 0
+clientcmd 665 alpha give health
+clientcmd 666 alpha setviewpos -260 320 40 180
+clientcmd 670 alpha give Nailgun
+at 680 alpha weapon=11
+at 700 alpha buttons=attack
+at 720 alpha buttons=0
+at 740 alpha pitch=20 buttons=attack
+at 760 alpha buttons=0 pitch=0
+# Prox mines: two planted on the floor, one fired into Bravo.
+at 800 bravo buttons=attack
+at 802 bravo buttons=0
+clientcmd 820 bravo give health
+clientcmd 821 bravo setviewpos -700 320 40 0
+clientcmd 825 alpha give health
+clientcmd 826 alpha setviewpos -260 320 40 180
+clientcmd 830 alpha give Prox Launcher
+at 840 alpha weapon=12
+at 860 alpha pitch=25 buttons=attack
+at 862 alpha buttons=0
+at 900 alpha pitch=35 buttons=attack
+at 902 alpha buttons=0 pitch=0
+at 960 alpha buttons=attack
+at 962 alpha buttons=0
+# Bravo walks over the planted mines.
+at 1020 bravo buttons=attack
+at 1022 bravo buttons=0
+clientcmd 1040 bravo give health
+clientcmd 1041 bravo setviewpos -700 320 40 0
+clientcmd 1045 alpha setviewpos -260 320 40 180
+at 1060 bravo forward=127
+at 1140 bravo forward=0
+# Mines still on the floor when the map restarts.
+at 1200 alpha pitch=30 buttons=attack
+at 1202 alpha buttons=0 pitch=0
+clientcmd 1260 alpha pstats
+clientcmd 1261 bravo score
+cmd 1300 map_restart 0
+clientcmd 1350 alpha score

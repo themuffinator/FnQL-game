@@ -35,6 +35,7 @@ void CG_AddTeammateMarker(const vec3_t origin, const vec4_t color, qhandle_t sha
 static snapshot_t snapshot;
 static refEntity_t draws[8];
 static int drawCount;
+double BG_atof(const char *string) { return strtod(string, NULL); }	// bg_lib.c's atof
 void QDECL CG_Error(const char *format, ...) { (void)format; abort(); }
 void QDECL CG_Printf(const char *format, ...) { (void)format; }
 void trap_R_AddRefEntityToScene(const refEntity_t *entity) {

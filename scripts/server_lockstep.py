@@ -838,6 +838,28 @@ LOG_ERRORS = ("********************", "ERROR:", "Server fatal crashed", "Server 
 FATAL_LOG_MARKERS = ("Server fatal crashed", "Server crashed", "********************")
 
 
+# The engine splits its command line into at most 32 '+' commands and drops
+# the rest without a word (FnQL code/qcommon/common.c MAX_CONSOLE_LINES), and
+# the Windows build copies the line into a 1024-byte buffer first
+# (code/win32/win_main.cpp sys_cmdline[MAX_STRING_CHARS]). serverstartup comes
+# last, so an over-long line silently starts the server on its default map.
+ENGINE_MAX_PLUS_COMMANDS = 32
+ENGINE_MAX_WIN32_COMMAND_LINE = 1023
+
+
+def command_line_problem(command: list[str]) -> str:
+    plus_commands = sum(1 for arg in command[1:] if arg.startswith("+"))
+    if plus_commands > ENGINE_MAX_PLUS_COMMANDS:
+        return (f"the server command line has {plus_commands} '+' commands; the engine keeps only "
+                f"{ENGINE_MAX_PLUS_COMMANDS}, so it would drop serverstartup (use fewer --set)")
+    if os.name == "nt":
+        length = len(subprocess.list2cmdline(command[1:]))
+        if length > ENGINE_MAX_WIN32_COMMAND_LINE:
+            return (f"the server command line is {length} characters; the Windows engine keeps only "
+                    f"{ENGINE_MAX_WIN32_COMMAND_LINE}, so it would drop serverstartup (use fewer --set)")
+    return ""
+
+
 def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     scratch_root = ROOT / ".tmp"
     scratch_root.mkdir(exist_ok=True)
@@ -890,6 +912,12 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     # such as setviewpos to put a player where the test needs it
     map_command = "devmap" if args.cheats else "map"
     command += ["+set", "serverstartup", f"{map_command} {args.map} {args.factory}"]
+
+    result_error = command_line_problem(command)
+    if result_error:
+        result = RunResult(label, provider, home, None, 0.0, "")
+        result.error = result_error
+        return result
 
     log_path = home / "baseq3" / "qconsole.log"
 
@@ -951,6 +979,8 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
         result.error = result.error or f"recording unreadable: {error}"
         return result
     rec = result.recording
+    if rec.map.lower() != args.map.lower():
+        result.error = result.error or f"the server recorded map {rec.map!r}, not the requested {args.map!r}"
     if args.queries and rec.version != RECORD_VERSION_QUERIES:
         result.error = result.error or ("the engine did not record game query answers "
                                         "(sv_lockstepQueries needs a newer FnQL; --no-queries skips them)")

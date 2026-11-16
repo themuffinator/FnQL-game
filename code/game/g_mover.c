@@ -974,6 +974,37 @@ void Think_MatchTeam( gentity_t *ent ) {
 }
 
 
+/*
+================
+G_MoverTravel
+
+The open position of a door or button, as the retail x87 code computes it
+(func_door 0x1005fbe5-0x1005fc4c, func_button 0x100602d3-0x10060397): the
+travel along the absolute move direction through the brush size is summed in
+double and stored as a float only after the lip is subtracted, then each
+component of pos1 + travel * movedir is evaluated in double and rounded once.
+Quake III's float VectorMA rounds the product first, which moves the small
+transverse component of a 360-degree mover by one ulp (retribution's button)
+and changes its wire velocity.
+================
+*/
+static void G_MoverTravel( gentity_t *ent, float lip ) {
+	vec3_t	abs_movedir;
+	vec3_t	size;
+	float	distance;
+	int		i;
+
+	for ( i = 0; i < 3; i++ ) {
+		abs_movedir[i] = fabs( ent->movedir[i] );
+		size[i] = ent->r.maxs[i] - ent->r.mins[i];
+	}
+	distance = (float)( PM_Dot3( abs_movedir, size ) - lip );
+	for ( i = 0; i < 3; i++ ) {
+		ent->pos2[i] = (float)( (double)ent->movedir[i] * distance + ent->pos1[i] );
+	}
+}
+
+
 /*QUAKED func_door (0 .5 .8) ? START_OPEN x CRUSHER
 TOGGLE		wait in both the start and end states for a trigger event.
 START_OPEN	the door to moves to its destination when spawned, and operate in reverse.  It is used to temporarily or permanently close off an area when triggered (not useful for touch or takedamage doors).
@@ -991,9 +1022,6 @@ NOMONSTER	monsters will not trigger this door
 "health"	if set, the door must be shot open
 */
 void SP_func_door (gentity_t *ent) {
-	vec3_t	abs_movedir;
-	float	distance;
-	vec3_t	size;
 	float	lip;
 
 	char	*startSound, *endSound;
@@ -1028,15 +1056,9 @@ void SP_func_door (gentity_t *ent) {
 	// calculate second position
 	trap_SetBrushModel( ent, ent->model );
 	G_SetMovedir (ent->s.angles, ent->movedir);
-	abs_movedir[0] = fabs(ent->movedir[0]);
-	abs_movedir[1] = fabs(ent->movedir[1]);
-	abs_movedir[2] = fabs(ent->movedir[2]);
-	VectorSubtract( ent->r.maxs, ent->r.mins, size );
-	// Retail 0x1005fbe5-0x1005fbf5 stores only after subtracting the lip.
-	// Rounding the dot product first loses the small transverse component
-	// of a 360-degree door (Brimstone Abbey) and changes its wire velocity.
-	distance = (float)(PM_Dot3( abs_movedir, size ) - lip);
-	VectorMA( ent->pos1, distance, ent->movedir, ent->pos2 );
+	// Rounding the travel early loses the small transverse component of a
+	// 360-degree door (Brimstone Abbey) and changes its wire velocity.
+	G_MoverTravel( ent, lip );
 
 	// if "start_open", reverse position 1 and 2
 	if ( ent->spawnflags & 1 ) {
@@ -1255,9 +1277,6 @@ When a button is touched, it moves some distance in the direction of its angle, 
 "light"		constantLight radius
 */
 void SP_func_button( gentity_t *ent ) {
-	vec3_t		abs_movedir;
-	float		distance;
-	vec3_t		size;
 	float		lip;
 
 	ent->sound1to2 = G_SoundIndex("sound/movers/switches/butn2.wav");
@@ -1280,12 +1299,7 @@ void SP_func_button( gentity_t *ent ) {
 	G_SpawnFloat( "lip", "4", &lip );
 
 	G_SetMovedir( ent->s.angles, ent->movedir );
-	abs_movedir[0] = fabs(ent->movedir[0]);
-	abs_movedir[1] = fabs(ent->movedir[1]);
-	abs_movedir[2] = fabs(ent->movedir[2]);
-	VectorSubtract( ent->r.maxs, ent->r.mins, size );
-	distance = abs_movedir[0] * size[0] + abs_movedir[1] * size[1] + abs_movedir[2] * size[2] - lip;
-	VectorMA (ent->pos1, distance, ent->movedir, ent->pos2);
+	G_MoverTravel( ent, lip );
 
 	if (ent->health) {
 		// shootable button
@@ -1553,9 +1567,8 @@ void SP_func_rotating (gentity_t *ent) {
 		ent->s.apos.trDelta[1] = ent->speed;
 	}
 
-	if (!ent->damage) {
-		ent->damage = 2;
-	}
+	// retail 0x10060b62: "dmg" defaults to 2, and an explicit 0 stays 0
+	G_SpawnInt( "dmg", "2", &ent->damage );
 
 	trap_SetBrushModel( ent, ent->model );
 	InitMover( ent );
@@ -1563,6 +1576,10 @@ void SP_func_rotating (gentity_t *ent) {
 	VectorCopy( ent->s.origin, ent->s.pos.trBase );
 	VectorCopy( ent->s.pos.trBase, ent->r.currentOrigin );
 	VectorCopy( ent->s.apos.trBase, ent->r.currentAngles );
+
+	// retail 0x10060bbf: a rotating mover removes what blocks it and hurts
+	// players as a door does (solarium's fans clear the bodies they meet)
+	ent->blocked = Blocked_Door;
 
 	trap_LinkEntity( ent );
 }
@@ -1602,8 +1619,11 @@ void SP_func_bobbing (gentity_t *ent) {
 	VectorCopy( ent->s.origin, ent->s.pos.trBase );
 	VectorCopy( ent->s.origin, ent->r.currentOrigin );
 
-	ent->s.pos.trDuration = ent->speed * 1000;
-	ent->s.pos.trTime = ent->s.pos.trDuration * phase;
+	// Retail 0x10060cb3-0x10060d09 multiplies in double before truncating:
+	// elder's speed 64, phase 0.9 bobber starts at 57599, where a float
+	// product rounds up to 57600.
+	ent->s.pos.trDuration = (int)( ent->speed * 1000.0 );
+	ent->s.pos.trTime = (int)( (double)ent->s.pos.trDuration * phase );
 	ent->s.pos.trType = TR_SINE;
 
 	// set the axis of bobbing
@@ -1641,6 +1661,7 @@ void SP_func_pendulum(gentity_t *ent) {
 	float		length;
 	float		phase;
 	float		speed;
+	int			duration;
 
 	G_SpawnFloat( "speed", "30", &speed );
 	G_SpawnInt( "dmg", "2", &ent->damage );
@@ -1654,9 +1675,13 @@ void SP_func_pendulum(gentity_t *ent) {
 		length = 8;
 	}
 
-	freq = 1 / ( M_PI * 2 ) * sqrt( g_gravity.value / ( 3 * length ) );
+	// Retail 0x10060e12-0x10060ea9 evaluates in double and stores only the
+	// frequency (as a float) and the truncated duration both trajectories
+	// share; the 1 / (2 pi) constant is the float one Quake III folded.
+	freq = (float)( sqrt( g_gravity.value / ( length * 3.0 ) ) * (double)(float)( 1.0 / ( M_PI * 2 ) ) );
+	duration = (int)( 1000.0 / freq );
 
-	ent->s.pos.trDuration = ( 1000 / freq );
+	ent->s.pos.trDuration = duration;
 
 	InitMover( ent );
 
@@ -1665,8 +1690,8 @@ void SP_func_pendulum(gentity_t *ent) {
 
 	VectorCopy( ent->s.angles, ent->s.apos.trBase );
 
-	ent->s.apos.trDuration = 1000 / freq;
-	ent->s.apos.trTime = ent->s.apos.trDuration * phase;
+	ent->s.apos.trDuration = duration;
+	ent->s.apos.trTime = (int)( (double)duration * phase );
 	ent->s.apos.trType = TR_SINE;
 	ent->s.apos.trDelta[2] = speed;
 }

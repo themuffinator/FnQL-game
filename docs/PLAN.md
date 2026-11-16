@@ -221,7 +221,9 @@ per-frame recorder, and a differ. The harness is engine tooling, default-off.
 Exit: zero divergence against the retail qagame across a scripted movement
 corpus on stock maps.
 
-### M4 — Combat, items and spawning
+### M4 — Combat, items and spawning (complete)
+
+Completed 2026-11-16 (closing slice below). Scope:
 
 - Weapons: HMG, nailgun, prox, chaingun; railgun headshots; LG discharge; the
   deterministic 20-pellet shotgun ring.
@@ -241,7 +243,7 @@ differentials fail, as expected before M4: the first divergence is at
 frame 0, where retail puts a connecting player on `TEAM_SPECTATOR`
 (`pm_type` 2, `PERS_TEAM` 3) and FnQL-game spawns it into the game.
 
-M4 progress (2026-10-29, in progress). Done, each from the retail
+M4 progress (from 2026-10-29). Done, each from the retail
 qagame (HLIL/disassembly addresses in the code comments):
 
 - Combat: `G_Damage` (armor save, knockback scales and caps, plums, hit
@@ -352,8 +354,9 @@ any deathmatch spot) instead of `G_Error`, and Harvester registers QL's
 "Red Skull"/"Blue Skull" rather than Team Arena's cubes. The remaining
 per-mode divergences moved to milestone 6: round kits and match state now
 have the CA/FT/RR gates below. Harvester's skull toss is now covered by the
-objective-mode gates; retail's repeated flag-return prints on a map without
-flags remain open. Duel's queue and scoreboard
+objective-mode gates. The flag modes on a map without flags now match retail
+with zero divergence, server commands included (closing slice below).
+Duel's queue and scoreboard
 moved to M5 and pass (below).
 
 The G4a PQL prediction probe missed twice in the crouch segment in 18 runs
@@ -493,7 +496,66 @@ stats notes below list what is still open).
 Freeze Tag thawing, Red Rover infection scoring and CA/FT/RR respawn rules
 are implemented and gated under M6 below.
 
-Exit: G3 differential over combat and item scenarios.
+Closing slice (2026-11-16). Observed facts are from the G3 runs named; the
+retail addresses are in the code comments.
+
+- **Weapons.** `ffa_weapons` (`combat-rules`) fires the six weapons no
+  other scenario fired: the shotgun at range and point blank, grenades
+  (lobbed and direct), plasma (stream and self splash), the BFG, nailgun
+  bursts at a player and off the floor, and prox mines planted, triggered
+  and fired into a player, then a restart with mines out. It runs at the
+  retail defaults, with box traces, and with three sets of moved
+  tunables (`g_damage_*`, `g_knockback_*`, `g_splash*`, `g_velocity_*`,
+  `g_nail*`, `g_proxMineTimeout`). All pass with no divergence, and no code
+  change was needed.
+- **Runner.** The engine keeps at most 32 `+` commands and, on Windows,
+  1023 command-line characters, and drops the rest silently. A long
+  `--set` list therefore lost `serverstartup` and both runs started on
+  the default map (retribution), which passed as a campgrounds gate.
+  `server_lockstep.py` now refuses such a command line and checks the
+  recorded map against `--map`.
+- **Stock-map sweep.** Two players moving and firing in FFA on all 149
+  stock maps, retail against FnQL-game. It found these, all fixed:
+  - The native `atof` and `Q_sscanf %f` were baseq3a's QVM versions. They
+    sum in float and stop at an exponent. Retail uses the runtime's, so
+    `"angle" "-179.999985"` stored one ulp off, bobber phases truncated
+    one msec off, and jumpwerkz's `"-2.42338e-027 608 504"` origin was
+    lost. Native builds now parse correctly rounded under the "C" locale.
+  - Door and button travel is evaluated in double as retail does (retribution's
+    360-degree button), and so are `func_bobbing` and `func_pendulum` timing
+    (elder's speed 64, phase 0.9 bobber starts at 57599, not 57600).
+  - The spawn fallback: the rand() drawn first in `SelectSpawnPoint` picks
+    the red or blue player starts that FFA, duel, race, TDM and RR fall back
+    to, still keeping `g_spawnMinDistance`; the flag modes and AD defer.
+    FnQL-game used to telefrag onto the one usable spot (basesiege and seven
+    others).
+  - `trigger_hurt` repeats every server frame, not every 100 msec, and every
+    hurt toggles when used (wargrounds, leviathan).
+  - The dead get no head-under/head-clear water events, and the battle suit
+    suppresses the clear event (reflux, tornado, wargrounds). G3a gains
+    `dead-water` and `water-battlesuit`, which diverge without the change.
+  - `func_rotating` uses the door's blocked handler and reads `dmg` with
+    default 2 (solarium's fans clear blocking bodies).
+  - Map flags spawn only in race, CTF, 1FCTF, Overload, Domination and AD,
+    instagib included. AD spawns no map item but its two flags, and checks
+    for them as CTF does.
+  - A deferred spawn's unlinked entity keeps its last `r.currentOrigin`,
+    which the team location update reads. This was the location divergence
+    of the flag modes on campgrounds.
+- **Gates added.** `combat-weapons-*`, `stock-map-play-*` (nine maps, one or
+  more per fix), `stock-map-retribution`, `server-lockstep-deferred-*` (CTF,
+  1FCTF, Harvester, AD) and `server-lockstep-ad-items`.
+
+Open after M4:
+
+- `qztraining`, `qzpractice1` and `qzpractice2` are the training tour.
+  Retail applies its own limits and voice lines there, and the practice maps
+  fail to start retail under the sweep's FFA factory. These belong to the
+  M5 training-tour work.
+- The G4a PQL crouch-segment miss under load (above) still needs a
+  reproduction under controlled frame timing.
+
+Exit: G3 differential over combat and item scenarios — met (2026-11-16).
 
 ### M5 — Match flow and core gametypes
 

@@ -902,8 +902,12 @@ void ClientThink_real( gentity_t *ent ) {
 			pm.pointcontents = trap_PointContents;
 			pm.settings = &level.pmoveSettings;
 			Pmove( &pm );
+			// As in SpectatorThink, only s.origin follows: the unlinked
+			// entity keeps its last r.currentOrigin, which the team
+			// location update reads (retail qagamex86 0x10068000; a
+			// deferred CTF spawn on campgrounds reports the spot it
+			// spectated from).
 			VectorCopy( client->ps.origin, ent->s.origin );
-			VectorCopy( client->ps.origin, ent->r.currentOrigin );
 			trap_UnlinkEntity( ent );
 		}
 		return;

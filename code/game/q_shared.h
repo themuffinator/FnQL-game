@@ -55,6 +55,12 @@
 #include <ctype.h>
 #include <limits.h>
 
+// The modules read numbers with bg_lib.c's atof, as the retail modules use
+// their runtime's on every platform: glibc would otherwise inline atof into
+// a locale-dependent strtod that also reads hexadecimal, "inf" and "nan".
+#define atof BG_atof
+double BG_atof( const char *string );
+
 #ifndef _WIN32
 #include <stdint.h>
 #define DLLEXPORT __attribute__((visibility ("default")))

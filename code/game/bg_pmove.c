@@ -1825,6 +1825,14 @@ static void PM_WaterEvents( void ) {		// FIXME?
 		PM_AddEvent( EV_WATER_LEAVE );
 	}
 
+	// Retail 0x1003180f: the dead get no head events (their sample point
+	// drops with the dead view height, so dying in waist-deep water would
+	// otherwise sound like going under), and the battle suit keeps the head
+	// from surfacing with a gasp (0x10031854)
+	if ( pm->ps->pm_type == PM_DEAD ) {
+		return;
+	}
+
 	//
 	// check for head just going under water
 	//
@@ -1835,7 +1843,7 @@ static void PM_WaterEvents( void ) {		// FIXME?
 	//
 	// check for head just coming out of water
 	//
-	if (pml.previous_waterlevel == 3 && pm->waterlevel != 3) {
+	if (!pm->ps->powerups[PW_BATTLESUIT] && pml.previous_waterlevel == 3 && pm->waterlevel != 3) {
 		PM_AddEvent( EV_WATER_CLEAR );
 	}
 }
