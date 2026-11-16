@@ -57,6 +57,12 @@ typedef enum {
 #define FL_NO_BOTS				0x00002000	// spawn point not for bot use
 #define FL_NO_HUMANS			0x00004000	// spawn point just for bots
 #define FL_FORCE_GESTURE		0x00008000	// force gesture on client
+// Training tour bot flags.  Observed: retail sets both on a tour bot
+// (qagamex86 0x1000ed3a, 0x1000ed5b) and the tour's end clears them
+// (0x10045b4c, 0x10045b6d).  Their meaning is inferred; FnQL-game has no
+// tour bot AI yet, so only the end clears them.
+#define FL_TRAINING_BOT			0x00010000
+#define FL_TRAINING_GUIDE		0x00020000
 #define FL_POWERUP_DECAY		0x00080000	// manual powerup drop: s.time starts its decay (retail 0x10044e28)
 #define FL_ITEM_TIMER			0x00100000	// a taken item that clients see counting down (g_itemTimers)
 
@@ -355,6 +361,7 @@ typedef struct {
 	int			holyShits;			// near-captures stopped or suffered (+0x804)
 	int			lastHealth, lastArmor;	// health and armor when an enemy last did damage (+0x810, +0x814)
 	int			flagPickups[3];		// red, blue and neutral flags taken from their base (+0x868)
+	int			domHoldTime;		// Domination: seconds of score ticks with the team on three points (+0x88c)
 } clientStats_t;
 
 // unlagged
@@ -862,7 +869,8 @@ void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean qu
 void G_StatsReportMatchStarted( void );
 void G_StatsReportMatch( qboolean aborted, int restarted, const char *exitMessage );
 int G_LoadoutWeaponMask( const char *list );
-void G_SteamAchievement( const gentity_t *ent, int id );
+qboolean G_SteamAchievementLacks( const gentity_t *ent, int id );
+void G_SteamAchievementUnlock( const gentity_t *ent, int id );
 void G_StatsSteamShots( const gentity_t *ent, int weapon, int count );
 void G_StatsSteamHit( const gclient_t *client, int weapon );
 void G_StatsKillAchievements( gentity_t *victim, gentity_t *attacker, int mod );

@@ -649,6 +649,7 @@ if get_option('fnql-dedicated') != ''
     'ffa': ['ffa', 'campgrounds', '5', '300', stats_match + ',PLAYER_STATS,MATCH_REPORT'],
     'ca': ['ca', 'campgrounds', '5', '300', stats_match + ',PLAYER_STATS,MATCH_REPORT,ROUND_OVER'],
     'ctf': ['ctf', 'spidercrossings', '8', '100', 'PLAYER_CONNECT,PLAYER_SWITCHTEAM,MATCH_STARTED,FLAG_STATUS'],
+    'rr': ['rr', 'campgrounds', '5', '400', stats_match + ',PLAYER_STATS,MATCH_REPORT,ROUND_OVER'],
     # a player kicked, then the map changed under the match: the leaver's
     # statistics, everyone else's marked aborted, and the aborted report
     'abort': ['ffa', 'campgrounds', '50', '150',
@@ -893,6 +894,32 @@ if get_option('fnql-dedicated') != ''
     test('server-rules-' + name + '-differential', python,
       args: rule_args + ['--module', qagame.full_path()], depends: qagame,
       suite: 'server-rules', timeout: 300, is_parallel: false)
+  endforeach
+  # Milestone M5's match exits (retail CheckExitRules 0x10058030), each
+  # through to the intermission: the fraglimit after a tie at it, the
+  # timelimit after three overtimes, the mercy limit held to g_mercytime, and
+  # the capturelimit inside a team-score overtime.
+  match_exits = {
+    'fraglimit-ffa': ['ffa_fraglimit', '--frames', '1200', '--set', 'g_doWarmup', '0',
+      '--set', 'g_warmup', '0'],
+    'overtime-duel': ['duel_overtime', '--factory', 'duel', '--frames', '4300'],
+    'mercylimit-tdm': ['tdm_mercy', '--factory', 'tdm', '--frames', '3500'],
+    'capturelimit-ctf': ['ctf_capturelimit', '--map', 'spidercrossings', '--factory', 'ctf',
+      '--frames', '3600'],
+    # g_training on an ordinary map turns itself off (retail 0x10024fa0).
+    'training-reset-ffa': ['ffa_training_reset', '--cheats', '--frames', '400',
+      '--set', 'g_training', '1', '--set', 'g_skipTrainingEnable', '1'],
+  }
+  foreach name, spec : match_exits
+    exit_args = server_lockstep_args + ['--scenario', files('tests/lockstep/server/' + spec[0] + '.txt')]
+    foreach index : range(1, spec.length())
+      exit_args += [spec[index]]
+    endforeach
+    test('match-exit-' + name + '-selfcheck', python, args: exit_args + ['--self-check'],
+      suite: ['match-flow', 'differential'], timeout: 300, is_parallel: false)
+    test('match-exit-' + name + '-differential', python,
+      args: exit_args + ['--module', qagame.full_path()], depends: qagame,
+      suite: ['match-flow', 'differential'], timeout: 300, is_parallel: false)
   endforeach
   # Key doors, on a hand-authored fixture: no stock map carries one.
   key_door_args = server_lockstep_args + ['--cheats', '--frames', '900',
@@ -1223,6 +1250,7 @@ if get_option('fnql-dedicated') != ''
     'ad-drop': ['ad_drop', 'ad', 'attack_defend', '3100'],
     'ad-death-drop': ['ad_death_drop', 'ad', 'attack_defend', '3300'],
     'dom-capture': ['domination', 'dom', 'domination', '2500'],
+    'dom-hold': ['domination_hold', 'dom', 'domination_three', '3800'],
     'dom-contention': ['domination_contention', 'dom', 'domination', '2700'],
     'dom-neutral': ['domination_contention', 'dom', 'domination', '2700', '--set', 'g_domNeutralFlag', '1'],
     'dom-no-contention': ['domination_contention', 'dom', 'domination', '2700', '--set', 'g_domNeutralFlag', '1', '--set', 'g_domEnableContention', '0'],

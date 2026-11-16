@@ -1,0 +1,39 @@
+# G3 (scripts/server_lockstep.py --frames 1200 --set g_doWarmup 0 --set
+# g_warmup 0): a free-for-all that ends at the fraglimit, retail qagamex86
+# CheckExitRules 0x10058030.  The tie test (0x10057c60) comes before every
+# limit, so two players level at the fraglimit play on; a suicide breaks the
+# tie and the leader's "hit the fraglimit" follows (LogExit 0x10057510 first,
+# then the print naming the player).  The intermission starts 200 msec later
+# (0x10056cb0), both players vote for a next map (0x10043ff0) and one readies
+# up; CS_INTERMISSION_EXIT comes 20 s in (0x10057ad0).  The run stops before
+# ExitLevel loads the voted map.  The factory sets the limits at load, so the
+# script sets them afterwards; addscore is the console moderator command
+# (0x10061550 table).
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+cmd 2 fraglimit 3
+cmd 2 timelimit 0
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+
+# Both one short of the limit, then level at it in one frame: no exit.
+cmd 100 addscore 0 2
+cmd 100 addscore 1 2
+cmd 200 addscore 0 1
+cmd 200 addscore 1 1
+clientcmd 240 alpha score
+# Alpha's suicide costs a frag: Bravo leads at the limit and wins.
+clientcmd 300 alpha kill
+clientcmd 340 bravo score
+# The intermission: map votes, a ready toggle, and the end scoreboard.
+clientcmd 400 alpha vote 1
+clientcmd 420 bravo vote 2
+clientcmd 430 bravo vote 3
+clientcmd 500 alpha readyup
+clientcmd 520 alpha score

@@ -335,8 +335,8 @@ void CheckAlmostCapture( gentity_t *self, gentity_t *attacker ) {
 					// report; the second one earns an achievement (0x100470f7)
 					if ( self->client->sess.sessionTeam != attacker->client->sess.sessionTeam ) {
 						attacker->client->stats.holyShits++;
-						if ( attacker->client->stats.holyShits >= 2 ) {
-							G_SteamAchievement( attacker, 0x18 );
+						if ( G_SteamAchievementLacks( attacker, 0x18 ) && attacker->client->stats.holyShits >= 2 ) {
+							G_SteamAchievementUnlock( attacker, 0x18 );
 						}
 					}
 				}
@@ -501,8 +501,9 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 	if ( killer->ps.powerups[PW_QUAD] ) {
 		killer->ps.stats[STAT_QUAD_FRAG_COUNT]++;
 		killer->stats.quadKills++;
-		if ( killer->stats.quadKills >= 10 ) {
-			G_SteamAchievement( attacker, 0x2f );	// retail 0x1004778a
+		// retail 0x10047754: asked for every quad kill, awarded from the tenth
+		if ( G_SteamAchievementLacks( attacker, 0x2f ) && killer->stats.quadKills >= 10 ) {
+			G_SteamAchievementUnlock( attacker, 0x2f );
 		}
 	}
 
@@ -517,16 +518,18 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 		// play humiliation on the player and the target
 		G_AwardSprite( attacker, PERS_GAUNTLET_FRAG_COUNT, EF_AWARD_GAUNTLET );
 		client->ps.persistant[PERS_PLAYEREVENTS] ^= PLAYEREVENT_GAUNTLETREWARD;
-		if ( g_gametype.integer == GT_TOURNAMENT ) {
-			G_SteamAchievement( attacker, 0x30 );	// a humiliation in a duel (0x10047898)
+		// retail 0x1004786c: asked for every humiliation, awarded in a duel
+		if ( G_SteamAchievementLacks( attacker, 0x30 ) && g_gametype.integer == GT_TOURNAMENT ) {
+			G_SteamAchievementUnlock( attacker, 0x30 );
 		}
 	}
 
 	// two kills in a short amount of time
 	if ( level.time - killer->lastKillTime < CARNAGE_REWARD_TIME ) {
 		G_AwardSprite( attacker, PERS_EXCELLENT_COUNT, EF_AWARD_EXCELLENT );
-		if ( killer->ps.persistant[PERS_EXCELLENT_COUNT] >= 3 ) {
-			G_SteamAchievement( attacker, 0x17 );	// retail 0x10047925
+		// retail 0x100478ff: asked for every excellent, awarded from the third
+		if ( G_SteamAchievementLacks( attacker, 0x17 ) && killer->ps.persistant[PERS_EXCELLENT_COUNT] >= 3 ) {
+			G_SteamAchievementUnlock( attacker, 0x17 );
 		}
 	}
 
@@ -550,8 +553,9 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 	if ( meansOfDeath == MOD_SHOTGUN ) {
 		if ( client->ps.groundEntityNum == ENTITYNUM_NONE && !self->waterlevel ) {
 			killer->stats.midairShotgunKills++;
-			if ( killer->stats.midairShotgunKills >= 5 ) {
-				G_SteamAchievement( attacker, 0x35 );	// retail 0x10047a9d
+			// retail 0x10047a5f: asked for each, awarded from the fifth
+			if ( G_SteamAchievementLacks( attacker, 0x35 ) && killer->stats.midairShotgunKills >= 5 ) {
+				G_SteamAchievementUnlock( attacker, 0x35 );
 			}
 		}
 	} else {
@@ -580,8 +584,9 @@ static void G_KillRewards( gentity_t *self, gentity_t *attacker, int meansOfDeat
 		G_AwardMedal( attacker, MEDAL_QUADGOD );
 	}
 
-	if ( meansOfDeath == MOD_KAMIKAZE ) {
-		G_SteamAchievement( attacker, 0x12 );	// retail 0x10047cd3
+	// retail 0x10047ca2: asked for every kill, awarded for a kamikaze kill
+	if ( G_SteamAchievementLacks( attacker, 0x12 ) && meansOfDeath == MOD_KAMIKAZE ) {
+		G_SteamAchievementUnlock( attacker, 0x12 );
 	}
 
 	killer->lastKillTime = level.time;
@@ -913,6 +918,33 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 			Kamikaze_DeathTimer( self );
 		}
 #endif
+	}
+
+	// Retail 0x100485be (Clan Arena), before the round's death check: a kill
+	// that leaves a team with nobody standing (PM_NORMAL, 0x1006b170) asks
+	// the killer for achievements 0x32 and 0x33, earned with the gauntlet
+	// and with a grenade.
+	if ( g_gametype.integer == GT_CLAN_ARENA && attacker && attacker->client ) {
+		int		standing[TEAM_NUM_TEAMS] = { 0 };
+		int		j;
+
+		for ( j = 0; j < level.maxclients; j++ ) {
+			const gclient_t	*cl = &level.clients[j];
+
+			if ( cl->pers.connected == CON_CONNECTED && cl->ps.pm_type == PM_NORMAL
+				&& cl->sess.sessionTeam >= TEAM_FREE && cl->sess.sessionTeam < TEAM_NUM_TEAMS ) {
+				standing[cl->sess.sessionTeam]++;
+			}
+		}
+		if ( !standing[TEAM_RED] || !standing[TEAM_BLUE] ) {
+			if ( G_SteamAchievementLacks( attacker, 0x32 ) && meansOfDeath == MOD_GAUNTLET ) {
+				G_SteamAchievementUnlock( attacker, 0x32 );
+			}
+			if ( G_SteamAchievementLacks( attacker, 0x33 )
+				&& ( meansOfDeath == MOD_GRENADE || meansOfDeath == MOD_GRENADE_SPLASH ) ) {
+				G_SteamAchievementUnlock( attacker, 0x33 );
+			}
+		}
 	}
 
 	if ( client->ps.pm_type == PM_FREEZE ) G_FreezeDeath(self, meansOfDeath);

@@ -43,6 +43,9 @@ void AddScore(gentity_t *ent, vec3_t origin, int score) { ent->client->ps.persis
 static int reportedMedals;
 void G_StatsReportMedal(const gentity_t *ent, const char *medal, int total) { (void)ent; (void)medal; (void)total; reportedMedals++; }
 void CalculateRanks(void) { }
+static int achievementAsks;
+qboolean G_SteamAchievementLacks(const gentity_t *ent, int id) { (void)ent; (void)id; achievementAsks++; return qtrue; }
+void G_SteamAchievementUnlock(const gentity_t *ent, int id) { (void)ent; (void)id; }
 gentity_t *G_Find(gentity_t *from, int field, const char *name) {
  int i=from ? (int)(from-g_entities)+1 : 0;
  for (; i<level.num_entities; ++i) if (g_entities[i].inuse && g_entities[i].classname && !strcmp(g_entities[i].classname,name)) return &g_entities[i];

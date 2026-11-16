@@ -1,0 +1,36 @@
+# G3 (scripts/server_lockstep.py --factory tdm --frames 3500): a team
+# deathmatch that ends at the mercy limit, retail qagamex86 CheckExitRules
+# 0x10058030.  Both players ready up and the match starts at frame 984.  The
+# mercy limit only applies g_mercytime minutes into the match (the limit
+# test reads level.time - level.startTime against g_mercytime * 60000 plus
+# any overtime): Red leads by six from frame 1200 and plays on; Blue closes
+# to three, Red opens five again, and at the minute "Red hit the
+# mercylimit." ends the match.  The fraglimit stays out of reach.  The
+# script sets the limits after the match restart, as the factory sets them
+# at load.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+
+cmd 1000 timelimit 0
+cmd 1000 fraglimit 60
+cmd 1000 mercylimit 5
+cmd 1000 g_mercytime 1
+cmd 1200 addteamscore r 6
+clientcmd 1250 alpha score
+cmd 2000 addteamscore b 3
+clientcmd 2050 bravo score
+cmd 3000 addteamscore r 2
+clientcmd 3050 alpha score
+# The minute passes at frame 3367 in the retail run; then the end
+# scoreboard.
+clientcmd 3450 bravo score

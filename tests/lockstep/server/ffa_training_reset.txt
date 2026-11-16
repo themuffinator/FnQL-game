@@ -1,0 +1,27 @@
+# G3 (scripts/server_lockstep.py --cheats --frames 400 --set g_training 1
+# --set g_skipTrainingEnable 1): training mode set on an ordinary map.
+# Retail's training frame (qagamex86 0x10024fa0, last in BotAIStartFrame)
+# turns g_training off, and resets the tour's bot cvars, when the worldspawn
+# is not a training map.  So the systeminfo carries g_training 0 from the
+# first frame, and the match flow is an ordinary one: the connect greeting,
+# god mode, and readyup refused to a lone player.
+# g_skipTrainingEnable is a ROM cvar: the module's registration puts it
+# back to 0 over the command line, so readyup never ends a tour here
+# (0x10045c08).  Negative control: FnQL-game before the training frame kept
+# g_training 1 and diverged from frame 0 (spawn weapons, systeminfo).
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team f
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 30 alpha god
+at 60 alpha forward=127
+at 90 alpha forward=0
+clientcmd 120 bravo readyup
+clientcmd 200 alpha readyup
+clientcmd 240 alpha score
+clientcmd 300 bravo readyup

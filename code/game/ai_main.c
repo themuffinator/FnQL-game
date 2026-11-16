@@ -1393,6 +1393,45 @@ void ProximityMine_Trigger( gentity_t *trigger, gentity_t *other, trace_t *trace
 BotAIStartFrame
 ==================
 */
+/*
+==================
+BotSetCvarIfChanged
+
+Retail qagamex86 0x10024f20: a cvar is written only when its value differs.
+==================
+*/
+static void BotSetCvarIfChanged( const char *name, const char *value ) {
+	char	current[MAX_CVAR_VALUE_STRING];
+
+	trap_Cvar_VariableStringBuffer( name, current, sizeof( current ) );
+	if ( strcmp( current, value ) ) {
+		trap_Cvar_Set( name, value );
+	}
+}
+
+/*
+==================
+BotTrainingFrame
+
+Retail qagamex86 0x10024fa0, the training tour's frame, called last in
+BotAIStartFrame while bots are not paused (0x10023bdf).  Implemented: its
+first step.  With g_training set on a level whose worldspawn is not a
+training map (0x105dea44, stored at 0x100666cd), g_training, bot_gauntlet
+and bot_training go to "0" and bot_dynamicSkill to "1" (0x10024fb2 to
+0x10024fe8).  So g_training set on an ordinary map turns itself off.  The
+tour that runs on a training map is not implemented.
+==================
+*/
+static void BotTrainingFrame( void ) {
+	if ( !g_training.integer || level.trainingMap ) {
+		return;
+	}
+	BotSetCvarIfChanged( "g_training", "0" );
+	BotSetCvarIfChanged( "bot_gauntlet", "0" );
+	BotSetCvarIfChanged( "bot_training", "0" );
+	BotSetCvarIfChanged( "bot_dynamicSkill", "1" );
+}
+
 int BotAIStartFrame(int time) {
 	int i;
 	gentity_t	*ent;
@@ -1583,6 +1622,7 @@ int BotAIStartFrame(int time) {
 		trap_BotUserCommand(botstates[i]->client, &botstates[i]->lastucmd);
 	}
 
+	BotTrainingFrame();
 	return qtrue;
 }
 

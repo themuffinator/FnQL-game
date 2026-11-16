@@ -1,0 +1,33 @@
+# G3 (scripts/server_lockstep.py --map spidercrossings --factory ctf
+# --frames 3600): capture the flag tied into overtime and then ended at the
+# capturelimit, retail qagamex86 CheckExitRules 0x10058030.  Both players
+# ready up and the match starts at frame 984.  Level team scores are a tie
+# (0x10057c60 compares the team scores in the team modes), so at the
+# one-minute limit EV_OVERTIME is broadcast and the limit grows by
+# g_overtime seconds; a third blue point then reaches the capturelimit
+# inside the extension, and "Blue hit the capturelimit." ends the match.
+# The factory sets the limits at load, so the script sets them after the
+# match restart.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+
+cmd 1000 timelimit 1
+cmd 1000 g_overtime 10
+cmd 1000 capturelimit 3
+cmd 1100 addteamscore b 2
+cmd 1200 addteamscore r 2
+clientcmd 1250 alpha score
+# The limit passes tied at 2:2 (EV_OVERTIME at frame 3367 in the retail run).
+cmd 3500 addteamscore b 1
+# Then the end scoreboard.
+clientcmd 3560 bravo score

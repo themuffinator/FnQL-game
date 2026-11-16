@@ -250,6 +250,15 @@ static void RoundEnter( int state ) {
 		if ( attack ) {
 			winner = level.adCaptured ? level.adTurn + TEAM_RED : alive[TEAM_RED] ? (alive[TEAM_BLUE] ? TEAM_FREE : TEAM_RED) : alive[TEAM_BLUE] ? TEAM_BLUE : TEAM_FREE;
 			if ( !level.adCaptured && winner == level.adTurn + TEAM_RED ) level.teamScores[winner] += g_adElimScoreBonus.integer;
+			// Retail 0x10035ed0: attackers who win the round without the flag
+			// ever being taken from its base earn achievement 0x1f; every
+			// connected player is asked.
+			if ( !level.adTouched && winner == level.adTurn + TEAM_RED ) {
+				for ( i = 0; i < level.maxclients; ++i ) {
+					if ( level.clients[i].pers.connected == CON_CONNECTED && G_SteamAchievementLacks( &g_entities[i], 0x1f )
+						&& level.clients[i].sess.sessionTeam == winner ) G_SteamAchievementUnlock( &g_entities[i], 0x1f );
+				}
+			}
 			for ( i = 0; i < level.maxclients; ++i ) {
 				gclient_t *cl = &level.clients[i];
 				int shots = cl->accuracy_shots - cl->pers.roundShotsBase;
@@ -341,6 +350,12 @@ static void RoundEnter( int state ) {
 			if ( cl->pers.connected != CON_CONNECTED ) continue;
 			if ( shots > 0 && (cl->accuracy_hits - cl->pers.roundHitsBase) * 100 / shots > 50 ) G_AwardMedal(&g_entities[i], MEDAL_ACCURACY);
 			if ( (rover ? awarded[i] : winner && cl->sess.sessionTeam == winner) && cl->stats.damageTaken == cl->pers.roundTakenBase ) G_AwardMedal(&g_entities[i], MEDAL_PERFECT);
+			// Retail 0x100387bc (Clan Arena): each winner is asked for
+			// achievement 0x31, earned as the team's last one standing with a
+			// streak of three kills or more (gclient +0x880).
+			if ( g_gametype.integer == GT_CLAN_ARENA && winner && cl->sess.sessionTeam == winner
+				&& G_SteamAchievementLacks( &g_entities[i], 0x31 ) && alive[winner] == 1 && cl->stats.killStreak >= 3 )
+				G_SteamAchievementUnlock( &g_entities[i], 0x31 );
 		}
 		level.roundWinner = winner;
 		if ( !rover ) level.roundNumber++;

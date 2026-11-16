@@ -853,6 +853,36 @@ static int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, team_t team,
 		Team_CaptureFlagSound( ent, team, other );
 	}
 
+	// Retail 0x10069bcf (attack and defend): the capturer is asked for
+	// achievement 0x1e, earned against three or more defenders who are all
+	// still standing (PM_NORMAL, 0x1006b170, of the connected, 0x1006b1c0).
+	if ( g_gametype.integer == GT_ATTACK_DEFEND ) {
+		const team_t	defenders = OtherTeam( cl->sess.sessionTeam );
+		int				standing = 0, present = 0;
+
+		for ( i = 0; i < level.maxclients; i++ ) {
+			const gclient_t	*member = &level.clients[i];
+
+			if ( member->pers.connected == CON_CONNECTED && member->sess.sessionTeam == defenders ) {
+				present++;
+				standing += member->ps.pm_type == PM_NORMAL;
+			}
+		}
+		if ( G_SteamAchievementLacks( other, 0x1e ) && ( cl->sess.sessionTeam == TEAM_RED || cl->sess.sessionTeam == TEAM_BLUE )
+			&& standing == present && present >= 3 ) {
+			G_SteamAchievementUnlock( other, 0x1e );
+		}
+	}
+	// Retail 0x10069c73 (capture the flag): every capture asks for 0x36,
+	// earned by the capture that reaches the capturelimit one ahead.
+	if ( g_gametype.integer == GT_CTF && G_SteamAchievementLacks( other, 0x36 ) ) {
+		const int	own = level.teamScores[cl->sess.sessionTeam];
+
+		if ( own == g_capturelimit.integer && own - level.teamScores[OtherTeam( cl->sess.sessionTeam )] == 1 ) {
+			G_SteamAchievementUnlock( other, 0x36 );
+		}
+	}
+
 	// the team bonus, and the assists of a recent return or carrier frag
 	for ( i = 0; i < level.maxclients; i++ ) {
 		player = &g_entities[i];
@@ -1426,6 +1456,12 @@ static void ObeliskTouch( gentity_t *self, gentity_t *other, trace_t *trace ) {
 	CalculateRanks();
 
 	Team_CaptureFlagSound( self, self->spawnflags, other );
+
+	// retail 0x1006a9c9: every skull capture asks for achievement 0x20,
+	// earned by bringing three skulls or more at once
+	if ( G_SteamAchievementLacks( other, 0x20 ) && tokens >= 3 ) {
+		G_SteamAchievementUnlock( other, 0x20 );
+	}
 }
 
 static void ObeliskPain( gentity_t *self, gentity_t *attacker, int damage ) {
