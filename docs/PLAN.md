@@ -1938,12 +1938,8 @@ engine headers, G2) pass 60 of 60. `runtime`, `interop`, `interop-fnql` and
 `interop-play` pass 138 of 138. FnQL's own suite passes 108, with the two
 opt-in runtime probes skipped.
 
-Defaults stay `retail` on x86, as M12 plans. On targets with no retail
-client modules, FnQL defaults `vm_cgameProvider` and `vm_uiProvider` to
-`fnql`. The FnQL release packages still carry the loose modules only.
-Adding `fnql_game_client.pk3` to them, so that pure FnQL servers and clients
-can use the FnQL-game client modules out of the box, belongs to M12's
-packaging work.
+At M10's exit the x86 defaults were still `retail`; M12 flipped them and
+added `fnql_game_client.pk3` to the FnQL release packages.
 
 ### M11 — Architecture and platform range (Linux range complete)
 
@@ -2067,15 +2063,75 @@ Open:
   for FnQL's `m9-bot-entities` (G0). The FnQL release packages do not carry
   the new targets yet; that belongs to M12.
 
-### M12 — Release
+### M12 — Release (complete)
 
 - CI builds for Win32 and Linux i386. Done: FnQL's release workflow builds a
   pinned commit of this repository (FnQL `version/fnql_game.json`) with MSVC
   Win32 and in an Ubuntu 20.04 i686 container, and runs `meson test` on both.
 - Packaging inside FnQL releases. Done: the modules ship in `baseq3/` of
-  every FnQL package, with this repository's licensing documents.
-- Defaults flipped to `auto` once G2–G5 pass.
-- User docs.
+  every FnQL package, with this repository's licensing documents. Since M12
+  every package also carries the client package `fnql_game_client.pk3`, so a
+  pure FnQL server lists it and clients from the same release keep FnQL-game's
+  cgame and ui there. FnQL's `scripts/fnql_game.py` stages it, and its
+  `release.py` checks it in every archive: exactly that target's cgame and ui
+  at the root, byte for byte the loose modules, with `make_package.py`'s fixed
+  stamps. The server package is not shipped: the loose qagame is never
+  referenced, so a package adds nothing for it.
+- Defaults flipped to `auto` once G2–G5 pass. **Done** (FnQL
+  `docs/fnql/GAME_MODULES.md`, "Module providers"). G2, the G3 differentials,
+  G4, G4v and M10's G5 matrix pass (see M7, M9 and M10), so FnQL now defaults
+  `vm_gameProvider` to `auto` on every target and `vm_cgameProvider` and
+  `vm_uiProvider` to `auto` on Win32 x86 (`fnql` elsewhere, as before).
+  - `auto` takes a module only while it declares
+    `FNQL_MODULE_CAP_RETAIL_WIRE`, which this repository's modules do. An
+    install without them loads the retail modules exactly as before, with
+    one plain log line.
+  - A pure server that does not list the client package, every retail server
+    included, still gets the retail cgame and ui.
+  - The cvars became `CVAR_ARCHIVE_ND`, so configs record only explicit
+    choices from now on. A config from an earlier FnQL release holds the old
+    auto-archived `vm_gameProvider "retail"`; FnQL keeps it, since an explicit
+    choice looks the same, and the user docs say to `reset vm_gameProvider`.
+  - The probes that load a module under test by its retail name now set
+    `vm_cgameProvider retail` and `vm_uiProvider retail` themselves, so the
+    new default cannot change what they measure.
+  - New `interop-fnql` rows run both peers with no provider cvars and a
+    release's `baseq3` layout: `fnql-client-pure-release-defaults` and
+    `-unpure-release-defaults` (FnQL-game's cgame, ui and handshake), and
+    `-pure-release-defaults-no-package` (the retail cgame and ui). They need
+    an engine with the M12 defaults.
+  - FnQL's provider runtime tests cover the default hosting a retail-wire
+    module, refusing one without the claim, falling back with no FnQL-game
+    module, and an explicit `retail`.
+- User docs. **Done**: [`README.md`](../README.md) ("Using it": release use,
+  the provider values, going back to retail, pure servers and the client
+  package, playing with retail Quake Live, own builds), FnQL's README and
+  package readme, and FnQL's changelog.
+
+Exit: an FnQL release runs FnQL-game by default and stays retail on the
+wire. Gates (2026-11-16, x86), on FnQL `m12-release` (the defaults flip,
+merged with `m9-bot-entities`), with its client and its dedicated server and
+no Steam provider beside the server:
+
+- `unit` and `contract` (G0 against the M12 engine headers, G2) pass 60 of 60.
+- `runtime`, `interop`, `interop-fnql` and `interop-modes` pass 31 of 31. That
+  includes the three release-default rows and M10's 11 rows, which set their
+  providers explicitly.
+- The G3 `differential` suite, `match-flow`, G3b `bots` and `interop-play`
+  pass 170 of 171; the 171st is the bots negative control, which fails as it
+  must.
+- Negative control for the release-default rows: a 2026-11-15 FnQL `main`
+  build, whose defaults are `retail` (it also predates M10), fails
+  `pure-release-defaults`. It ran the retail cgame, ui and qagame, with no
+  package and no handshake.
+- FnQL's own suite passes 86 of 86, and its provider runtime tests pass 9 of
+  9 on the M12 dedicated server.
+
+The opt-in `retail-client` suite was not rerun: it launches the retail Steam
+client. The defaults cannot change what it measures: its FnQL servers set
+`vm_gameProvider` explicitly (`retail_client_probe.py`), its FnQL clients set
+`vm_cgameProvider` and `vm_uiProvider` (`retail_server_probe.py`), and the
+retail engine has no provider cvars.
 
 The baseline licensing question in [`LICENSING.md`](LICENSING.md) is still
 open. Until it is settled, releases distribute the modules under both

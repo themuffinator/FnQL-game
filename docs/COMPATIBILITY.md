@@ -24,6 +24,7 @@ milestone gate checks meaning.
 | FnQL + FnQL-game qagame | FnQL + retail cgame | same as the retail client row | `fnql-client-pure-retail-client`, `-unpure-retail-client`, `interop*` |
 | FnQL + FnQL-game qagame | FnQL + FnQL-game cgame | retail profile plus negotiated extensions; pure only with the client package | `fnql-client-pure-package`, `-pure-auto`, `-unpure-*`; refusals in `-pure-no-package`, `-pure-refused`, `-pure-loose` |
 | FnQL + retail qagame | FnQL + FnQL-game cgame | as on a retail server, but a pure FnQL server may accept the package; no extensions | `fnql-client-pure-retail-qagame`, `-unpure-retail-qagame` |
+| FnQL release, no provider cvars | FnQL release, no provider cvars | the engine's defaults (`auto`, M12) pick FnQL-game's modules on both sides; a pure server without the package still gets the retail cgame | `fnql-client-pure-release-defaults`, `-unpure-release-defaults`, `-pure-release-defaults-no-package` |
 
 The `fnql-client-*` rows are the `interop-fnql` suite. The `retail-*` rows
 are the opt-in `retail-client` suite (`FNQL_ALLOW_RETAIL_CLIENT=1`, Steam
@@ -106,4 +107,7 @@ FnQL-game modules carry an `fnql_` prefix (`fnql_qagamex86.dll`,
 `fnql_cgamex86.dll`, `fnql_uix86.dll`; Linux `fnql_*i386.so`). They never
 shadow the retail modules, and the engine selects them by provider
 (`vm_gameProvider`, `vm_cgameProvider`, `vm_uiProvider` set to `fnql` or
-`auto`) rather than by search order.
+`auto`) rather than by search order. Since M12 `auto` is FnQL's default on
+x86, so the bundled modules run unless a provider is set to `retail`. `auto`
+still refuses a module without `FNQL_MODULE_CAP_RETAIL_WIRE`, so that claim
+must stay true of every build FnQL ships.

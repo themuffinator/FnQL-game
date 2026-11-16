@@ -67,7 +67,10 @@ def capture(client: Path, retail: Path, module: Path | None, scratch: Path, keep
         'r_fullscreen': '0', 'r_mode': '-1', 'r_customwidth': '960', 'r_customheight': '600',
         'in_mouse': '0', 'in_nograb': '1', 'in_joystick': '0', 's_initsound': '0',
         'logfile': '2', 'developer': '1',
-        'cl_allowDownload': '0', 'vm_gameProvider': 'retail', 'net_port': '28119',
+        'cl_allowDownload': '0', 'vm_gameProvider': 'retail',
+        # The engine defaults these to auto (FnQL-game M12); this probe
+        # loads its module under the retail name, so it asks for retail.
+        'vm_cgameProvider': 'retail', 'vm_uiProvider': 'retail', 'net_port': '28119',
         'com_maxfps': '125', **MODELS,
     }
     command = [str(client)]

@@ -105,16 +105,21 @@ def main() -> int:
     parser.add_argument("--cgame", type=Path, required=True, help="FnQL-game cgame")
     parser.add_argument("--ui", type=Path, required=True, help="FnQL-game ui")
     parser.add_argument("--package", type=Path, required=True, help="FnQL-game client package (pk3)")
-    parser.add_argument("--server-provider", choices=["fnql", "retail"], default="fnql")
+    # "default" sets no provider cvar, so the engine's own default decides:
+    # auto since M12, which takes FnQL-game's modules (they claim retail wire
+    # parity).  The release-default rows run that way.
+    parser.add_argument("--server-provider", choices=["fnql", "retail", "default"], default="fnql")
     parser.add_argument("--pure", choices=["0", "1"], default="1")
     parser.add_argument("--server-package", action="store_true",
                         help="load the client package on the server")
     parser.add_argument("--server-client-modules", choices=["0", "1"], default="1",
                         help="the server's sv_fnqlClientModules")
-    parser.add_argument("--client-modules", choices=["package", "loose", "none"], default="package",
-                        help="how the client holds the FnQL-game cgame and ui")
-    parser.add_argument("--cgame-provider", choices=["retail", "fnql", "auto"], default="fnql")
-    parser.add_argument("--ui-provider", choices=["retail", "fnql", "auto"], default="fnql")
+    parser.add_argument("--client-modules", choices=["package", "loose", "release", "none"],
+                        default="package",
+                        help="how the client holds the FnQL-game cgame and ui "
+                             "(release: the loose modules and the package, as FnQL releases ship them)")
+    parser.add_argument("--cgame-provider", choices=["retail", "fnql", "auto", "default"], default="fnql")
+    parser.add_argument("--ui-provider", choices=["retail", "fnql", "auto", "default"], default="fnql")
     parser.add_argument("--expect-cgame", choices=["fnql", "retail"], required=True)
     parser.add_argument("--expect-ui", choices=["fnql", "retail"])
     parser.add_argument("--expect-package", action="store_true",
@@ -160,11 +165,14 @@ def main() -> int:
             shutil.copy2(args.package, server_game / PACKAGE)
         client_game = client_home / "baseq3"
         client_game.mkdir(parents=True)
-        if args.client_modules == "package":
+        if args.client_modules in ("package", "release"):
             shutil.copy2(args.package, client_game / PACKAGE)
-        elif args.client_modules == "loose":
+        if args.client_modules in ("loose", "release"):
             shutil.copy2(args.cgame, client_game / args.cgame.name)
             shutil.copy2(args.ui, client_game / args.ui.name)
+
+        def provider(cvar: str, value: str) -> list[str]:
+            return [] if value == "default" else ["+set", cvar, value]
 
         server = subprocess.Popen(
             [str(engine), *headless.SERVER, "+set", "fs_basepath", str(retail),
@@ -172,7 +180,7 @@ def main() -> int:
              "+set", "developer", "1", "+set", "net_port", str(args.port),
              "+set", "sv_pure", args.pure, "+set", "sv_serverType", "1",
              "+set", "sv_fnqlClientModules", args.server_client_modules,
-             "+set", "vm_gameProvider", args.server_provider,
+             *provider("vm_gameProvider", args.server_provider),
              "+set", "rconPassword", password, "+set", "sv_hostname", "FnQL-game M10 probe",
              "+set", "serverstartup", f"map {args.map} {args.factory}"],
             cwd=server_home, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -199,8 +207,8 @@ def main() -> int:
              "+set", "r_customwidth", "960", "+set", "r_customheight", "600",
              "+set", "in_mouse", "0", "+set", "in_nograb", "1", "+set", "s_initsound", "0",
              "+set", "cl_allowDownload", "0", "+set", "net_port", str(args.port + 100),
-             "+set", "vm_cgameProvider", args.cgame_provider,
-             "+set", "vm_uiProvider", args.ui_provider,
+             *provider("vm_cgameProvider", args.cgame_provider),
+             *provider("vm_uiProvider", args.ui_provider),
              "+connect", f"127.0.0.1:{port}"],
             cwd=client_home, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, **headless.popen_options())
@@ -265,11 +273,13 @@ def main() -> int:
                             + " the client by the FnQL-game client package")
         if args.pure == "1" and args.expect_cgame == "fnql" and not args.expect_package:
             failures.append("bad expectation: a pure server accepts an FnQL-game cgame only by its package")
+        # under the engine default (auto) the server hosts FnQL-game's qagame
+        server_runs_fnql = args.server_provider in ("fnql", "default")
         announced = "fnql_game" in replies.get("serverinfo", "")
-        if announced != (args.server_provider == "fnql"):
+        if announced != server_runs_fnql:
             failures.append(f"serverinfo fnql_game announced: {announced}")
         answered = "fnql_cg" in replies.get(f"dumpuser {CLIENT_NAME}", "")
-        should_answer = args.server_provider == "fnql" and args.expect_cgame == "fnql"
+        should_answer = server_runs_fnql and args.expect_cgame == "fnql"
         if answered != should_answer:
             failures.append(f"the server's copy of the userinfo {'has' if answered else 'lacks'} fnql_cg")
         hello = re.search(r"FnQL-game server (\S+): extensions (\d+)", client_log)

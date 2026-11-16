@@ -83,36 +83,78 @@ Milestone 10 is complete: FnQL selects the cgame and UI too, a pure server
 accepts them only from the FnQL-game client package, FnQL-game peers
 negotiate extensions that retail peers never see, and the same binaries run
 as drop-ins in the retail engine. The modules now claim retail wire parity
-(`FNQL_MODULE_CAP_RETAIL_WIRE`), so FnQL's `auto` provider takes them; FnQL
-still loads the retail modules by default.
+(`FNQL_MODULE_CAP_RETAIL_WIRE`), so FnQL's `auto` provider takes them.
+
+Milestone 12 (release) is complete: FnQL releases build these modules in CI,
+bundle them with the client package, and load them by default.
 
 ## Using it
 
-FnQL releases include the modules in `baseq3/` (`fnql_qagamex86.dll`,
+### With an FnQL release
+
+Every FnQL release carries the modules in `baseq3/`: `fnql_qagamex86.dll`,
 `fnql_cgamex86.dll` and `fnql_uix86.dll` on Windows, the `i386.so` set on
-Linux). To use your own build instead (see [`BUILD.md`](BUILD.md)), place the
-modules in your FnQL home `baseq3` directory. Then start an FnQL server with:
+Linux, and the `x86_64` sets in the 64-bit packages. It also carries
+`fnql_game_client.pk3`, the client package (below). Extract the package into
+your Quake Live folder as FnQL's own README describes, and FnQL uses
+FnQL-game with no further setup:
 
 ```bash
-fnql.ded.exe +set vm_gameProvider fnql +map campgrounds ffa
+fnql.ded.exe +map campgrounds ffa
 ```
 
-and an FnQL client with FnQL-game's cgame and UI with:
+hosts FnQL-game's qagame, and `fnql.exe` runs its cgame and UI. Run `vminfo`
+in the console to see which modules are active.
+
+FnQL picks each module with a provider cvar: `vm_gameProvider` for the
+server, `vm_cgameProvider` and `vm_uiProvider` for a player. Each takes one of:
+
+| Value | Module |
+|---|---|
+| `auto` (default) | FnQL-game's, if it declares retail wire parity, as released builds do; otherwise retail's |
+| `fnql` | FnQL-game's, whatever it declares |
+| `retail` | the retail module, exactly as retail Quake Live loads it |
+
+If an FnQL-game module is missing or invalid, FnQL falls back to the retail
+module and says so in the console. To go back to retail, set the provider:
 
 ```bash
-fnql.exe +set vm_cgameProvider fnql +set vm_uiProvider fnql
+fnql.ded.exe +set vm_gameProvider retail +map campgrounds ffa
+fnql.exe +set vm_cgameProvider retail +set vm_uiProvider retail
 ```
 
-`auto` instead of `fnql` takes a module only if it declares retail wire
-parity. If a module is missing or invalid, FnQL falls back to the retail
-module and says so. Run `vminfo` to see which module is active.
+A configuration written by an FnQL release from before milestone 12 may still
+hold `vm_gameProvider "retail"`, because those releases saved the old default.
+Run `reset vm_gameProvider` once to take the new default.
 
-Loose modules serve unpure servers and local play. On a pure server the
-client keeps FnQL-game's cgame and UI only if the server has loaded the same
-client package, `fnql_game_client.pk3` (the build makes it, and
-`fnql_game_server.pk3` for the qagame), and lists it in `sv_fnqlClientPaks`.
-Put the package in `baseq3` on both sides. On any other pure server the
-client uses the retail modules. Retail clients never need the package.
+### Pure servers and the client package
+
+Loose modules serve unpure servers, local play and demos. On a pure server
+the client keeps FnQL-game's cgame and UI only if the server has loaded the
+same client package, `fnql_game_client.pk3`, and lists it in
+`sv_fnqlClientPaks`. A pure FnQL server from a release does that on its own.
+On any other pure server, retail ones included, the client uses the retail
+cgame and UI, and reports what it ran. A server operator can stop offering
+the package with `sv_fnqlClientModules 0`.
+
+### Playing with retail Quake Live
+
+- Retail clients join FnQL servers running FnQL-game and need nothing extra:
+  no package, no download, no difference on the wire.
+- FnQL clients join retail servers. Retail servers require a Steam ticket,
+  so the FnQL client must be able to reach Steam. A pure retail server always
+  gets the retail cgame and UI.
+- FnQL-game peers negotiate extensions only with each other, never with a
+  retail peer. See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
+
+### With your own build
+
+Build as [`BUILD.md`](BUILD.md) describes. Then put the modules, or the
+`fnql_game_client.pk3` the build makes beside them, in your FnQL home
+`baseq3` directory. FnQL-game modules carry the `fnql_` prefix, so they never
+shadow a retail module; the providers above select them. The build also makes `fnql_game_server.pk3`,
+the qagame in a package. Servers never reference it to clients, so it is
+optional.
 
 ## Documents
 

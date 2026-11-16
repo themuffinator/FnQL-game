@@ -1886,7 +1886,22 @@ if get_option('fnql-client') != '' and retail_modules_hostable
         'unpure-retail-qagame': ['--pure', '0', '--server-provider', 'retail', '--expect-cgame', 'fnql',
                                  '--expect-ui', 'fnql', '--expect-handshake', 'no'],
         'unpure-retail-client': ['--pure', '0', '--cgame-provider', 'retail', '--ui-provider', 'retail',
-                                 '--expect-cgame', 'retail', '--expect-ui', 'retail', '--expect-handshake', 'no']}
+                                 '--expect-cgame', 'retail', '--expect-ui', 'retail', '--expect-handshake', 'no'],
+        # M12: no provider cvars at all, and each home laid out as an FnQL
+        # release lays out baseq3 (the loose modules and the client package),
+        # so the engine's defaults decide.  These rows need an engine whose
+        # defaults are auto (FnQL with FnQL-game M12).
+        'pure-release-defaults': ['--pure', '1', '--server-package', '--server-provider', 'default',
+                                  '--client-modules', 'release', '--cgame-provider', 'default',
+                                  '--ui-provider', 'default', '--expect-cgame', 'fnql', '--expect-ui', 'fnql',
+                                  '--expect-package', '--expect-handshake', 'yes'],
+        'pure-release-defaults-no-package': ['--pure', '1', '--server-provider', 'default',
+                                             '--client-modules', 'release', '--cgame-provider', 'default',
+                                             '--ui-provider', 'default', '--expect-cgame', 'retail',
+                                             '--expect-ui', 'retail', '--expect-handshake', 'no'],
+        'unpure-release-defaults': ['--pure', '0', '--server-provider', 'default', '--client-modules', 'release',
+                                    '--cgame-provider', 'default', '--ui-provider', 'default',
+                                    '--expect-cgame', 'fnql', '--expect-ui', 'fnql', '--expect-handshake', 'yes']}
       test('fnql-client-' + row, python, args: package_args + o,
         depends: [qagame, cgame, ui, client_package], suite: 'interop-fnql',
         timeout: 200, is_parallel: false)
