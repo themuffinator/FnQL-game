@@ -1,8 +1,28 @@
 # Building FnQL-game
 
-FnQL-game builds 32-bit x86 modules only. Retail Quake Live and FnQL are
-32-bit, so a 64-bit module could never load, and the build refuses to
-configure for one.
+FnQL-game builds for the targets FnQL has enabled, and the build refuses to
+configure for any other:
+
+| Target | Platforms | Module suffix | How to build |
+|---|---|---|---|
+| 32-bit x86 | Windows, Linux | `x86.dll`, `i386.so` | `vcvars32` on Windows; `meson/linux-i686.ini` on Linux |
+| x86_64 | Windows, Linux | `x86_64.dll`, `x86_64.so` | `vcvars64` on Windows; the native compiler on Linux |
+| aarch64 | Linux | `aarch64.so` | `meson/linux-aarch64.ini`, or a native compiler |
+| armv7l (hard-float) | Linux | `arm.so` | `meson/linux-armv7l.ini`, or a native compiler |
+| ppc64le | Linux | `ppc64le.so` | `meson/linux-ppc64le.ini`, or a native compiler |
+| ppc64 (big endian) | Linux | `ppc64.so` | `meson/linux-ppc64.ini`, or a native compiler |
+
+Each module is named `fnql_<slot><suffix>`, for example
+`fnql_qagamex86.dll`; the architecture in the suffix is the engine's
+`ARCH_STRING`. A
+compiler probe at configure time checks the byte order, float ABI and pointer
+width against the configured target.
+
+32-bit x86 is the retail-compatible target. Retail Quake Live, its cgame and
+UI, its Windows qagame, the Steam provider and the WebUI exist only there, so
+the gates that host, join or diff against retail modules run only on x86. On
+every other target FnQL-game is the game, and the gates that need no retail
+modules still run (see [Gates](#gates)).
 
 ## Windows (MSVC, Win32)
 
@@ -36,11 +56,67 @@ probes compile 32-bit too. FnQL's release workflow builds and gates this
 target in an Ubuntu 20.04 container (glibc 2.31 baseline). Runtime gates on
 Linux are not yet part of the release.
 
+## x86_64 (Windows and Linux)
+
+On Windows, open an x64 developer environment (`vcvars64.bat`), then:
+
+```bash
+meson setup build/win64-x86_64
+```
+
+```bash
+ninja -C build/win64-x86_64
+```
+
+On Linux x86_64, the native compiler needs no cross file:
+
+```bash
+meson setup build/linux-x86_64
+```
+
+Outputs: `fnql_qagamex86_64`, `fnql_cgamex86_64` and `fnql_uix86_64`, as
+`.dll` or `.so`. FnQL's release workflow builds and tests the pinned commit
+for both and bundles the modules in its x86_64 packages.
+
+## Linux aarch64, armv7l, ppc64le and ppc64
+
+Each target cross-builds from an x86_64 Linux host with its committed cross
+file. Install the Debian/Ubuntu crossbuild gcc the cross file names (for
+example `gcc-aarch64-linux-gnu`) and `qemu-user`, then:
+
+```bash
+meson setup build/linux-aarch64 --cross-file meson/linux-aarch64.ini
+```
+
+```bash
+ninja -C build/linux-aarch64
+```
+
+The same applies with `linux-armv7l.ini`, `linux-ppc64le.ini` and
+`linux-ppc64.ini`. armv7l means ARMv7 or later, little endian, hard-float;
+ppc64 is big endian. Non-MSVC builds use `-fsigned-char`, because the game
+code assumes x86's signed `char` and ARM and POWER default to unsigned.
+
+`meson test` runs the unit tests, the gate scripts' compiled probes and the
+engine through qemu-user: the cross file's `exe_wrapper` runs test binaries,
+and its `fnql_exe_wrapper` property is the same command for the gate
+scripts. A native host of the same architecture can drop the cross file.
+FnQL enables only its dedicated server on these targets, so the client
+gates do not apply. FnQL releases do not package these targets yet.
+
 ## Gates
 
 ```bash
 meson test -C build/win32-x86
 ```
+
+The examples below use the Win32 build directory. On every target the build
+registers the gates that need no retail modules: G0 `engine-abi-parity`, G2
+`wire-contract`, the `unit` suite, G3c `pmove-replay` and, with
+`-Dfnql-dedicated` set to that target's FnQL dedicated server,
+`dedicated-smoke`, `combat-soak`, `map-sweep` and the stats runs. The rest
+host, join or diff against the retail x86 modules and are registered only on
+32-bit x86.
 
 - `engine-abi-parity` (G0) compiles a layout probe against these headers and
   against `../FnQL` (override with `-Dfnql-root=<path>`). It fails on any
@@ -191,7 +267,13 @@ meson test -C build/win32-x86
   not the 1069 build the harness maps. It also checks sine trajectory
   position and velocity against retail over 3,408 evaluations. Run one scenario with
   `python scripts/pmove_lockstep.py --harness build/win32-x86/pmove_lockstep.exe
-  --scenario <name> --verbose`.
+  --scenario <name> --verbose`. Each run also checks the retail output
+  against the committed golden file `tests/lockstep/pmove_golden.txt`.
+- `pmove-replay` (G3c, suites `unit` and `parity`) runs on every target. It
+  runs FnQL-game's `Pmove` alone over the same scenarios and compares its
+  digests with the retail golden file, bit for bit, so a server on any
+  architecture moves players exactly as the retail x86 `Pmove` does. It needs
+  no retail install.
 - `retail-client-join` and `retail-client-join-unpure` (G5b, suite `retail-client`, with
   `-Dfnql-dedicated`) launches your retail Quake Live through Steam, windowed,
   and connect it to pure and unpure FnQL dedicated servers running FnQL-game.
