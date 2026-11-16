@@ -120,6 +120,32 @@ void CG_DamageFeedback( int yawByte, int pitchByte, int damage ) {
 	cg.damageValue = kick;
 	cg.v_dmg_time = cg.time + DAMAGE_TIME;
 	cg.damageTime = cg.snap->serverTime;
+
+	// Retail 0x10042f16..0x100432ed: the flash colour, chosen when the
+	// damage arrives. The attacker is the predicted PERS_ATTACKER; a
+	// teammate shares the snapshot player's team in a team mode and is not
+	// the world. Self damage uses cg_screenDamage_Self and teammates
+	// cg_screenDamage_Team (each only when non-zero), with the alpha byte
+	// replaced by cg_screenDamageAlpha_Team; everything else uses
+	// cg_screenDamage with cg_screenDamageAlpha. A skipped case keeps the
+	// previous colour.
+	if ( cg_screenDamage.integer ) {
+		const int attacker = cg.predictedPlayerState.persistant[PERS_ATTACKER];
+		const int me = cg.snap->ps.clientNum;
+		const qboolean self = attacker == me;
+		const qboolean mate = attacker != ENTITYNUM_WORLD && attacker >= 0 && attacker < MAX_CLIENTS &&
+			me >= 0 && me < MAX_CLIENTS && cgs.gametype >= GT_TEAM &&
+			cgs.clientinfo[me].team == cgs.clientinfo[attacker].team;
+		if ( ( cg_screenDamage_Self.integer || !self ) && ( cg_screenDamage_Team.integer || !mate ) ) {
+			if ( self ) {
+				cg.damageColor = cg_screenDamage_Self.integer;
+			} else if ( mate ) {
+				cg.damageColor = ( cg_screenDamage_Team.integer & ~0xff ) | ( cg_screenDamageAlpha_Team.integer & 0xff );
+			} else {
+				cg.damageColor = ( cg_screenDamage.integer & ~0xff ) | ( cg_screenDamageAlpha.integer & 0xff );
+			}
+		}
+	}
 }
 
 
@@ -224,11 +250,6 @@ void CG_TransitionPlayerState( playerState_t *ps, playerState_t *ops ) {
 	// damage events (player is getting wounded)
 	if ( ps->damageEvent != ops->damageEvent && ps->damageCount ) {
 		CG_DamageFeedback( ps->damageYaw, ps->damagePitch, ps->damageCount );
-	}
-
-	// the time-warning join guard (see CG_MatchClockWarnings)
-	if ( ops->persistant[PERS_TEAM] == TEAM_SPECTATOR && ps->persistant[PERS_TEAM] != TEAM_SPECTATOR ) {
-		cg.teamJoinTime = cg.time;
 	}
 
 	// respawning / map restart

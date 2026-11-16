@@ -203,6 +203,41 @@ CG_OffsetThirdPersonView
 ===============
 */
 #define	FOCUS_DISTANCE	512
+/* Retail 0x1004c6f0: the smart camera's trace box, half the diagonal of the
+ * near plane: V is the vertical FOV of cg_fov over 640x480, H its horizontal
+ * FOV for the r_aspectRatio preset (16:9, 16:10, else 5:4; preset 0 keeps
+ * cg_fov itself, as retail's helper returns its input there). */
+static float CG_ThirdPersonBoxSize( void ) {
+	char text[32];
+	double vertical, horizontal, znear;
+	int preset;
+	vertical = atan2( 480.0, 640.0 / tan( cg_fov.value * M_PI / 360.0 ) ) * 360.0 / M_PI;
+	trap_Cvar_VariableStringBuffer( "r_aspectRatio", text, sizeof( text ) );
+	preset = atoi( text );
+	if ( preset ) {
+		const double aspect = preset == 1 ? 16.0 / 9.0 : preset == 2 ? 16.0 / 10.0 : 5.0 / 4.0;
+		horizontal = atan( tan( vertical * M_PI / 360.0 ) * aspect ) * 360.0 / M_PI;
+	} else {
+		horizontal = cg_fov.value;
+	}
+	trap_Cvar_VariableStringBuffer( "r_znear", text, sizeof( text ) );
+	znear = atof( text );
+	return (float)sqrt( znear * znear + ( znear * tan( horizontal * M_PI / 360.0 ) ) * ( znear * tan( horizontal * M_PI / 360.0 ) ) );
+}
+
+/* Retail 0x1004ca50 (with 0x1004c8f0 for cg_thirdPerson 2):
+ * - Mode 2 is a fixed camera: eye height, cg_thirdPersonAngle added to the
+ *   yaw, cg_thirdPersonPitch (unless -1) as the pitch, then
+ *   cg_thirdPersonRange straight back; no trace.
+ * - Otherwise duck smoothing applies first; a spectator gets no offset.
+ *   The focus pitch is capped at 45 only while dead, and the dead view no
+ *   longer turns to the killer. Landing smoothing follows the eye height.
+ * - The range offset applies with cg_thirdPerson, cg_cameraSmartMode or a
+ *   dead player. Without com_cameraMode the plain Quake III trace (box 4)
+ *   runs unless cg_thirdPerson uses cg_cameraThirdPersonSmartMode, the
+ *   smart mode is on, or the player is dead; then the smart trace runs back
+ *   from the player along the view (box from CG_ThirdPersonBoxSize) and
+ *   keeps the camera r_znear in front of what it hits. */
 static void CG_OffsetThirdPersonView( void ) {
 	vec3_t		forward, right, up;
 	vec3_t		view;
@@ -211,22 +246,49 @@ static void CG_OffsetThirdPersonView( void ) {
 	static vec3_t	mins = { -4, -4, -4 };
 	static vec3_t	maxs = { 4, 4, 4 };
 	vec3_t		focusPoint;
-	float		focusDist;
+	float		focusDist, dt;
 	float		forwardScale, sideScale;
+	const qboolean spectator = cg.predictedPlayerState.persistant[PERS_TEAM] == TEAM_SPECTATOR;
+	const qboolean dead = cg.predictedPlayerState.stats[STAT_HEALTH] <= 0;
+
+	if ( cg_thirdPerson.integer == 2 ) {
+		float pitch, yaw;
+		cg.refdef.vieworg[2] += cg.predictedPlayerState.viewheight;
+		if ( cg_thirdPersonAngle.value != 0 ) {
+			cg.refdefViewAngles[YAW] += cg_thirdPersonAngle.value;
+		}
+		if ( cg_thirdPersonPitch.value != -1.0f ) {
+			cg.refdefViewAngles[PITCH] = cg_thirdPersonPitch.value;
+		}
+		pitch = cg.refdefViewAngles[PITCH] * 0.017453292f;
+		yaw = cg.refdefViewAngles[YAW] * 0.017453292f;
+		forward[0] = cos( pitch ) * cos( yaw );
+		forward[1] = cos( pitch ) * sin( yaw );
+		forward[2] = -sin( pitch );
+		VectorMA( cg.refdef.vieworg, -cg_thirdPersonRange.value, forward, cg.refdef.vieworg );
+		return;
+	}
+
+	dt = (float)( cg.time - cg.duckTime );
+	if ( dt < 100 ) {
+		cg.refdef.vieworg[2] -= ( 100 - dt ) * cg.duckChange / 100;
+	}
+	if ( spectator ) {
+		return;
+	}
 
 	cg.refdef.vieworg[2] += cg.predictedPlayerState.viewheight;
 
 	VectorCopy( cg.refdefViewAngles, focusAngles );
-
-	// if dead, look at killer
-	if ( cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ) {
-		focusAngles[YAW] = cg.predictedPlayerState.viewangles[YAW];
-		cg.refdefViewAngles[YAW] = cg.predictedPlayerState.viewangles[YAW];
-	}
-
-	if ( focusAngles[PITCH] > 45 ) {
+	if ( dead && focusAngles[PITCH] > 45 ) {
 		focusAngles[PITCH] = 45;		// don't go too far overhead
 	}
+
+	dt = (float)( cg.time - cg.landTime );
+	if ( dt < 100 ) {
+		cg.refdef.vieworg[2] -= cg.landChange * ( 100 - dt ) / 100;
+	}
+
 	AngleVectors( focusAngles, forward, NULL, NULL );
 
 	VectorMA( cg.refdef.vieworg, FOCUS_DISTANCE, forward, focusPoint );
@@ -239,28 +301,47 @@ static void CG_OffsetThirdPersonView( void ) {
 
 	AngleVectors( cg.refdefViewAngles, forward, right, up );
 
-	forwardScale = cos( cg_thirdPersonAngle.value / 180 * M_PI );
-	sideScale = sin( cg_thirdPersonAngle.value / 180 * M_PI );
-	VectorMA( view, -cg_thirdPersonRange.value * forwardScale, forward, view );
-	VectorMA( view, -cg_thirdPersonRange.value * sideScale, right, view );
-
-	// trace a ray from the origin to the viewpoint to make sure the view isn't
-	// in a solid block.  Use an 8 by 8 block to prevent the view from near clipping anything
-
-	if (!cg_cameraMode.integer) {
-		CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
-
-		if ( trace.fraction != 1.0 ) {
-			VectorCopy( trace.endpos, view );
-			view[2] += (1.0 - trace.fraction) * 32;
-			// try another trace to this position, because a tunnel may have the ceiling
-			// close enough that this is poking out
-
-			CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
-			VectorCopy( trace.endpos, view );
-		}
+	if ( cg_thirdPerson.integer || cg_cameraSmartMode.integer || dead ) {
+		forwardScale = cos( cg_thirdPersonAngle.value / 180 * M_PI );
+		sideScale = sin( cg_thirdPersonAngle.value / 180 * M_PI );
+		VectorMA( view, -cg_thirdPersonRange.value * forwardScale, forward, view );
+		VectorMA( view, -cg_thirdPersonRange.value * sideScale, right, view );
 	}
 
+	if (!cg_cameraMode.integer) {
+		const qboolean plain = ( !cg_thirdPerson.integer || !cg_cameraThirdPersonSmartMode.integer ) &&
+			!cg_cameraSmartMode.integer && !dead;
+		if ( plain ) {
+			CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
+			if ( trace.fraction != 1.0 ) {
+				VectorCopy( trace.endpos, view );
+				view[2] += (1.0 - trace.fraction) * 32;
+				// try another trace to this position, because a tunnel may have the ceiling
+				// close enough that this is poking out
+				CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
+				VectorCopy( trace.endpos, view );
+			}
+		} else {
+			vec3_t start, boxMins, boxMaxs, offset;
+			char text[32];
+			const float size = CG_ThirdPersonBoxSize();
+			VectorSet( boxMins, -size, -size, -size );
+			VectorSet( boxMaxs, size, size, size );
+			VectorMA( view, cg_thirdPersonRange.value, forward, start );
+			CG_Trace( &trace, start, boxMins, boxMaxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
+			if ( trace.fraction < 1.0f ) {
+				const float first = trace.fraction;
+				trap_Cvar_VariableStringBuffer( "r_znear", text, sizeof( text ) );
+				VectorScale( forward, (float)atof( text ), offset );
+				VectorAdd( trace.endpos, offset, view );
+				view[2] += ( 1.0f - first ) * 32;
+				CG_Trace( &trace, start, boxMins, boxMaxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
+				if ( trace.fraction < 1.0f ) {
+					VectorAdd( trace.endpos, offset, view );
+				}
+			}
+		}
+	}
 
 	VectorCopy( view, cg.refdef.vieworg );
 
@@ -270,7 +351,7 @@ static void CG_OffsetThirdPersonView( void ) {
 	if ( focusDist < 1 ) {
 		focusDist = 1;	// should never happen
 	}
-	cg.refdefViewAngles[PITCH] = -180 / M_PI * atan2( focusPoint[2], focusDist );
+	cg.refdefViewAngles[PITCH] = atan2( focusPoint[2], focusDist ) * -57.2957763671875f;
 	cg.refdefViewAngles[YAW] -= cg_thirdPersonAngle.value;
 }
 
@@ -311,11 +392,18 @@ static void CG_OffsetFirstPersonView( void ) {
 	origin = cg.refdef.vieworg;
 	angles = cg.refdefViewAngles;
 
-	// if dead, fix the angle and don't add any kick
+	// retail 0x1004d160: cg_trackPlayer turns the view to that client
+	if ( cg_trackPlayer.integer != -1 && cg_trackPlayer.integer >= 0 && cg_trackPlayer.integer < MAX_CLIENTS &&
+		cgs.clientinfo[cg_trackPlayer.integer].infoValid ) {
+		vec3_t toward;
+		VectorSubtract( cg_entities[cg_trackPlayer.integer].lerpOrigin, cg.refdef.vieworg, toward );
+		vectoangles( toward, cg.refdefViewAngles );
+	}
+
+	// if dead, fix the angle and don't add any kick (retail keeps the yaw)
 	if ( cg.snap->ps.stats[STAT_HEALTH] <= 0 ) {
 		angles[ROLL] = 40;
 		angles[PITCH] = -15;
-		angles[YAW] = cg.snap->ps.viewangles[YAW];
 		origin[2] += cg.predictedPlayerState.viewheight;
 		return;
 	}
@@ -443,10 +531,9 @@ static void CG_DamageBlendBlob( void ) {
 	int			maxTime;
 	refEntity_t		ent;
 
-	if (!cg_blood.integer) {
-		return;
-	}
-
+	// Retail 0x1004d930 has no blood gate: the flash takes the damage colour
+	// (cg.damageColor), twice the damage value as radius, and the gore DLC's
+	// viewBloodBlend only when the DLC is installed, else viewDamageBlend.
 	if ( !cg.damageValue ) {
 		return;
 	}
@@ -475,12 +562,12 @@ static void CG_DamageBlendBlob( void ) {
 	VectorMA( ent.origin, cg.damageX * -8, cg.refdef.viewaxis[1], ent.origin );
 	VectorMA( ent.origin, cg.damageY * 8, cg.refdef.viewaxis[2], ent.origin );
 
-	ent.radius = cg.damageValue * 3;
-	ent.customShader = cgs.media.viewBloodShader;
-	ent.shaderRGBA[0] = 255;
-	ent.shaderRGBA[1] = 255;
-	ent.shaderRGBA[2] = 255;
-	ent.shaderRGBA[3] = 200 * ( 1.0 - ((float)t / maxTime) );
+	ent.radius = cg.damageValue + cg.damageValue;
+	ent.customShader = cgs.media.dlcBloodSpray[0] ? cgs.media.dlcViewBloodBlend : cgs.media.viewDamageBlend;
+	ent.shaderRGBA[0] = ( cg.damageColor >> 24 ) & 0xff;
+	ent.shaderRGBA[1] = ( cg.damageColor >> 16 ) & 0xff;
+	ent.shaderRGBA[2] = ( cg.damageColor >> 8 ) & 0xff;
+	ent.shaderRGBA[3] = (int)( ( 1.0 - (float)t / 500.0 ) * ( cg.damageColor & 0xff ) );
 	trap_R_AddRefEntityToScene( &ent );
 }
 
@@ -492,6 +579,57 @@ CG_CalcViewValues
 Sets cg.refdef view values
 ===============
 */
+/* Retail 0x1004db20 (cg_filter_angles N, from 0x1004dd00): a moving
+ * average of the predicted view yaw and pitch over the last N frames
+ * (at most 32), unwrapping the stored yaws when the yaw jumps by more than
+ * 350 degrees. A negative N resets the cvar to 0; above 32 it is set to 31
+ * (the frame still uses N, capped at 32). Changing the cvar clears the
+ * history. */
+static void CG_FilterViewAngles( vec3_t angles ) {
+	static float yaws[32], pitches[32], lastYaw;
+	static int count, head, modification = -1;
+	int n = cg_filter_angles.integer, i, slot;
+	float delta, sumYaw = 0, sumPitch = 0;
+	if ( n < 0 ) {
+		trap_Cvar_Set( "cg_filter_angles", "0" );
+		return;
+	}
+	if ( n > 32 ) {
+		trap_Cvar_Set( "cg_filter_angles", "31" );
+		n = 32;
+	}
+	if ( modification != cg_filter_angles.modificationCount ) {
+		memset( yaws, 0, sizeof( yaws ) );
+		memset( pitches, 0, sizeof( pitches ) );
+		count = head = 0;
+		lastYaw = 0;
+		modification = cg_filter_angles.modificationCount;
+	}
+	delta = angles[YAW] - lastYaw;
+	if ( fabs( delta ) > 350 && count > 1 ) {
+		for ( i = 1; i < count; i++ ) {
+			slot = head - i;
+			if ( slot < 0 ) slot += 32;
+			yaws[slot] += delta >= 0 ? 360.0f : -360.0f;
+		}
+	}
+	lastYaw = angles[YAW];
+	yaws[head] = angles[YAW];
+	pitches[head] = angles[PITCH];
+	if ( ++count > n ) count = n;
+	for ( i = 0; i < count; i++ ) {
+		slot = head - i;
+		if ( slot < 0 ) slot += 32;
+		sumYaw += yaws[slot];
+		sumPitch += pitches[slot];
+	}
+	if ( count > 0 ) {
+		angles[YAW] = sumYaw / count;
+		angles[PITCH] = sumPitch / count;
+	}
+	head = ( head + 1 ) & 31;
+}
+
 static int CG_CalcViewValues( void ) {
 	playerState_t	*ps;
 
@@ -531,9 +669,13 @@ static int CG_CalcViewValues( void ) {
 	cg.bobfracsin = fabs( sin( ( ps->bobCycle & 127 ) / 127.0 * M_PI ) );
 	cg.xyspeed = sqrt( ps->velocity[0] * ps->velocity[0] +
 		ps->velocity[1] * ps->velocity[1] );
+	CG_SampleSpeed( cg.xyspeed );	// retail 0x1004de3e
 
 
 	VectorCopy( ps->origin, cg.refdef.vieworg );
+	if ( cg_filter_angles.integer ) {
+		CG_FilterViewAngles( cg.predictedPlayerState.viewangles );
+	}
 	VectorCopy( ps->viewangles, cg.refdefViewAngles );
 
 	if (cg_cameraOrbit.integer) {
@@ -737,6 +879,16 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	// Retail 1004e597-1004e5c6 publishes this frame's unadjusted command FOV.
 	trap_SetUserCmdValue( cg.weaponSelect, cg.zoomSensitivity );
+
+	// Retail 1004e5d1: cg_spectating (read by the engine and the about
+	// menu) follows the snapshot player's free-spectator state.
+	if ( cg_spectating.integer && cg.snap->ps.pm_type != PM_SPECTATOR ) {
+		trap_Cvar_Set( "cg_spectating", "0" );
+		trap_Cvar_Update( &cg_spectating );
+	} else if ( !cg_spectating.integer && cg.snap->ps.pm_type == PM_SPECTATOR ) {
+		trap_Cvar_Set( "cg_spectating", "1" );
+		trap_Cvar_Update( &cg_spectating );
+	}
 
 	// first person blend blobs, done after AnglesToAxis
 	if ( !cg.renderingThirdPerson ) {

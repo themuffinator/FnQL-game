@@ -102,8 +102,10 @@ static void CG_ScoresDown_f( void ) {
 
 /* Retail 0x1000e880 closes the scoreboard CG_Init raised; 0x1000e9c0 does
  * so on the first 2D frame for a non-spectator, so a spectator keeps it
- * until -scores or a team command. Its time also starts the demo HUD
- * clock. Retail takes the cgame key catcher when it activates the menu
+ * until -scores or a team command. Retail 0x1000e910 stamps that time
+ * (0x10a9c9b0); only this release and the team command set it, so a later
+ * -scores (0x1000e930) leaves the demo HUD clock and the time-warning guard
+ * alone. Retail takes the cgame key catcher when it activates the menu
  * (0x1000ea05) and drops it on closing (0x1000e8f0), so only a spectator
  * keeps the cursor; CG_SetScoreCatcher has that spectator rule. */
 void CG_CloseInitialScoreboard( void ) {
@@ -111,6 +113,7 @@ void CG_CloseInitialScoreboard( void ) {
 		return;
 	}
 	cg.initialScoreboard = qfalse;
+	cg.scoreboardReleaseTime = cg.time;
 	if ( cg.showScores ) {
 		cg.showScores = qfalse;
 		cg.scoreFadeTime = cg.time;
@@ -133,12 +136,15 @@ void CG_CheckInitialScoreboard( void ) {
 	CG_CloseInitialScoreboard();
 }
 
-/* Retail 0x10007880: forward the team choice, then drop the scoreboard. */
+/* Retail 0x10007880: forward the team choice, then drop the scoreboard.
+ * Its release (0x1000e880) restamps the release time even when the initial
+ * scoreboard is already gone. */
 static void CG_Team_f( void ) {
 	char args[128];
 	trap_Args( args, sizeof( args ) );
 	trap_SendClientCommand( va( "team %s", args ) );
 	CG_CloseInitialScoreboard();
+	cg.scoreboardReleaseTime = cg.time;
 }
 
 static void CG_ScoresUp_f( void ) {

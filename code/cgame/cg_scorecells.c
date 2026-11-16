@@ -140,6 +140,13 @@ static const char *CG_ScoreNumber(int number) {
     snprintf(text,sizeof(text),"%d",number);
     return text;
 }
+/* Retail pads time and ping to four places ("%4i", 0x1006ff70: FFA columns
+ * 12/13 at 0x10026527, the four-column rows' 5/6 at 0x10027dcd). */
+static const char *CG_ScorePadded(int number) {
+    static char text[24];
+    snprintf(text,sizeof(text),"%4i",number);
+    return text;
+}
 static const char *CG_ScorePercent(int number) {
     static char text[24];
     snprintf(text,sizeof(text),"%d%%",number);
@@ -269,8 +276,8 @@ const char *CG_ScoreCell(float feeder, int index, int column, qhandle_t *handle)
             snprintf(time,sizeof(time),"%d:%02d.%03d",score->score/60000,(score->score/1000)%60,score->score%1000);
             return time;
         }
-        if (column == 5) return CG_ScoreNumber(score->time);
-        if (column == 6) return CG_ScoreNumber(score->ping);
+        if (column == 5) return CG_ScorePadded(score->time);
+        if (column == 6) return CG_ScorePadded(score->ping);
         return "";
     }
     if (column == 0) { *handle = info->modelIcon; return ""; }
@@ -306,8 +313,8 @@ const char *CG_ScoreCell(float feeder, int index, int column, qhandle_t *handle)
                 *handle = cg_weapons[score->bestWeapon].weaponIcon;
             return "";
         case 11: return score->damageGiven > 0 && score->bestWeapon > 0 ? CG_ScorePercent(score->bestAccuracy) : "";
-        case 12: return CG_ScoreNumber(score->time);
-        case 13: return CG_ScoreNumber(score->ping);
+        case 12: return CG_ScorePadded(score->time);
+        case 13: return CG_ScorePadded(score->ping);
         default: return "";
         }
     }

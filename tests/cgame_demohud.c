@@ -39,7 +39,7 @@ int main(void) {
     CHECK(!strcmp(CG_DemoHudTime(4891), "0:04.891") && !strcmp(CG_DemoHudTime(75500), "1:15.500"));
     CHECK(!strcmp(CG_DemoHudTime(-2000), "-0:02.000"));
     CG_DrawDemoHud(); CHECK(!paints);
-    cg.demoPlayback = qtrue; cg_drawDemoHUD.integer = 1; cg_timescale.value = 1; cg.time = 5000; cg.scoreFadeTime = 109;
+    cg.demoPlayback = qtrue; cg_drawDemoHUD.integer = 1; cg_timescale.value = 1; cg.time = 5000; cg.scoreboardReleaseTime = 109;
     CG_DrawDemoHud();
     /* First frames: Play / Advance. */
     CHECK(fills == 1 && !strcmp(painted[0], "0:04.891") && px[0] == 288 && py[0] == 375);

@@ -1498,9 +1498,9 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 	// --------- yaw -------------
 
 	// allow yaw to drift a bit
-	if ( ( cent->currentState.legsAnim & ~ANIM_TOGGLEBIT ) != LEGS_IDLE 
-		|| ((cent->currentState.torsoAnim & ~ANIM_TOGGLEBIT) != TORSO_STAND 
-		&& (cent->currentState.torsoAnim & ~ANIM_TOGGLEBIT) != TORSO_STAND2)) {
+	// retail 0x1003f3d3: only TORSO_STAND over LEGS_IDLE stands still
+	if ( ( cent->currentState.legsAnim & ~ANIM_TOGGLEBIT ) != LEGS_IDLE
+		|| (cent->currentState.torsoAnim & ~ANIM_TOGGLEBIT) != TORSO_STAND ) {
 		// if not standing still, always point all in the same direction
 		cent->pe.torso.yawing = qtrue;	// always center
 		cent->pe.torso.pitching = qtrue;	// always center
@@ -1551,9 +1551,13 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 	// --------- roll -------------
 
 
-	// lean towards the direction of travel
+	// lean towards the direction of travel: retail 0x1003f5d4 scales the
+	// lean by cg_playerLean, and a frozen player does not lean
 	VectorCopy( cent->currentState.pos.trDelta, velocity );
-	speed = VectorNormalize( velocity );
+	speed = VectorNormalize( velocity ) * cg_playerLean.value;
+	if ( cent->currentState.powerups & ( 1 << PW_FROZEN ) ) {
+		speed = 0;
+	}
 	if ( speed ) {
 		vec3_t	axis[3];
 		float	side;
@@ -2264,6 +2268,7 @@ void CG_Player( centity_t *cent ) {
 	vec3_t			dir, angles;
 #endif
 	qboolean		darken;
+	byte			deadColor[4];
 
 	// the client number is stored in clientNum.  It can't be derived
 	// from the entity number, because a single client may have
@@ -2296,6 +2301,19 @@ void CG_Player( centity_t *cent ) {
 		darken = qtrue;
 	else
 		darken = qfalse;
+	// retail 0x10041ab6: a dead body takes cg_deadBodyColor (0xRRGGBBAA);
+	// the colour bytes are doubled (to 255) unless r_colorCorrectActive is
+	// set, the alpha byte is used as is
+	if ( darken ) {
+		const int color = cg_deadBodyColor.integer;
+		const int scale = trap_Cvar_VariableValue( "r_colorCorrectActive" ) == 0 ? 2 : 1;
+		int channel;
+		for ( channel = 0; channel < 3; channel++ ) {
+			const int value = ( ( color >> ( 24 - 8 * channel ) ) & 0xff ) * scale;
+			deadColor[channel] = (byte)( value > 255 ? 255 : value );
+		}
+		deadColor[3] = (byte)( color & 0xff );
+	}
 
 	memset( &legs, 0, sizeof(legs) );
 	memset( &torso, 0, sizeof(torso) );
@@ -2340,19 +2358,31 @@ void CG_Player( centity_t *cent ) {
 	VectorCopy( cent->lerpOrigin, legs.lightingOrigin );
 	legs.shadowPlane = shadowPlane;
 	legs.renderfx = renderfx;
+	// retail 0x10041d31: with cg_scalePlayerModelsToBB a model whose height
+	// differs from the bounding box is scaled (torso and head follow through
+	// the tags) and lowered by 24 - 24 * scale; the lighting origin stays
+	if ( cg_scalePlayerModelsToBB.integer && ci->modelHeightScale != 1.0f && ci->modelHeightScale != 0.0f ) {
+		const float s = ci->modelHeightScale;
+		int axis, component;
+		legs.nonNormalizedAxes = qtrue;
+		legs.origin[2] = cent->lerpOrigin[2] - ( 24 - 24 * s );
+		for ( axis = 0; axis < 3; axis++ ) {
+			for ( component = 0; component < 3; component++ ) {
+				legs.axis[axis][component] *= s;
+			}
+		}
+	}
 	VectorCopy (legs.origin, legs.oldorigin);	// don't positionally lerp at all
 
 	// colored skin
 	if ( darken ) {
-		legs.shaderRGBA[0] = 85;
-		legs.shaderRGBA[1] = 85;
-		legs.shaderRGBA[2] = 85;
+		memcpy( legs.shaderRGBA, deadColor, sizeof( deadColor ) );
 	} else {
 		legs.shaderRGBA[0] = ci->legsColor[0] * 255;
 		legs.shaderRGBA[1] = ci->legsColor[1] * 255;
 		legs.shaderRGBA[2] = ci->legsColor[2] * 255;
+		legs.shaderRGBA[3] = 255;
 	}
-	legs.shaderRGBA[3] = 255;
 
 	CG_AddRefEntityWithPowerups( &legs, &cent->currentState, ci->team );
 
@@ -2380,15 +2410,13 @@ void CG_Player( centity_t *cent ) {
 
 	// colored skin
 	if ( darken ) {
-		torso.shaderRGBA[0] = 85;
-		torso.shaderRGBA[1] = 85;
-		torso.shaderRGBA[2] = 85;
+		memcpy( torso.shaderRGBA, deadColor, sizeof( deadColor ) );
 	} else {
 		torso.shaderRGBA[0] = ci->bodyColor[0] * 255;
 		torso.shaderRGBA[1] = ci->bodyColor[1] * 255;
 		torso.shaderRGBA[2] = ci->bodyColor[2] * 255;
+		torso.shaderRGBA[3] = 255;
 	}
-	torso.shaderRGBA[3] = 255;
 
 	CG_AddRefEntityWithPowerups( &torso, &cent->currentState, ci->team );
 
@@ -2627,15 +2655,13 @@ void CG_Player( centity_t *cent ) {
 
 	// colored skin
 	if ( darken ) {
-		head.shaderRGBA[0] = 85;
-		head.shaderRGBA[1] = 85;
-		head.shaderRGBA[2] = 85;
+		memcpy( head.shaderRGBA, deadColor, sizeof( deadColor ) );
 	} else {
 		head.shaderRGBA[0] = ci->headColor[0] * 255;
 		head.shaderRGBA[1] = ci->headColor[1] * 255;
 		head.shaderRGBA[2] = ci->headColor[2] * 255;
+		head.shaderRGBA[3] = 255;
 	}
-	head.shaderRGBA[3] = 255;
 	
 	CG_AddRefEntityWithPowerups( &head, &cent->currentState, ci->team );
 

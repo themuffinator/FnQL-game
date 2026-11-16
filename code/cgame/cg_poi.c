@@ -39,6 +39,9 @@ void CG_RegisterPoiMedia(void) {
     if (cgs.gametype == GT_HARVESTER)
         m->harvesterCapture = trap_R_RegisterShaderNoMip("gfx/2d/har/poi_capture");
     m->flagCapture = trap_R_RegisterShader("gfx/2d/ad/poi_capture");
+    /* 0x10024d28 and 0x10024d5a, always. */
+    m->flagAttack = trap_R_RegisterShader("gfx/2d/ad/poi_attack");
+    m->flagDefend = trap_R_RegisterShader("gfx/2d/ad/poi_defend");
 }
 
 static qboolean CG_PoiExpired(const cgPointOfInterest_t *poi) {
@@ -130,6 +133,79 @@ void CG_RecordObjectiveBase(int team, const vec3_t origin) {
     if (!origin || !(origin[0] == origin[0] && origin[1] == origin[1] && origin[2] == origin[2])) return;
     VectorCopy(origin, cg.objectiveBases[slot]);
     cg.objectiveBaseSeen[slot] = qtrue;
+}
+
+/* Retail CG_Item 0x10016147..0x100166c6: one-frame markers 64 units over a
+ * drawn team item. Off the team path (CTF with the flag item not dropped,
+ * or Attack & Defend in an active state, are the team path) only the
+ * neutral flag gets a white poi_capture, ungated. On the team path, with
+ * cg_flagPOIs, for the snapshot client's team (cgs.gametype picks the path,
+ * the cg_gametype cvar the branch, as retail reads both):
+ * - a dropped flag (modelindex2) is the owner's poi_defend or the enemy's
+ *   poi_attack, tinted by the flag's team, or the dropped flag icon in
+ *   white for anyone else;
+ * - a flag at base: in CTF the enemy flag is poi_attack and the own flag
+ *   poi_defend unless the player carries the enemy flag; in Attack &
+ *   Defend the turn decides which flag is attacked or defended.
+ * Tints: red (1, .2, .2), blue (.2, .6, 1). */
+void CG_ItemObjectiveMarkers(const centity_t *cent, const gitem_t *item) {
+    static const vec4_t white = { 1, 1, 1, 1 }, red = { 1, .2f, .2f, 1 }, blue = { .2f, .6f, 1, 1 };
+    const entityState_t *s = &cent->currentState;
+    const float *color = NULL;
+    qhandle_t shader = 0;
+    qboolean teamPath;
+    int tag, client, team;
+    vec3_t point;
+    float world, least;
+    if (!cg.snap || !item || item->giType != IT_TEAM) return;
+    tag = item->giTag;
+    if (cgs.gametype == GT_ATTACK_DEFEND) teamPath = CG_PregameState() > 0;
+    else if (cgs.gametype == GT_CTF) teamPath = s->modelindex2 != 1;
+    else teamPath = qfalse;
+    if (!teamPath) {
+        if (tag != PW_NEUTRALFLAG) return;
+        color = white;
+        shader = cgs.poiMedia.flagCapture;
+    } else {
+        client = cg.snap->ps.clientNum;
+        if (client < 0 || client >= MAX_CLIENTS || !cg_flagPOIs.integer) return;
+        if (tag != PW_REDFLAG && tag != PW_BLUEFLAG && tag != PW_NEUTRALFLAG) return;
+        team = cgs.clientinfo[client].team;
+        if (s->modelindex2) {
+            if (tag == PW_REDFLAG) {
+                color = team == TEAM_RED || team == TEAM_BLUE ? red : white;
+                shader = team == TEAM_RED ? cgs.poiMedia.flagDefend :
+                         team == TEAM_BLUE ? cgs.poiMedia.flagAttack : CG_FlagStatusIcon(1, 2);
+            } else if (tag == PW_BLUEFLAG) {
+                color = team == TEAM_RED || team == TEAM_BLUE ? blue : white;
+                shader = team == TEAM_RED ? cgs.poiMedia.flagAttack :
+                         team == TEAM_BLUE ? cgs.poiMedia.flagDefend : CG_FlagStatusIcon(2, 2);
+            } else {
+                color = white;
+                shader = CG_FlagStatusIcon(0, 2);
+            }
+        } else if (team == TEAM_RED || team == TEAM_BLUE) {
+            const int enemyFlag = team == TEAM_RED ? PW_BLUEFLAG : PW_REDFLAG;
+            const int ownFlag = team == TEAM_RED ? PW_REDFLAG : PW_BLUEFLAG;
+            if (cg_gametype.integer == GT_ATTACK_DEFEND) {
+                /* Red attacks the blue flag on turn 0 and defends its own on
+                 * turn 1; blue mirrors that. */
+                const int turn = CG_PregameTurn();
+                const int attackTurn = team == TEAM_RED ? 0 : 1;
+                if (turn == attackTurn && tag == enemyFlag) shader = cgs.poiMedia.flagAttack;
+                else if (turn == 1 - attackTurn && tag == ownFlag) shader = cgs.poiMedia.flagDefend;
+            } else if (cg_gametype.integer == GT_CTF) {
+                if (tag == enemyFlag) shader = cgs.poiMedia.flagAttack;
+                else if (tag == ownFlag && !cg.snap->ps.powerups[enemyFlag]) shader = cgs.poiMedia.flagDefend;
+            }
+            if (shader) color = tag == PW_REDFLAG ? red : blue;
+        }
+    }
+    if (!shader || !color) return;
+    CG_WorldMarkerWidths(1, &world, &least);
+    VectorCopy(cent->lerpOrigin, point);
+    point[2] += 64;
+    CG_AddFrameMarker(point, world, least, color, shader);
 }
 
 static void CG_ObjectiveMarker(int slot, const vec4_t color, qhandle_t shader) {

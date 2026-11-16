@@ -125,6 +125,47 @@ void CG_SetGameInfo( void ) {
 	}
 }
 
+/* Retail sets cg_armorTiered to the raw armor_tiered value for the menus'
+ * cvar tests (CG_Init 0x10029bf2, the config values 0x100497cd and the
+ * CS_ARMOR_SETTINGS change 0x10048df0). */
+static void CG_ParseArmorSettings( const char *info ) {
+	int tiered = atoi( Info_ValueForKey( info, "armor_tiered" ) );
+	cgs.armorTiered = tiered != 0;
+	trap_Cvar_Set( "cg_armorTiered", va( "%d", tiered ) );
+}
+
+/* Retail 0x100498b7 (config values) and 0x1004a0f4 (CS_DISABLED_LOADOUTS
+ * change): for weapons 1..14 cg_disableLoadout_<weapon> becomes "1" without
+ * cg_loadout, when the weapon's bit is in CS_DISABLED_LOADOUTS, or when the
+ * bit below it is in CS_STARTING_WEAPONS; otherwise it is cleared only if
+ * it is set. CS_STARTING_WEAPONS changes do not rerun this. */
+static void CG_UpdateDisabledLoadouts( void ) {
+	static const char *const names[14] = { "g", "mg", "sg", "gl", "rl", "lg", "rg",
+		"pg", "bfg", "gh", "ng", "pl", "cg", "hmg" };
+	const int disabled = atoi( CG_ConfigString( CS_DISABLED_LOADOUTS ) );
+	const int starting = atoi( CG_ConfigString( CS_STARTING_WEAPONS ) );
+	int weapon;
+	for ( weapon = 1; weapon <= 14; weapon++ ) {
+		const int bit = 1 << weapon;
+		const char *name = va( "cg_disableLoadout_%s", names[weapon - 1] );
+		if ( !cg_loadout.integer || ( disabled & bit ) || ( starting & ( bit >> 1 ) ) ) {
+			trap_Cvar_Set( name, "1" );
+		} else if ( trap_Cvar_VariableValue( name ) != 0 ) {
+			trap_Cvar_Set( name, "0" );
+		}
+	}
+}
+
+/* Retail CG_ParseServerinfo 0x10048bcb: the callvote and end-game vote
+ * menus read these from g_voteFlags (map 5, end-of-map 0x800 or a local
+ * server, gametype 8). */
+static void CG_UpdateVoteMenuCvars( const char *info ) {
+	const int flags = atoi( Info_ValueForKey( info, "g_voteFlags" ) );
+	trap_Cvar_Set( "ui_mapVotingDisabled", ( flags & 5 ) ? "1" : "0" );
+	trap_Cvar_Set( "ui_endMapVotingDisabled", ( ( flags & 0x800 ) || cgs.localServer ) ? "1" : "0" );
+	trap_Cvar_Set( "ui_gameTypeVotingDisabled", ( flags & 8 ) ? "1" : "0" );
+}
+
 void CG_ParseServerinfo( void ) {
 	const char	*info;
 	char	*mapname;
@@ -155,7 +196,8 @@ void CG_ParseServerinfo( void ) {
 	cgs.startingHealth = atoi(Info_ValueForKey(info, "g_startingHealth"));
 	cgs.timeoutCount = atoi(Info_ValueForKey(info, "g_timeoutCount"));   /* retail 0x10049457 */
 	cgs.teamSize = atoi(Info_ValueForKey(info, "teamsize"));
-	cgs.armorTiered = atoi(Info_ValueForKey(CG_ConfigString(CS_ARMOR_SETTINGS), "armor_tiered")) != 0;
+	CG_ParseArmorSettings( CG_ConfigString( CS_ARMOR_SETTINGS ) );
+	CG_UpdateVoteMenuCvars( info );
 	CG_ParseAppearanceSettings();
 	cgs.maxclients = atoi( Info_ValueForKey( info, "sv_maxclients" ) );
 	mapname = Info_ValueForKey( info, "mapname" );
@@ -242,6 +284,7 @@ void CG_SetConfigValues( void ) {
 		cgs.flagStatus = s[0] - '0';
 	}
 #endif
+	CG_UpdateDisabledLoadouts();	// retail 0x100498b7
 	CG_InitMatchClocks();
 	CG_ClearObituaries();
 	CG_ClearDuelSlots();
@@ -291,7 +334,9 @@ static void CG_ConfigStringModified( void ) {
 	} else if (num == CS_SETTINGS_MASK) {
 		CG_UpdatePlayerPresentationSettings();
 	} else if (num == CS_ARMOR_SETTINGS) {
-		cgs.armorTiered = atoi(Info_ValueForKey(str, "armor_tiered")) != 0;
+		CG_ParseArmorSettings( str );
+	} else if ( num == CS_DISABLED_LOADOUTS ) {
+		CG_UpdateDisabledLoadouts();	// retail 0x1004a0f4
 	} else if (num == CS_APPEARANCE_SETTINGS) {
 		CG_ParseAppearanceSettings();
 	} else if ( num == CS_SYSTEMINFO ) {
@@ -308,6 +353,10 @@ static void CG_ConfigStringModified( void ) {
 	} else if ( num == CS_VOTE_TIME ) {
 		cgs.voteTime = atoi( str );
 		cgs.voteModified = qtrue;
+		// retail 0x10049bd1: a vote on a remote server opens the vote menus
+		if ( cgs.voteTime && !cgs.localServer ) {
+			trap_Cvar_Set( "ui_voteactive", "1" );
+		}
 	} else if ( num == CS_VOTE_YES ) {
 		cgs.voteYes = atoi( str );
 		cgs.voteModified = qtrue;
@@ -322,6 +371,11 @@ static void CG_ConfigStringModified( void ) {
 		}
 	} else if ( num == CS_INTERMISSION ) {
 		cg.intermissionStarted = atoi( str );
+	} else if ( num == CS_INTERMISSION_EXIT ) {
+		// retail 0x1004a0af: leaving intermission closes the vote menus
+		if ( atoi( str ) ) {
+			trap_Cvar_Set( "ui_voteactive", "0" );
+		}
 	} else if ( num >= CS_MODELS && num < CS_MODELS+MAX_MODELS ) {
 		cgs.gameModels[ num-CS_MODELS ] = trap_R_RegisterModel( str );
 	} else if ( num >= CS_SOUNDS && num < CS_SOUNDS+MAX_SOUNDS ) {
@@ -481,6 +535,7 @@ static void CG_MapRestart( void ) {
 #endif
 
 	trap_Cvar_Set( "cg_thirdPerson", "0" );
+	trap_Cvar_Set( "ui_voteactive", "0" );	// retail 0x1004a43d
 }
 
 #ifdef MISSIONPACK
@@ -822,7 +877,9 @@ void CG_PlayVoiceChat( bufferedVoiceChat_t *vchat ) {
 		return;
 	}
 
-	if ( !cg_noVoiceChats.integer ) {
+	// retail 0x1004aac0: the cheat cvars cg_playVoiceChats and
+	// cg_showVoiceText enable sounds and text
+	if ( cg_playVoiceChats.integer ) {
 		trap_S_StartLocalSound( vchat->snd, CHAN_VOICE);
 		if (vchat->clientNum != cg.snap->ps.clientNum) {
 			int orderTask = CG_ValidOrder(vchat->cmd);
@@ -836,7 +893,7 @@ void CG_PlayVoiceChat( bufferedVoiceChat_t *vchat ) {
 			CG_ShowResponseHead();
 		}
 	}
-	if (!vchat->voiceOnly && !cg_noVoiceText.integer) {
+	if (!vchat->voiceOnly && cg_showVoiceText.integer) {
 		CG_AddToTeamChat( vchat->message );
 		CG_Printf( "%s\n", vchat->message );
 	}
@@ -1092,6 +1149,17 @@ static void CG_ServerCommand( void ) {
 	if ( !strcmp( cmd, "map_restart" ) ) {
 		CG_MapRestart();
 		CG_ClearComplaint();	// retail 0x1004a369
+		return;
+	}
+
+	// retail 0x1004bcb2 / 0x1004bce3: the server opens and closes the vote
+	// menus
+	if ( !strcmp( cmd, "enable_vote_ui" ) ) {
+		trap_Cvar_Set( "ui_voteactive", "1" );
+		return;
+	}
+	if ( !strcmp( cmd, "disable_vote_ui" ) ) {
+		trap_Cvar_Set( "ui_voteactive", "0" );
 		return;
 	}
 

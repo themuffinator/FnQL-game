@@ -950,13 +950,29 @@ const char *CG_GetKillerText() {
 }
 
 
-static void CG_DrawKiller(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle ) {
-	// fragged by ... line
-	if ( cg.killerName[0] ) {
-		int x = rect->x + rect->w / 2;
-	  CG_Text_Paint(x - CG_Text_Width(CG_GetKillerText(), scale, 0) / 2, rect->y + rect->h, scale, color, CG_GetKillerText(), 0, 0, textStyle);
+/* CG_KILLER (63), retail 0x10032110 (drawn only with a killer name,
+ * 0x1003b454): "Fragged by %s" in font 0 at the rect's bottom edge, aligned
+ * on the rect's x by the item alignment, then the killing weapon's icon,
+ * 16 square, 8 units after the text and 4 above the rect. */
+static void CG_DrawKiller(rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle, int align ) {
+	const char *text;
+	float x = rect->x;
+	int width;
+	if ( !cg.killerName[0] ) {
+		return;
 	}
-	
+	text = va( "Fragged by %s", cg.killerName );
+	width = CG_Text_WidthInFont( text, 0, scale, 0 );
+	if ( align == ITEM_ALIGN_CENTER ) {
+		x -= width * 0.5f;
+	} else if ( align == ITEM_ALIGN_RIGHT ) {
+		x -= width;
+	}
+	CG_SetTextFont( 0 );
+	CG_Text_Paint( x, rect->y + rect->h, scale, color, text, 0, 0, textStyle );
+	if ( cg.killerIcon ) {
+		CG_DrawPic( (float)width + x + 8, rect->y - 4, 16, 16, cg.killerIcon );
+	}
 }
 
 
@@ -1323,6 +1339,29 @@ void CG_DrawMedal(int ownerDraw, rectDef_t *rect, float scale, vec4_t color, qha
 
 	
 //
+/* CG_SELECTED_PLYR_TEAM_COLOR (92), retail 0x1002f860: the item's
+ * background tinted by the selected score row's team at the item's alpha.
+ * Retail reads the row whether or not it holds a player, so an empty
+ * scoreboard paints the free-team gold. Colours (0x10076264, 0x100785f0,
+ * 0x10078600, 0x10076224, 0x10076214): free 1 .8 .2, red 1 .2 .1, blue
+ * .2 .4 1, spectator .75 .75 .75, anything else white. */
+static void CG_DrawSelectedPlayerTeamColor(float x, float y, float w, float h, const vec4_t color, qhandle_t shader) {
+  static const float teams[4][3] = { { 1.0f, 0.8f, 0.2f }, { 1.0f, 0.2f, 0.1f },
+                                     { 0.2f, 0.4f, 1.0f }, { 0.75f, 0.75f, 0.75f } };
+  static const float other[3] = { 1.0f, 1.0f, 1.0f };
+  int selected = cg.selectedScore;
+  unsigned team;
+  const float *rgb;
+  vec4_t tint;
+  if (selected < 0 || selected >= MAX_CLIENTS) selected = 0;
+  team = (unsigned)cg.scores[selected].team;
+  rgb = team < 4 ? teams[team] : other;
+  tint[0] = rgb[0]; tint[1] = rgb[1]; tint[2] = rgb[2]; tint[3] = color[3];
+  trap_R_SetColor(tint);
+  CG_DrawPic(x, y, w, h, shader);
+  trap_R_SetColor(NULL);
+}
+
 void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle) {
 	rectDef_t rect;
 
@@ -1495,7 +1534,7 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
     CG_DrawGameStatus(&rect, scale, color, shader, textStyle);
 		break;
   case CG_KILLER:
-    CG_DrawKiller(&rect, scale, color, shader, textStyle);
+    CG_DrawKiller(&rect, scale, color, shader, textStyle, align);
 		break;
 	case CG_ACCURACY:
 	case CG_ASSISTS:
@@ -1510,6 +1549,12 @@ void CG_OwnerDraw(float x, float y, float w, float h, float text_x, float text_y
   case CG_SPECTATORS:
 		CG_DrawTeamSpectators(&rect, scale, color, shader);
 		break;
+  case CG_SPEEDOMETER:
+    CG_DrawSpeedometerOwnerDraw(x, y, align, scale, color, textStyle);
+    break;
+  case CG_SELECTED_PLYR_TEAM_COLOR:
+    CG_DrawSelectedPlayerTeamColor(x, y, w, h, color, shader);
+    break;
 
   case CG_CAPFRAGLIMIT:
     CG_DrawCapFragLimit(&rect, scale, color, shader, textStyle);

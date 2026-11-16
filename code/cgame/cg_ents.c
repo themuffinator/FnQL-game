@@ -106,15 +106,11 @@ static void CG_EntityEffects( const centity_t *cent ) {
 	// update sound origins
 	CG_SetEntitySoundPosition( cent );
 
-	// add loop sound
-	if ( cent->currentState.loopSound ) {
-		if (cent->currentState.eType != ET_SPEAKER) {
-			trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, 
-				cgs.gameSounds[ cent->currentState.loopSound ] );
-		} else {
-			trap_S_AddRealLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, 
-				cgs.gameSounds[ cent->currentState.loopSound ] );
-		}
+	// add loop sound: retail 0x10015500 adds it only with s_ambient, through
+	// its one looping-sound import
+	if ( cent->currentState.loopSound && s_ambient.integer ) {
+		trap_S_AddLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin,
+			cgs.gameSounds[ cent->currentState.loopSound ] );
 	}
 
 
@@ -235,8 +231,12 @@ static void CG_Item( centity_t *cent ) {
 	item = &bg_itemlist[ es->modelindex ];
 	if ( item->giType == IT_TEAM ) {
 		// retail 0x100160a7: the last drawn flag position marks its base
-		CG_RecordObjectiveBase( item->giTag == PW_REDFLAG ? TEAM_RED :
-			item->giTag == PW_BLUEFLAG ? TEAM_BLUE : TEAM_FREE, cent->lerpOrigin );
+		// (the red, blue and neutral flags only, not skulls)
+		if ( item->giTag == PW_REDFLAG || item->giTag == PW_BLUEFLAG || item->giTag == PW_NEUTRALFLAG ) {
+			CG_RecordObjectiveBase( item->giTag == PW_REDFLAG ? TEAM_RED :
+				item->giTag == PW_BLUEFLAG ? TEAM_BLUE : TEAM_FREE, cent->lerpOrigin );
+		}
+		CG_ItemObjectiveMarkers( cent, item );	// retail 0x10016147
 	}
 	// retail 0x10016c8d: the item's row hides it in some gametypes (the red
 	// and blue flags in One Flag)
@@ -518,6 +518,12 @@ static void CG_Missile( centity_t *cent ) {
 	ent.hModel = weapon->missileModel;
 	ent.renderfx = weapon->missileRenderfx | RF_NOSHADOW;
 
+	// retail 0x100175f0: grenades take cg_weaponColor_grenade (0xRRGGBBAA),
+	// or the forced team / enemy colour (0x10015190)
+	if ( s1->weapon == WP_GRENADE_LAUNCHER ) {
+		CG_GrenadeColor( s1, ent.shaderRGBA );
+	}
+
 #ifdef MISSIONPACK
 	if ( cent->currentState.weapon == WP_PROX_LAUNCHER ) {
 		if (s1->generic1 == TEAM_BLUE) {
@@ -590,9 +596,10 @@ static void CG_Grapple( centity_t *cent ) {
 	// Will draw cable if needed
 	CG_GrappleTrail ( cent, weapon );
 
-	// create the render entity
+	// create the render entity: retail 0x100178e0 orients the latched hook
+	// by its angles and moves it cg_latchedHookOffset along the surface
+	// normal the server packs in generic1
 	memset (&ent, 0, sizeof(ent));
-	VectorCopy( cent->lerpOrigin, ent.origin);
 	VectorCopy( cent->lerpOrigin, ent.oldorigin);
 
 	// flicker between two skins
@@ -600,9 +607,15 @@ static void CG_Grapple( centity_t *cent ) {
 	ent.hModel = weapon->missileModel;
 	ent.renderfx = weapon->missileRenderfx | RF_NOSHADOW;
 
-	// convert direction of travel into axis
-	if ( VectorNormalize2( s1->pos.trDelta, ent.axis[0] ) == 0 ) {
-		ent.axis[0][2] = 1;
+	AnglesToAxis( s1->angles, ent.axis );
+	{
+		vec3_t normal;
+		if ( s1->generic1 >= 0 && s1->generic1 < NUMVERTEXNORMALS ) {
+			ByteToDir( s1->generic1, normal );
+		} else {
+			VectorClear( normal );
+		}
+		VectorMA( cent->lerpOrigin, cg_latchedHookOffset.value, normal, ent.origin );
 	}
 
 	trap_R_AddRefEntityToScene( &ent );
@@ -791,16 +804,23 @@ CG_CalcEntityLerpPositions
 
 ===============
 */
+/* Retail CG_CalcEntityLerpPositions 0x10018190. Observed:
+ * - Interpolating entities with TR_INTERPOLATE, and players with
+ *   TR_LINEAR_STOP, take the two-snapshot interpolation.
+ * - Without a next snapshot, another player is extrapolated for at most one
+ *   server frame (TR_LINEAR_STOP from the snapshot time, 1000 / sv_fps).
+ *   Retail does not force players to TR_INTERPOLATE (Quake III's
+ *   cg_smoothClients default, which FnQL-game used to apply).
+ * - Missiles other than the grapple are evaluated ahead: the viewer's own
+ *   by one server frame; others (except grenades and prox mines) by the
+ *   ping (cg_autoProjectileNudge: the first non-zero snapshot ping, at most
+ *   80, latched) or cg_projectileNudge, plus a server frame. A missile moved
+ *   ahead is traced back from its current position so it does not pass
+ *   through walls. */
 static void CG_CalcEntityLerpPositions( centity_t *cent ) {
-
-	// Players are never extrapolated: make sure the clients use
-	// TR_INTERPOLATE.  Quake III made this optional through cg_smoothClients,
-	// a userinfo cvar retail's cgame does not have (it is absent from the
-	// retail cvar table); this is that cvar's default behaviour.
-	if ( cent->currentState.number < MAX_CLIENTS ) {
-		cent->currentState.pos.trType = TR_INTERPOLATE;
-		cent->nextState.pos.trType = TR_INTERPOLATE;
-	}
+	static int lastNudge;
+	int nudge = 0;
+	const int frame = sv_fps.integer > 0 ? (int)( 1000.0 / sv_fps.integer ) : 0;
 
 	if ( cent->interpolate && cent->currentState.pos.trType == TR_INTERPOLATE ) {
 		CG_InterpolateEntityPosition( cent );
@@ -815,9 +835,43 @@ static void CG_CalcEntityLerpPositions( centity_t *cent ) {
 		return;
 	}
 
+	if ( cent->currentState.number < MAX_CLIENTS && cent->currentState.clientNum != cg.predictedPlayerState.clientNum ) {
+		cent->currentState.pos.trType = TR_LINEAR_STOP;
+		cent->currentState.pos.trTime = cg.snap->serverTime;
+		cent->currentState.pos.trDuration = frame;
+	}
+
+	if ( cent->currentState.eType == ET_MISSILE && cent->currentState.weapon != WP_GRAPPLING_HOOK ) {
+		if ( cent->currentState.otherEntityNum == cg.clientNum ) {
+			nudge = frame;
+		} else if ( cent->currentState.weapon != WP_GRENADE_LAUNCHER && cent->currentState.weapon != WP_PROX_LAUNCHER ) {
+			int amount;
+			if ( cg_autoProjectileNudge.integer ) {
+				amount = lastNudge ? lastNudge : cg.snap->ping;
+				if ( amount < 0 ) amount = 0;
+				if ( amount > 80 ) amount = 80;
+			} else {
+				amount = cg_projectileNudge.integer;
+			}
+			lastNudge = amount;
+			nudge = amount + frame;
+		}
+	}
+
 	// just use the current frame and evaluate as best we can
-	BG_EvaluateTrajectory( &cent->currentState.pos, cg.time, cent->lerpOrigin );
-	BG_EvaluateTrajectory( &cent->currentState.apos, cg.time, cent->lerpAngles );
+	BG_EvaluateTrajectory( &cent->currentState.pos, cg.time + nudge, cent->lerpOrigin );
+	BG_EvaluateTrajectory( &cent->currentState.apos, cg.time + nudge, cent->lerpAngles );
+	if ( nudge ) {
+		trace_t trace;
+		vec3_t now;
+		BG_EvaluateTrajectory( &cent->currentState.pos, cg.time, now );
+		CG_Trace( &trace, now, NULL, NULL, cent->lerpOrigin, cent->currentState.number, MASK_SHOT );
+		if ( trace.fraction < 1.0f ) {
+			vec3_t delta;
+			VectorSubtract( cent->lerpOrigin, now, delta );
+			VectorMA( now, trace.fraction, delta, cent->lerpOrigin );
+		}
+	}
 
 	// adjust for riding a mover if it wasn't rolled into the predicted
 	// player state
@@ -1032,7 +1086,9 @@ static void CG_AddCEntity( centity_t *cent ) {
 		CG_Portal( cent );
 		break;
 	case ET_SPEAKER:
-		CG_Speaker( cent );
+		if ( s_ambient.integer ) {	// retail 0x10018b75
+			CG_Speaker( cent );
+		}
 		break;
 	case ET_GRAPPLE:
 		CG_Grapple( cent );

@@ -221,13 +221,13 @@ void CG_MatchClockConfigChanged(int index) {
 }
 
 /* Retail 0x1004395d: time warnings outside warmup and timeouts. Each
- * moment is announced only if the local player joined before it (retail
- * compares the time its join menu last closed, 0x1000e880; FnQL-game uses
- * cg.teamJoinTime). Sudden death plays unless overtime is configured in a
+ * moment is announced only if the initial scoreboard was released (or the
+ * team command last ran) before it: retail compares 0x10a9c9b0, stamped by
+ * 0x1000e880. Sudden death plays unless overtime is configured in a
  * non-round mode; the round 30-second warning is checked only when no match
  * warning fired. Bits: 1 five minutes, 2 one minute, 4 sudden death, 8 round. */
 void CG_MatchClockWarnings(void) {
-    int64_t limit, elapsed, joined = cg.teamJoinTime;
+    int64_t limit, elapsed, joined = cg.scoreboardReleaseTime;
     int *flags = &cg.timelimitWarnings;
     if (clocks.limitMinutes <= 0 || clocks.warmup || clocks.timeoutStart) return;
     limit = (int64_t)clocks.limitMinutes * 60000;

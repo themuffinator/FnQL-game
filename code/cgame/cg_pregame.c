@@ -14,6 +14,11 @@ static struct {
     qboolean ready[MAX_CLIENTS];
 } pregame;
 
+/* Attack & Defend turn and state from CS_MATCH_STATE (retail 0x10ab8f5c and
+ * 0x10ab8f60, read by the flag markers). */
+int CG_PregameTurn(void) { return pregame.turn; }
+int CG_PregameState(void) { return pregame.state; }
+
 static qboolean RoundMode(int mode) {
     return mode==GT_CLAN_ARENA || mode==GT_FREEZE || mode==GT_ATTACK_DEFEND || mode==GT_RED_ROVER;
 }

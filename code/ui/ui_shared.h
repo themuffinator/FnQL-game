@@ -331,6 +331,7 @@ typedef struct {
   void (*addRefEntityToScene) (const refEntity_t *re );
   void (*renderScene) ( const refdef_t *fd );
   void (*setTextFont)(int font);
+  int (*setScreenPlacement)(int placement);	// cgame: retail per-item widescreen placement (DC+0xd8)
   void (*registerFont) (const char *pFontname, int pointSize, fontInfo_t *font);
   void (*ownerDrawItem) (float x, float y, float w, float h, float text_x, float text_y, int ownerDraw, int ownerDrawFlags, int align, float special, float scale, vec4_t color, qhandle_t shader, int textStyle);
 	float (*getValue) (int ownerDraw);

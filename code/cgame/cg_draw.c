@@ -188,7 +188,19 @@ CG_DrawHead
 Used for both the status bar and the scoreboard
 ================
 */
+static void CG_DrawHeadColored( float x, float y, float w, float h, int clientNum, vec3_t headAngles, const float *tint );
+
 void CG_DrawHead( float x, float y, float w, float h, int clientNum, vec3_t headAngles ) {
+	CG_DrawHeadColored( x, y, w, h, clientNum, headAngles, NULL );
+}
+
+/* The head with a given tint instead of the client's head colour (the
+ * retail attacker head, 0x10009490). */
+void CG_DrawHeadTinted( float x, float y, float w, float h, int clientNum, vec3_t headAngles, const vec3_t tint ) {
+	CG_DrawHeadColored( x, y, w, h, clientNum, headAngles, tint );
+}
+
+static void CG_DrawHeadColored( float x, float y, float w, float h, int clientNum, vec3_t headAngles, const float *tint ) {
 	clipHandle_t	cm;
 	clientInfo_t	*ci;
 	float			len;
@@ -217,7 +229,7 @@ void CG_DrawHead( float x, float y, float w, float h, int clientNum, vec3_t head
 		// allow per-model tweaking
 		VectorAdd( origin, ci->headOffset, origin );
 
-		CG_Draw3DModelColor( x, y, w, h, ci->headModel, ci->headSkin, origin, headAngles, ci->headColor );
+		CG_Draw3DModelColor( x, y, w, h, ci->headModel, ci->headSkin, origin, headAngles, tint ? (float *)tint : ci->headColor );
 	} else if ( cg_drawIcons.integer ) {
 		trap_R_SetColor ( NULL );
 		CG_DrawPic( x, y, w, h, ci->modelIcon );
@@ -607,51 +619,44 @@ CG_DrawAttacker
 
 ================
 */
+/* Retail 0x10009930 (upper-right block, right placement): for ten seconds
+ * after damage, while alive, the attacker (another client) as a 36-unit
+ * head at x 604 tinted by cg_enemyHeadColor, or cg_teamHeadColor for a
+ * teammate in team modes, and the name (font 1, 0.18, white) right-aligned
+ * to 630, 10 below the head. Returns 54 below the start. */
 static float CG_DrawAttacker( float y ) {
-	int			t;
-	float		size;
-	vec3_t		angles;
-	const char	*info;
+	static vec4_t white = { 1, 1, 1, 1 };
+	vec3_t		angles, tint;
 	const char	*name;
-	int			clientNum;
-	vec4_t		color;
+	int			clientNum, color, me, placement;
 
 	if ( cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 ) {
 		return y;
 	}
-
-	if ( !cg.attackerTime ) {
+	if ( !cg.damageTime || cg.time - cg.damageTime > 10000 ) {
 		return y;
 	}
-
 	clientNum = cg.predictedPlayerState.persistant[PERS_ATTACKER];
 	if ( clientNum < 0 || clientNum >= MAX_CLIENTS || clientNum == cg.snap->ps.clientNum ) {
 		return y;
 	}
+	me = cg.predictedPlayerState.clientNum;
+	color = ( cgs.gametype < GT_TEAM || me < 0 || me >= MAX_CLIENTS ||
+		cgs.clientinfo[me].team != cgs.clientinfo[clientNum].team ) ? cg_enemyHeadColor.integer : cg_teamHeadColor.integer;
+	tint[0] = ( ( color >> 24 ) & 0xff ) / 255.0f;
+	tint[1] = ( ( color >> 16 ) & 0xff ) / 255.0f;
+	tint[2] = ( ( color >> 8 ) & 0xff ) / 255.0f;
 
-	t = cg.time - cg.attackerTime;
-	if ( t > ATTACKER_HEAD_TIME ) {
-		cg.attackerTime = 0;
-		return y;
-	}
-
-	size = ICON_SIZE * 1.25;
-
-	angles[PITCH] = 0;
-	angles[YAW] = 180;
-	angles[ROLL] = 0;
-	CG_DrawHead( cgs.screenXmax + 1 - size, y, size, size, clientNum, angles );
-
-	info = CG_ConfigString( CS_PLAYERS + clientNum );
-	name = Info_ValueForKey(  info, "n" );
-	y += size;
-
-	VectorSet( color, 1, 1, 1 );
-	color[3] = 0.5f;
-
-	CG_DrawString( cgs.screenXmax - 4, y, name, color, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_PROPORTIONAL | DS_RIGHT );
-
-	return y + BIGCHAR_HEIGHT + 2;
+	placement = CG_SetScreenPlacement( CG_PLACE_RIGHT );
+	VectorSet( angles, 0, 180, 0 );
+	CG_DrawHeadTinted( 604, y, 36, 36, clientNum, angles, tint );
+	name = Info_ValueForKey( CG_ConfigString( CS_PLAYERS + clientNum ), "n" );
+	y += 36;
+	CG_SetTextFont( 1 );
+	CG_Text_Paint( 640 - ( 10 + CG_Text_WidthInFont( name, 1, 0.18f, 0 ) ), y + 10, 0.18f, white, name, 0, 0, 0 );
+	CG_SetTextFont( 0 );
+	CG_SetScreenPlacement( placement );
+	return y + 16 + 2;
 }
 
 
@@ -699,46 +704,6 @@ static float CG_DrawSnapshot( float y ) {
 }
 
 
-/*
-==================
-CG_DrawFPS
-==================
-*/
-#define	FPS_FRAMES	4
-static float CG_DrawFPS( float y ) {
-	const char	*s;
-	static int	previousTimes[FPS_FRAMES];
-	static int	index;
-	int		i, total;
-	int		fps;
-	static	int	previous;
-	int		t, frameTime;
-
-	// don't use serverTime, because that will be drifting to
-	// correct for internet lag changes, timescales, timedemos, etc
-	t = trap_Milliseconds();
-	frameTime = t - previous;
-	previous = t;
-
-	previousTimes[index % FPS_FRAMES] = frameTime;
-	index++;
-	if ( index > FPS_FRAMES ) {
-		// average multiple frames together to smooth changes out a bit
-		total = 0;
-		for ( i = 0 ; i < FPS_FRAMES ; i++ ) {
-			total += previousTimes[i];
-		}
-		if ( !total ) {
-			total = 1;
-		}
-		fps = 1000 * FPS_FRAMES / total;
-
-		s = va( "%ifps", fps );
-		CG_DrawString( cgs.screenXmax - 4, y + 2, s, colorWhite, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, 0, DS_SHADOW | DS_RIGHT | DS_PROPORTIONAL );
-	}
-
-	return y + BIGCHAR_HEIGHT + 4;
-}
 
 
 /*
@@ -765,172 +730,6 @@ static float CG_DrawTimer( float y ) {
 
 
 /*
-=================
-CG_DrawTeamOverlay
-=================
-*/
-static float CG_DrawTeamOverlay( float y, qboolean right, qboolean upper ) {
-	int x, w, h, xx;
-	int i, j, len;
-	const char *p;
-	vec4_t		hcolor;
-	int pwidth, lwidth;
-	int plyrs;
-	char st[16];
-	clientInfo_t *ci;
-	gitem_t	*item;
-	int ret_y, count;
-
-	if ( !cg_drawTeamOverlay.integer ) {
-		return y;
-	}
-
-	if ( cg.snap->ps.persistant[PERS_TEAM] != TEAM_RED && cg.snap->ps.persistant[PERS_TEAM] != TEAM_BLUE ) {
-		return y; // Not on any team
-	}
-
-	plyrs = 0;
-
-	// max player name width
-	pwidth = 0;
-	count = (numSortedTeamPlayers > 8) ? 8 : numSortedTeamPlayers;
-	for (i = 0; i < count; i++) {
-		ci = cgs.clientinfo + sortedTeamPlayers[i];
-		if ( ci->infoValid && ci->team == cg.snap->ps.persistant[PERS_TEAM]) {
-			plyrs++;
-			len = CG_DrawStrlen(ci->name);
-			if (len > pwidth)
-				pwidth = len;
-		}
-	}
-
-	if (!plyrs)
-		return y;
-
-	if (pwidth > TEAM_OVERLAY_MAXNAME_WIDTH)
-		pwidth = TEAM_OVERLAY_MAXNAME_WIDTH;
-
-	// max location name width
-	lwidth = 0;
-	for (i = 1; i < MAX_LOCATIONS; i++) {
-		p = CG_ConfigString(CS_LOCATIONS + i);
-		if (p && *p) {
-			len = CG_DrawStrlen(p);
-			if (len > lwidth)
-				lwidth = len;
-		}
-	}
-
-	if (lwidth > TEAM_OVERLAY_MAXLOCATION_WIDTH)
-		lwidth = TEAM_OVERLAY_MAXLOCATION_WIDTH;
-
-	w = (pwidth + lwidth + 4 + 7) * TINYCHAR_WIDTH;
-
-	if ( right )
-		x = cgs.screenXmax + 1 - w;
-	else
-		x = cgs.screenXmin;
-
-	h = plyrs * TINYCHAR_HEIGHT;
-
-	if ( upper ) {
-		ret_y = y + h;
-	} else {
-		y -= h;
-		ret_y = y;
-	}
-
-	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
-		hcolor[0] = 1.0f;
-		hcolor[1] = 0.0f;
-		hcolor[2] = 0.0f;
-		hcolor[3] = 0.33f;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
-		hcolor[0] = 0.0f;
-		hcolor[1] = 0.0f;
-		hcolor[2] = 1.0f;
-		hcolor[3] = 0.33f;
-	}
-	trap_R_SetColor( hcolor );
-	CG_DrawPic( x, y, w, h, cgs.media.teamStatusBar );
-	trap_R_SetColor( NULL );
-
-	for (i = 0; i < count; i++) {
-		ci = cgs.clientinfo + sortedTeamPlayers[i];
-		if ( ci->infoValid && ci->team == cg.snap->ps.persistant[PERS_TEAM]) {
-
-			hcolor[0] = hcolor[1] = hcolor[2] = hcolor[3] = 1.0;
-
-			xx = x + TINYCHAR_WIDTH;
-
-			CG_DrawString( xx, y, ci->name, hcolor, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, TEAM_OVERLAY_MAXNAME_WIDTH, DS_PROPORTIONAL );
-
-			if (lwidth) {
-				p = CG_ConfigString(CS_LOCATIONS + ci->location);
-				if (!p || !*p)
-					p = "unknown";
-				len = CG_DrawStrlen(p);
-				if (len > lwidth)
-					len = lwidth;
-
-//				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth + 
-//					((lwidth/2 - len/2) * TINYCHAR_WIDTH);
-				xx = x + TINYCHAR_WIDTH * 2 + TINYCHAR_WIDTH * pwidth;
-				CG_DrawString( xx, y, p, hcolor, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, TEAM_OVERLAY_MAXLOCATION_WIDTH, DS_PROPORTIONAL );
-			}
-
-			CG_GetColorForHealth( ci->health, ci->armor, hcolor );
-
-			Com_sprintf (st, sizeof(st), "%3i %3i", ci->health,	ci->armor);
-
-			xx = x + TINYCHAR_WIDTH * 3 + 
-				TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
-
-			CG_DrawString( xx, y, st, hcolor, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0, 0 );
-
-			// draw weapon icon
-			xx += TINYCHAR_WIDTH * 3;
-
-			if ( cg_weapons[ci->curWeapon].weaponIcon ) {
-				CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 
-					cg_weapons[ci->curWeapon].weaponIcon );
-			} else {
-				CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 
-					cgs.media.deferShader );
-			}
-
-			// Draw powerup icons
-			if (right) {
-				xx = x;
-			} else {
-				xx = x + w - TINYCHAR_WIDTH;
-			}
-			for (j = 0; j <= PW_NUM_POWERUPS; j++) {
-				if (ci->powerups & (1 << j)) {
-
-					item = BG_FindItemForPowerup( j );
-
-					if (item) {
-						CG_DrawPic( xx, y, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 
-						trap_R_RegisterShader( item->icon ) );
-						if (right) {
-							xx -= TINYCHAR_WIDTH;
-						} else {
-							xx += TINYCHAR_WIDTH;
-						}
-					}
-				}
-			}
-
-			y += TINYCHAR_HEIGHT;
-		}
-	}
-
-	return ret_y;
-}
-
-
-/*
 =====================
 CG_DrawUpperRight
 
@@ -939,26 +738,41 @@ CG_DrawUpperRight
 static void CG_DrawUpperRight(stereoFrame_t stereoFrame)
 {
 	float	y;
+	int		placement;
 
-	y = cgs.screenYmin;
+	// retail 0x1000a770, at the right placement (0x1001111a): the team
+	// overlay (mode 1) from y 0, the snapshot line, frame rate and attacker;
+	// retail has no timer or speed line here (cg_drawTimer and cg_drawSpeed
+	// are FnQL-game locals, off by default). The inherited lines below
+	// position themselves from cgs.screenXmax, so only the overlay takes the
+	// right placement.
+	y = 0;
 
 	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 1 ) {
+		placement = CG_SetScreenPlacement( CG_PLACE_RIGHT );
 		y = CG_DrawTeamOverlay( y, qtrue, qtrue );
-	} 
+		CG_SetScreenPlacement( placement );
+	}
 	if ( cg_drawSnapshot.integer ) {
 		y = CG_DrawSnapshot( y );
 	}
 	if (cg_drawFPS.integer && (stereoFrame == STEREO_CENTER || stereoFrame == STEREO_RIGHT)) {
-		y = CG_DrawFPS( y );
+		y = CG_DrawFrameRate( y );	// retail 0x10009c10
 	}
 	if ( cg_drawSpeed.integer ) {
 		y = CG_DrawSpeedMeter( y );
-	}	
+	}
 	if ( cg_drawTimer.integer ) {
 		y = CG_DrawTimer( y );
 	}
 	if ( cg_drawAttacker.integer ) {
 		y = CG_DrawAttacker( y );
+	}
+	// retail 0x10011133: mode 2 sits above y 408, still at the right placement
+	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 2 ) {
+		placement = CG_SetScreenPlacement( CG_PLACE_RIGHT );
+		CG_DrawTeamOverlay( 408, qtrue, qfalse );
+		CG_SetScreenPlacement( placement );
 	}
 }
 
@@ -1256,9 +1070,6 @@ static void CG_DrawLowerRight( void ) {
 
 	y = cgs.screenYmax + 1 - STATUSBAR_HEIGHT;
 
-	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 2 ) {
-		y = CG_DrawTeamOverlay( y, qtrue, qfalse );
-	} 
 
 	y = CG_DrawScores( y );
 	y = CG_DrawPowerups( y );
@@ -1321,9 +1132,6 @@ static void CG_DrawLowerLeft( void ) {
 
 	y = cgs.screenYmax + 1 - STATUSBAR_HEIGHT;
 
-	if ( cgs.gametype >= GT_TEAM && cg_drawTeamOverlay.integer == 3 ) {
-		y = CG_DrawTeamOverlay( y, qfalse, qfalse );
-	} 
 
 	y = CG_DrawPickupItem( y );
 }
@@ -1441,75 +1249,6 @@ static void CG_DrawPersistantPowerup( void ) {
 #endif // MISSIONPACK
 
 
-/*
-===================
-CG_DrawReward
-===================
-*/
-static void CG_DrawReward( void ) { 
-	float	*color;
-	int		i, count;
-	float	x, y;
-	char	buf[32];
-
-	if ( !cg_drawRewards.integer ) {
-		return;
-	}
-
-	color = CG_FadeColor( cg.rewardTime, REWARD_TIME );
-	if ( !color ) {
-		if (cg.rewardStack > 0) {
-			for(i = 0; i < cg.rewardStack; i++) {
-				cg.rewardSound[i] = cg.rewardSound[i+1];
-				cg.rewardShader[i] = cg.rewardShader[i+1];
-				cg.rewardCount[i] = cg.rewardCount[i+1];
-			}
-			cg.rewardTime = cg.time;
-			cg.rewardStack--;
-			color = CG_FadeColor( cg.rewardTime, REWARD_TIME );
-			trap_S_StartLocalSound(cg.rewardSound[0], CHAN_ANNOUNCER);
-		} else {
-			return;
-		}
-	}
-
-	trap_R_SetColor( color );
-
-	/*
-	count = cg.rewardCount[0]/10;				// number of big rewards to draw
-
-	if (count) {
-		y = 4;
-		x = 320 - count * ICON_SIZE;
-		for ( i = 0 ; i < count ; i++ ) {
-			CG_DrawPic( x, y, (ICON_SIZE*2)-4, (ICON_SIZE*2)-4, cg.rewardShader[0] );
-			x += (ICON_SIZE*2);
-		}
-	}
-
-	count = cg.rewardCount[0] - count*10;		// number of small rewards to draw
-	*/
-
-	if ( cg.rewardCount[0] >= 10 ) {
-		y = 56; // FIXME: cgs.screenYmin + 56?
-		x = 320 - ICON_SIZE/2;
-		CG_DrawPic( x, y, ICON_SIZE-4, ICON_SIZE-4, cg.rewardShader[0] );
-		Com_sprintf( buf, sizeof( buf ), "%d", cg.rewardCount[0] );
-		CG_DrawString( 320, y + ICON_SIZE, buf, color, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0, DS_SHADOW | DS_CENTER );
-	}
-	else {
-
-		count = cg.rewardCount[0];
-
-		y = 56; // FIXME: cgs.screenYmin + 56?
-		x = 320 - count * ICON_SIZE/2;
-		for ( i = 0 ; i < count ; i++ ) {
-			CG_DrawPic( x, y, ICON_SIZE-4, ICON_SIZE-4, cg.rewardShader[0] );
-			x += ICON_SIZE;
-		}
-	}
-	trap_R_SetColor( NULL );
-}
 
 
 /*
@@ -1977,24 +1716,17 @@ static qboolean CG_DrawScoreboard( void ) {
 		return qfalse;
 	}
 
-	// don't draw scoreboard during death while warmup up
-	if ( cg.warmup && !cg.showScores ) {
-		return qfalse;
-	}
-
+	// Retail 0x1000dfd0: the scoreboard shows while held, while dead (in
+	// warmup too) and at intermission, with no fade after it is released.
 	if ( cg.showScores || cg.predictedPlayerState.pm_type == PM_DEAD || cg.predictedPlayerState.pm_type == PM_INTERMISSION ) {
 		fade = 1.0;
 		fadeColor = colorWhite;
 	} else {
-		fadeColor = CG_FadeColor( cg.scoreFadeTime, FADE_TIME );
-		if ( !fadeColor ) {
-			// next time scoreboard comes up, don't print killer
-			cg.deferredPlayerLoading = 0;
-			cg.killerName[0] = 0;
-			firstTime = qtrue;
-			return qfalse;
-		}
-		fade = *fadeColor;
+		// next time scoreboard comes up, don't print killer
+		cg.deferredPlayerLoading = 0;
+		cg.killerName[0] = 0;
+		firstTime = qtrue;
+		return qfalse;
 	}																					  
 
 
@@ -2135,7 +1867,28 @@ static void CG_Draw2D( stereoFrame_t stereoFrame )
 		return;
 	}
 
-	if ( cg_draw2D.integer == 0 ) {
+	// Retail 0x10010d90: the engine drops mouse input while
+	// cg_ignoreMouseInput is set; during a timeout it follows the inverse of
+	// cl_paused, otherwise it is cleared. (Retail's g_training branch is not
+	// hosted.)
+	if ( atoi( CG_ConfigString( CS_TIMEOUT_START_TIME ) ) ) {
+		if ( cg_ignoreMouseInput.integer == cg_paused.integer ) {
+			trap_Cvar_Set( "cg_ignoreMouseInput", va( "%d", !cg_paused.integer ) );
+		}
+	} else if ( cg_ignoreMouseInput.integer ) {
+		trap_Cvar_Set( "cg_ignoreMouseInput", "0" );
+	}
+
+	// retail: with the 2D view off or the client paused, only the forced
+	// crosshair with its names remains (centre placement; retail's snapshot
+	// line for cg_drawSnapshot 2 is not drawn here)
+	if ( cg_draw2D.integer == 0 || cg_paused.integer == 1 ) {
+		if ( cg_forceDrawCrosshair.integer ) {
+			int placement = CG_SetScreenPlacement( CG_PLACE_CENTER );
+			CG_DrawCrosshair();
+			CG_DrawCrosshairNames();
+			CG_SetScreenPlacement( placement );
+		}
 		return;
 	}
 
@@ -2164,7 +1917,11 @@ static void CG_Draw2D( stereoFrame_t stereoFrame )
 			CG_DrawCrosshair();
 			CG_DrawCrosshairNames();
 			CG_DrawWeaponSelect();
-			CG_DrawReward();
+			{	// retail 0x1000ac30 at the centre placement
+				int placement = CG_SetScreenPlacement( CG_PLACE_CENTER );
+				CG_DrawRewards();
+				CG_SetScreenPlacement( placement );
+			}
 		}
 		CG_SetScreenPlacement( CG_PLACE_LEFT );	// retail 0x100110af..0x100110ba
 		CG_DrawItemTimers();
@@ -2197,7 +1954,11 @@ static void CG_Draw2D( stereoFrame_t stereoFrame )
 #else
 			//CG_DrawPersistantPowerup();
 #endif
-			CG_DrawReward();
+			{	// retail 0x1000ac30 at the centre placement
+				int placement = CG_SetScreenPlacement( CG_PLACE_CENTER );
+				CG_DrawRewards();
+				CG_SetScreenPlacement( placement );
+			}
 		}
     
 		if ( cgs.gametype >= GT_TEAM ) {
@@ -2216,11 +1977,25 @@ static void CG_Draw2D( stereoFrame_t stereoFrame )
 	if ( !cg.demoPlayback ) {
 		CG_DrawDisconnect();
 	}
-	CG_DrawDemoHud();	// retail 0x10011418
+	// retail 0x100110f7 / 0x10011102: input commands (centre placement)
+	// and the speedometer
+	{
+		int placement = CG_SetScreenPlacement( CG_PLACE_CENTER );
+		CG_DrawInputCommands();
+		CG_SetScreenPlacement( placement );
+	}
+	CG_DrawSpeedometer();
 
 #ifdef MISSIONPACK
 	if (!cg_paused.integer) {
 		CG_DrawUpperRight(stereoFrame);
+		// retail 0x1000abf0 at the left placement: the item pickup line
+		// above y 408
+		{
+			int placement = CG_SetScreenPlacement( CG_PLACE_LEFT );
+			CG_DrawItemPickups( 408 );
+			CG_SetScreenPlacement( placement );
+		}
 	}
 #else
 	CG_DrawUpperRight(stereoFrame);
@@ -2231,23 +2006,34 @@ static void CG_Draw2D( stereoFrame_t stereoFrame )
 	CG_DrawLowerLeft();
 #endif
 
-	if ( !CG_DrawFollow() ) {
-		CG_DrawPregame();
-	}
-
 	CG_DrawMatchPause();
 	CG_AdvanceMatchClocks();
 
 	// don't draw center string if scoreboard is up
+	// retail 0x10011186..0x100111c9: without a scoreboard, the centre print
+	// (0x1000beb0, held back until the initial scoreboard is released).
+	// Retail also shows no warmup lines under a scoreboard (a dead player in
+	// warmup sees the scoreboard and no countdown); where retail draws them
+	// is not identified, so placing them here is an inference.
 	cg.scoreBoardShowing = CG_DrawScoreboard();
 	if ( !cg.scoreBoardShowing ) {
-		CG_DrawCenterString();
+		if ( !CG_DrawFollow() ) {
+			CG_DrawPregame();
+		}
+		if ( !cg.initialScoreboard ) {
+			CG_DrawCenterString();
+		}
 	}
+	CG_DrawVoiceIndicator();	// retail 0x10010d90, after the centre print
 	if (CG_AccuracyOverlayVisible()) {
 		menuDef_t *stats = Menus_FindByName("stats_menu");
 		CG_SetAccuracyOverlay(qtrue);
 		if (stats) Menu_Paint(stats,qtrue);
 	}
+
+	// retail 0x10011418: the demo controls are the last 2D element, over
+	// the scoreboard and the chat it shows
+	CG_DrawDemoHud();
 
 	// Retail cgame registers menu/art/3_cursor2 (0x10024ce1) but never
 	// draws it: the engine shows the system pointer while the cgame key
@@ -2422,8 +2208,29 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 	// clear around the rendered view if sized down
 	CG_TileClear();
 
-	// draw 3D view
-	trap_R_RenderScene( &cg.refdef );
+	// draw 3D view; retail 0x10011490 offsets each stereo eye by half of
+	// cg_stereoSeparation along the view's left axis for the scene only
+	{
+		float separation = 0;
+		vec3_t baseOrg;
+		if ( stereoView == STEREO_LEFT ) {
+			separation = -cg_stereoSeparation.value * 0.5f;
+		} else if ( stereoView == STEREO_RIGHT ) {
+			separation = cg_stereoSeparation.value * 0.5f;
+		}
+		VectorCopy( cg.refdef.vieworg, baseOrg );
+		if ( separation != 0 ) {
+			VectorMA( cg.refdef.vieworg, -separation, cg.refdef.viewaxis[1], cg.refdef.vieworg );
+		}
+		trap_R_RenderScene( &cg.refdef );
+		VectorCopy( baseOrg, cg.refdef.vieworg );
+	}
+
+	// retail 0x10011666: the vignette, unless the web UI is up or the view
+	// is third person
+	if ( !cg.renderingThirdPerson && trap_Cvar_VariableValue( "web_browserActive" ) == 0 ) {
+		CG_DrawVignette();
+	}
 
 	// draw status bar and other floating elements
  	CG_Draw2D( stereoView );

@@ -58,6 +58,10 @@ void trap_Cvar_VariableStringBuffer(const char *var_name, char *buffer, int bufs
 	cgi->trap_Cvar_VariableStringBuffer(var_name, buffer, bufsize );
 }
 
+float trap_Cvar_VariableValue(const char *var_name) {
+	return cgi->trap_Cvar_VariableValue(var_name);
+}
+
 int trap_Argc(void) {
 	return cgi->trap_Argc();
 }

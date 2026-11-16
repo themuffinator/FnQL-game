@@ -573,7 +573,7 @@ typedef struct {
 	qhandle_t shader;
 } cgPointOfInterest_t;
 typedef struct {
-	qhandle_t quadHog, infected, neutralFlag, harvesterCapture, flagCapture;
+	qhandle_t quadHog, infected, neutralFlag, harvesterCapture, flagCapture, flagAttack, flagDefend;
 } cgPoiMedia_t;
 void CG_RegisterPoiMedia(void);
 void CG_RegisterFlagStatusIcons(void);
@@ -593,6 +593,9 @@ const gitem_t *CG_PowerupItem(int powerup);
 typedef struct { vec3_t origin; vec4_t color; float worldWidth, minimum; qhandle_t shader; } cgTeammateMarker_t;
 void CG_AddTeammateMarker(const vec3_t origin, const vec4_t color, qhandle_t shader);
 void CG_RecordObjectiveBase(int team, const vec3_t origin);
+void CG_ItemObjectiveMarkers(const centity_t *cent, const gitem_t *item);
+int CG_PregameTurn(void);
+int CG_PregameState(void);
 void CG_ObjectiveMarkers(const centity_t *cent);
 typedef struct { qboolean active; int startedAt; float lifetime, worldWidth, minimum; vec3_t origin; } cgDeadFriend_t;
 void CG_DeadTeammateMarker(const entityState_t *obituary);
@@ -685,7 +688,7 @@ typedef struct {
 
 	int			timelimitWarnings;	// 5 min, 1 min, overtime
 	int			fraglimitWarnings;
-	int			teamJoinTime;	// last spectator-to-team transition (retail 0x10a9c9b0)
+	int			scoreboardReleaseTime;	// initial scoreboard release or team command (retail 0x10a9c9b0)
 
 	qboolean	mapRestart;			// set on a map restart to set back the weapon
 
@@ -826,6 +829,7 @@ typedef struct {
 
 	int			itemPickup;
 	int			itemPickupCount;
+	int			itemPickupShown;	// item the pickup line last drew (retail 0x10ab8f74)
 	int			itemPickupTime;
 	int			itemPickupBlendTime;	// the pulse around the crosshair is timed seperately
 
@@ -836,6 +840,7 @@ typedef struct {
 	// blend blobs
 	int			damageTime;
 	float		damageX, damageY, damageValue;
+	int			damageColor;	// 0xRRGGBBAA of the damage flash (retail 0x10ab8fac)
 
 	// status bar head
 	float		headYaw;
@@ -989,9 +994,12 @@ typedef struct {
 
 	qhandle_t	selectShader;
 	qhandle_t	viewBloodShader;
+	qhandle_t	viewDamageBlend;	// retail 0x100230ec
 	qhandle_t	tracerShader;
 	qhandle_t	crosshairShader[CG_NUM_CROSSHAIRS];
 	qhandle_t	lagometerShader;
+	qhandle_t	inputCmdShaders[4];	// gfx/2d/race/cmd_{up,down,right,left} (retail 0x1000b610)
+	qhandle_t	vignetteShader;	// gfx/misc/vignette (retail 0x1002320b)
 	qhandle_t	backTileShader;
 	qhandle_t	noammoShader;
 
@@ -1507,6 +1515,28 @@ void CG_SelectFont( int index );
 //
 extern	int sortedTeamPlayers[TEAM_MAXOVERLAY];
 extern	int	numSortedTeamPlayers;
+
+// cg_hudlines.c
+int CG_ItemPickupSeconds(int pickupTime);
+int CG_DrawItemPickups(int y);
+void CG_DrawRewards(void);
+void CG_DrawInputCommands(void);
+void CG_SampleSpeed(float speed);
+float CG_CurrentSpeedSample(void);
+void CG_DrawSpeedometer(void);
+void CG_DrawSpeedometerOwnerDraw(float x, float y, int align, float scale, vec4_t color, int style);
+void CG_DrawVoiceIndicator(void);
+float CG_DrawFrameRate(float y);
+void CG_DrawVignette(void);
+
+// cg_weaponcolor.c
+qboolean CG_WeaponColorTeammate(int myTeam, int otherTeam);
+void CG_GrenadeColor(const entityState_t *es, byte rgba[4]);
+qboolean CG_ForcedRailColor(const clientInfo_t *ci, float rgb[3], byte bytes[3]);
+
+// cg_teamoverlay.c
+void CG_TeamOverlayName(const char *raw, char *out, int size);
+float CG_DrawTeamOverlay(float y, qboolean right, qboolean upper);
 extern	int drawTeamOverlayModificationCount;
 extern  char systemChat[256];
 extern  char teamChat1[256];
@@ -1516,6 +1546,7 @@ void CG_AddLagometerFrameInfo( void );
 void CG_AddLagometerSnapshotInfo( snapshot_t *snap );
 void CG_CenterPrint( const char *str, int y, int charWidth );
 void CG_DrawHead( float x, float y, float w, float h, int clientNum, vec3_t headAngles );
+void CG_DrawHeadTinted( float x, float y, float w, float h, int clientNum, vec3_t headAngles, const vec3_t tint );
 void CG_DrawActive( stereoFrame_t stereoView );
 void CG_DrawFlagModel( float x, float y, float w, float h, int team, qboolean force2D );
 void CG_DrawTeamBackground( int x, int y, int w, int h, float alpha, int team );
@@ -1846,6 +1877,7 @@ void trap_Cvar_RegisterRange(vmCvar_t *vmCvar, const char *name, const char *val
 void		trap_Cvar_Update( vmCvar_t *vmCvar );
 void		trap_Cvar_Set( const char *var_name, const char *value );
 void		trap_Cvar_VariableStringBuffer( const char *var_name, char *buffer, int bufsize );
+float		trap_Cvar_VariableValue( const char *var_name );	// retail import 10
 
 // ServerCommand and ConsoleCommand parameter access
 int			trap_Argc( void );

@@ -32,7 +32,8 @@ or (at your option) any later version.
  *   falling 40. Retail sets the rotation and own-client third-person flag
  *   on a separate, empty local entity it allocates first, so the visible
  *   puff has neither; FnQL-game draws the same puff without that entity.
- * viewBloodBlend is registered but unused, as in retail. */
+ * viewBloodBlend is the damage flash's shader while the DLC is installed
+ * (retail 0x1004da79; CG_DamageBlendBlob). */
 
 #include "cg_local.h"
 

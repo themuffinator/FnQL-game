@@ -142,7 +142,9 @@ int main(void) {
     CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,7,&icon),"42"));
     CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,9,&icon),"1.8k"));
     CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,11,&icon),"17%"));
-    CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,13,&icon),"39"));
+    /* Time and ping are padded to four places ("%4i", retail 0x10026527). */
+    CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,13,&icon),"  39"));
+    CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,12,&icon),"   3"));
     /* Column 1: muted icon, else speaking icon (retail feeders, case 1). */
     cgs.media.speakingIcon = 71; cgs.media.mutedIcon = 72;
     CHECK(!strcmp(CG_ScoreCell(FEEDER_SCOREBOARD,0,1,&icon),"") && icon == -1);

@@ -270,10 +270,10 @@ static void TimeWarnings(void) {
     cg.timelimitWarnings=0; Config(CS_SERVERINFO,"\\timelimit\\10\\roundtimelimit\\0\\g_overtime\\120");
     Warn(1000+602001,NULL); CHECK(cg.timelimitWarnings==7);
     /* Moments before the local player joined stay silent; later ones play. */
-    cg.timelimitWarnings=0; cg.teamJoinTime=1000+450000;
+    cg.timelimitWarnings=0; cg.scoreboardReleaseTime=1000+450000;
     Warn(1000+450000,NULL); CHECK(cg.timelimitWarnings==0);
     Warn(1000+540001,"1_minute");
-    cg.teamJoinTime=0;
+    cg.scoreboardReleaseTime=0;
     /* No five-minute warning at five minutes or less; none in warmup,
      * timeouts or without a limit. */
     cg.timelimitWarnings=0; Config(CS_SERVERINFO,"\\timelimit\\5\\roundtimelimit\\0\\g_overtime\\0");

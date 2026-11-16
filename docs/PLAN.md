@@ -56,6 +56,7 @@ exists.
 | G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command and engine query answer (FnQL `sv_lockstepQueries`) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
 | G4a Retail prediction | `scripts/prediction_probe.py`: the retail cgame predicts FnQL-game's server-side movement on a stock map with no prediction error at all, VQL and PQL | M3 |
 | G4 Prediction | FnQL-game cgame predicts retail and FnQL-game servers with zero prediction errors over recorded demo and live corpora | M7 |
+| G4v cgame visual parity | `scripts/cgame_parity_probe.py` (suite `cgame-parity`): a recorded bot match replayed under `timedemo` through the retail cgame and FnQL-game's gives matching captures, gameplay and scoreboard, per mode and screen shape | M7 |
 | G5a Retail cgame probe | `scripts/listen_probe.py`: the retail cgame joins an FnQL-game listen server, reaches CS_ACTIVE, no errors | M2 |
 | G5b Retail client join | `scripts/retail_client_probe.py` (opt-in suite `retail-client`): the user's retail `quakelive_steam.exe`, launched windowed through Steam, joins an FnQL dedicated server running FnQL-game (pure) and stays in the game | M3 |
 | G5 Interop matrix | Retail client ↔ FnQL server, and FnQL client ↔ retail server, both pure and unpure, scripted where possible and manual (Steam) otherwise | M5, M10 |
@@ -1446,12 +1447,21 @@ client ↔ retail server direction, remain M10's G5 matrix.
 
 Exit: G3 per mode; G5 per mode.
 
-### M7 — cgame
+### M7 — cgame (exit gates pass)
 
-Native hosting bring-up is implemented; M7 remains open. The x86 DLL builds,
-passes its adapter gate, and reaches active Campgrounds/FFA play with both
-qagame providers. See [CGAME.md](CGAME.md) for evidence and outstanding work.
-Capability bits remain zero; hosting does not establish G4 or visual parity.
+Both exit gates pass (2026-11-16). G4: `cgame-prediction` predicts the retail
+and FnQL-game servers with zero misses (campgrounds and bloodrun, VQL and
+PQL). Visual parity: `cgame-parity` replays a recorded bot match frame-locked
+through the retail cgame and FnQL-game's and compares twelve gameplay frames
+and the scoreboard pixel by pixel, in FFA, TDM, CA and CTF at 960x600 and FFA
+at 1024x768 (retail against itself is pixel-identical; TDM and CA now are
+too). The gate found the demo clock origin, the demo HUD's draw order, the
+missing scoreboard fill ownerdraw, retail's float-rounded widescreen bias,
+the Quake III team overlay, the death scoreboard in warmup, the killer and
+attacker presentation and the padded time/ping columns; see
+[CGAME.md](CGAME.md). Most registered-but-unread cvars now follow retail;
+CGAME.md lists the few still open (local rail prediction, world item timers,
+item POIs). Capability bits remain zero until M10's negotiation.
 
 The retail score command family now has bounded parsers and main per-mode
 player rows. FFA/TDM scoreboards pass with both qagame providers and repeated
@@ -1707,6 +1717,56 @@ Enabled targets:
 The baseline licensing question in [`LICENSING.md`](LICENSING.md) is still
 open. Until it is settled, releases distribute the modules under both
 licenses as that document describes.
+
+### M13 — Server extensions and spectator tooling
+
+This is the game side of FnQL's dedicated-server replacement plan
+(FnQL `docs/fnql/DEDICATED_SERVER_REPLACEMENT.md`, milestones D5 and V0 to
+V5). FnQL owns the extension ABI, MVD recording and the relay; this
+repository supplies what only the game knows. It follows M10's capability
+negotiation.
+
+**Retail profile first.** Everything here is default-off and announced by a
+new `FnQL_GetModuleInfo` capability bit. With it off,
+`FNQL_MODULE_CAP_RETAIL_WIRE` holds and G3 shows zero divergence.
+
+- **Server extension interface (D5).**
+  - Found through the compatibility slab like the stats imports, and mirrored
+    in `scripts/check_engine_abi.py`.
+  - Typed events: spawn, kill and death with means of death, rounds and
+    countdowns, votes, team-switch attempts, kamikaze and medals.
+  - Calls:
+    - inventory, health and armor
+    - position and velocity
+    - noclip, flight and invulnerability
+    - spawning a player
+    - killing with a means of death
+    - item spawn, replace and remove
+    - respawn overrides
+    - privileges
+    - server-called and forced votes
+
+  Each call runs through the same code paths that the retail-equivalent
+  commands use.
+- **Game-native helpers (D5).** Team balance from ratings the engine supplies,
+  and spectator queues and rotation. Team moves use retail's wire grammar.
+- **Spectator evidence (V0, V4).** From the retail qagame, document the
+  `playerState_t` a follower and a free spectator receive, and the score
+  replies, so FnQL's relay can produce exactly what the retail cgame expects.
+- **Event index evidence (V1).** Export the obituary, medal, flag and round
+  event numbering from the G2 wire manifest in a form FnQL's demo indexer
+  reads.
+- **cgame multiview (V5).** Optional picture-in-picture POVs. They run in
+  local MVD playback or on relays that negotiated them, never toward retail
+  peers, and the retail demo HUD is unchanged.
+
+Exit:
+
+- G3 at zero divergence with everything off.
+- Lockstep scenarios for every event and call, against retail behavior where
+  a retail command does the same thing, otherwise against a self-check.
+- G0 passes.
+- The module still runs as a drop-in in the retail engine.
 
 ## Working conventions
 

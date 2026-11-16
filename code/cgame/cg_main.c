@@ -134,6 +134,9 @@ void CG_RegisterCvars( void ) {
 		}
 	}
 
+	// retail 0x10020c93: no vote is open when the cgame starts
+	trap_Cvar_Set( "ui_voteactive", "0" );
+
 	// see if we are also running the server on this machine
 	trap_Cvar_VariableStringBuffer( "sv_running", var, sizeof( var ) );
 	cgs.localServer = atoi( var );
@@ -573,6 +576,7 @@ static void CG_RegisterGraphics( void ) {
 	cgs.media.botSkillShaders[4] = trap_R_RegisterShader( "menu/art/skill5.tga" );
 
 	cgs.media.viewBloodShader = trap_R_RegisterShader( "viewBloodBlend" );
+	cgs.media.viewDamageBlend = trap_R_RegisterShader( "viewDamageBlend" );
 
 	cgs.media.deferShader = trap_R_RegisterShaderNoMip( "gfx/2d/defer.tga" );
 
@@ -593,6 +597,12 @@ static void CG_RegisterGraphics( void ) {
 #endif
 	cgs.media.plasmaBallShader = trap_R_RegisterShader( "sprites/plasma1" );
 	cgs.media.lagometerShader = trap_R_RegisterShader("lagometer" );
+	// retail 0x1000b610 / 0x1002320b
+	cgs.media.inputCmdShaders[0] = trap_R_RegisterShaderNoMip( "gfx/2d/race/cmd_up" );
+	cgs.media.inputCmdShaders[1] = trap_R_RegisterShaderNoMip( "gfx/2d/race/cmd_down" );
+	cgs.media.inputCmdShaders[2] = trap_R_RegisterShaderNoMip( "gfx/2d/race/cmd_right" );
+	cgs.media.inputCmdShaders[3] = trap_R_RegisterShaderNoMip( "gfx/2d/race/cmd_left" );
+	cgs.media.vignetteShader = trap_R_RegisterShader( "gfx/misc/vignette" );
 	cgs.media.connectionShader = trap_R_RegisterShader( "disconnected" );
 
 	cgs.media.waterBubbleShader = trap_R_RegisterShader( "waterBubble" );
@@ -1517,6 +1527,7 @@ void CG_LoadHudMenu( void ) {
 	cgDC.renderScene = &trap_R_RenderScene;
 	cgDC.registerFont = &trap_R_RegisterFont;
 	cgDC.setTextFont = CG_SetTextFont;
+	cgDC.setScreenPlacement = CG_SetScreenPlacement;	// WIDESCREEN_* equal CG_PLACE_* values
 	cgDC.ownerDrawItem = &CG_OwnerDraw;
 	cgDC.getValue = &CG_GetValue;
 	cgDC.ownerDrawVisible = &CG_OwnerDrawVisible;
@@ -1697,7 +1708,12 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	if ( cgs.glconfig.vidWidth * 480 > cgs.glconfig.vidHeight * 640 ) {
 		// wide screen, scale by height
 		cgs.screenXScale = cgs.screenYScale = cgs.glconfig.vidHeight * (1.0/480.0);
-		cgs.screenXBias = 0.5 * ( cgs.glconfig.vidWidth - ( cgs.glconfig.vidHeight * (640.0/480.0) ) );
+		// Retail 0x10029ae1 multiplies by 4/3 rounded to a float (an x87
+		// double product stored as a float), so the bias falls just under a
+		// whole pixel (79.9999847 at 960x600) and truncated text lands one
+		// pixel left of an exact bias.
+		cgs.screenXBias = (float)( 0.5 * ( (double)cgs.glconfig.vidWidth -
+			(double)cgs.glconfig.vidHeight * (double)( 4.0f / 3.0f ) ) );
 	}
 	else {
 		// no wide screen, scale by width

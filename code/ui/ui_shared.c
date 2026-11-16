@@ -692,15 +692,6 @@ void Item_SetScreenCoords(itemDef_t *item, float x, float y) {
   if (item == NULL) {
     return;
   }
-#ifdef CGAME
-  if (item->widescreenSet && item->parent && DC->xscale > 0) {
-    menuDef_t *menu = item->parent;
-    int parentSide = menu->widescreen == WIDESCREEN_LEFT ? -1 : menu->widescreen == WIDESCREEN_RIGHT ? 1 : 0;
-    int itemSide = item->widescreen == WIDESCREEN_LEFT ? -1 : item->widescreen == WIDESCREEN_RIGHT ? 1 : 0;
-    x += (itemSide - parentSide) * DC->bias / DC->xscale;
-  }
-#endif
-
   if (item->window.border != 0) {
     x += item->window.borderSize;
     y += item->window.borderSize;
@@ -770,15 +761,6 @@ void Menu_PostParse(menuDef_t *menu) {
 		menu->window.rect.w = 640;
 		menu->window.rect.h = 480;
 	}
-#ifdef CGAME
-    /* cgame's ordinary 640-wide canvas is centered. Anchor the authored
-     * menu at the physical left/right edge without stretching its contents. */
-    if (DC->xscale > 0) {
-        float offset = DC->bias / DC->xscale;
-        if (menu->widescreen == WIDESCREEN_LEFT) menu->window.rect.x -= offset;
-        if (menu->widescreen == WIDESCREEN_RIGHT) menu->window.rect.x += offset;
-    }
-#endif
 	Menu_UpdatePosition(menu);
 }
 
@@ -4070,7 +4052,26 @@ void Item_OwnerDraw_Paint(itemDef_t *item) {
 }
 
 
+static void Item_PaintItem(itemDef_t *item);
+
+/* Retail cgame Item_Paint (0x100603ec, 0x1006052c) anchors an item by
+ * switching the screen placement to the item's widescreen mode, or its
+ * menu's, through DC+0xd8; the rects themselves never move. */
 void Item_Paint(itemDef_t *item) {
+#ifdef CGAME
+  if (item && DC->setScreenPlacement) {
+    const menuDef_t *menu = (const menuDef_t *)item->parent;
+    const int mode = item->widescreenSet ? item->widescreen : menu ? menu->widescreen : WIDESCREEN_STRETCH;
+    const int previous = DC->setScreenPlacement(mode);
+    Item_PaintItem(item);
+    DC->setScreenPlacement(previous);
+    return;
+  }
+#endif
+  Item_PaintItem(item);
+}
+
+static void Item_PaintItem(itemDef_t *item) {
   vec4_t red;
   menuDef_t *parent = (menuDef_t*)item->parent;
   red[0] = red[3] = 1;
@@ -4495,6 +4496,13 @@ void Menu_Paint(menuDef_t *menu, qboolean forcePaint) {
 	}
 
 	// paint the background and or border
+#ifdef CGAME
+	if (DC->setScreenPlacement) {
+		const int previous = DC->setScreenPlacement(menu->widescreen);
+		Window_Paint(&menu->window, menu->fadeAmount, menu->fadeClamp, menu->fadeCycle );
+		DC->setScreenPlacement(previous);
+	} else
+#endif
 	Window_Paint(&menu->window, menu->fadeAmount, menu->fadeClamp, menu->fadeCycle );
 
 	for (i = 0; i < menu->itemCount; i++) {

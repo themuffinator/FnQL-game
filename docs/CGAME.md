@@ -1,9 +1,93 @@
 # Native cgame bring-up
 
 The x86 `fnql_cgamex86.dll` builds and runs through active play in FnQL with
-retail or FnQL-game qagame. This establishes hosting, not M7 completion.
-Prediction, events, scoreboards and visual parity remain unfinished. The
-module advertises capability bits **zero**.
+retail or FnQL-game qagame. Milestone 7's exit gates pass (2026-11-16): live
+prediction (suite `cgame-prediction`, both server providers, VQL and PQL) and
+frame-locked visual parity against the retail cgame (suite `cgame-parity`,
+below). The module still advertises capability bits **zero**; claiming
+`FNQL_MODULE_CAP_RETAIL_WIRE` is milestone 10's negotiation work.
+
+## Visual parity gate (2026-11-16)
+
+`scripts/cgame_parity_probe.py` (suite `cgame-parity`) records a 30-second
+bot match with the retail qagame, then plays the demo back twice under
+`timedemo 1`, once with the retail `cgamex86.dll` from the install's
+`bin.pk3` and once with FnQL-game's. Timedemo advances the client one
+50 ms step per frame, so both modules draw the same snapshot at the same
+`cg.time`. Twelve gameplay frames and one held-scoreboard frame are compared
+pixel by pixel (a pixel differs above 16 levels). Retail against retail
+(`--self-check`) gives zero differing pixels: even randomized effects match,
+because both playbacks are deterministic. The only mask is the scoreboard's
+`CG_LOCALTIME` text (wall clock), placed from the installed menu. The gate
+runs FFA, TDM, CA and CTF (spidercrossings) at 960x600 and FFA at 1024x768.
+The tolerance (0.2% of a frame) exists for effects the two modules randomize
+with their own generators; TDM and CA are pixel-exact.
+
+Differences the gate found and fixed, each from retail evidence:
+
+- Demo clock origin: retail counts from the initial scoreboard's release or
+  the last `team` command (0x10a9c9b0, set by 0x1000e880); a later `-scores`
+  (0x1000e930) does not restart it. The same time is the time-limit warning
+  guard (0x100439d6), which FnQL-game approximated with a team-join time.
+- Demo controls draw last in the 2D frame (0x10011418), over the scoreboard
+  and its chat.
+- `CG_SELECTED_PLYR_TEAM_COLOR` (92, 0x1002f860), the scoreboard's stats-row
+  fill, was missing.
+- Widescreen bias: retail multiplies by 4/3 rounded to a float (0x10029ae1),
+  so at 960x600 the bias is 79.9999847 and truncated text lands one pixel
+  left of an exact bias (every whole-pixel menu text).
+- Team overlay (`cg_drawTeamOverlay`, 0x10009da0): `cg_teamoverlay.c`
+  replaces Quake III's two-row overlay; see the file header.
+- The scoreboard shows while dead in warmup too and does not fade out
+  (0x1000dfd0); the warmup lines stay hidden under it.
+- `CG_KILLER` (63, 0x10032110): "Fragged by %s" aligned by the item, with
+  the weapon icon; the attacker head (0x10009930) is 36 units at x 604,
+  tinted by `cg_enemyHeadColor`/`cg_teamHeadColor`, named in font 1.
+- FFA time and ping columns pad to four places (`%4i`, 0x10026527).
+
+## Cvar readers (2026-11-16)
+
+Of the cvars the cgame registered but never read, these now follow retail
+(addresses in the code comments):
+
+- Server state: `cg_armorTiered` (raw `armor_tiered`), `cg_disableLoadout_*`
+  (CS 0x2C7/0x2C9), `ui_mapVotingDisabled`/`ui_endMapVotingDisabled`/
+  `ui_gameTypeVotingDisabled` (from `g_voteFlags`), `ui_voteactive` (vote
+  time, intermission exit, map restart and the `enable_vote_ui`/
+  `disable_vote_ui` commands, which used to print "Unknown client game
+  command"), `cg_spectating` (read by the engine), `s_ambient` (loop sounds
+  and speakers).
+- HUD (`cg_hudlines.c`): item pickups (`cg_drawItemPickups`, the Quake III
+  line was compiled out under MISSIONPACK), rewards (`cg_drawRewardsRowSize`,
+  `cg_announcerRewardsVO`, 2 s), input commands, the speedometer and its
+  ownerdraw (96), the voice indicator, the frame rate (`com_maxfps`), the
+  vignette, `cg_useItemMessage`/`Warning`, `cg_playVoiceChats`/
+  `cg_showVoiceText`, `cg_forceDrawCrosshair`, `cg_ignoreMouseInput` (timeout
+  branch), and the damage flash colours (`cg_screenDamage*`; the flash now
+  uses `viewDamageBlend`, `viewBloodBlend` only with the gore DLC).
+- Weapons and effects: the rail trail (`cg_railStyle`, retail muzzle
+  offsets, forced colours), `cg_plasmaStyle`, `cg_rocketStyle`, the shotgun
+  pattern (`cg_trueShotgun`; `origin2` is the aim point, which the inherited
+  code read as a direction), `cg_weaponColor_grenade` and the team/enemy
+  weapon colour forcing (`cg_weaponcolor.c`), `cg_latchedHookOffset`,
+  `cg_projectileNudge`/`cg_autoProjectileNudge` (other players now
+  extrapolate one server frame with TR_LINEAR_STOP when no next snapshot
+  exists, instead of Quake III's forced TR_INTERPOLATE).
+- Players and view: `cg_playerLean` (and no lean while frozen, no
+  TORSO_STAND2 idle), `cg_deadBodyColor`, `cg_scalePlayerModelsToBB`,
+  `cg_stereoSeparation`, `cg_thirdPersonPitch` and `cg_thirdPerson 2`, the
+  smart third-person camera (`cg_cameraSmartMode`,
+  `cg_cameraThirdPersonSmartMode`), `cg_trackPlayer`, `cg_filter_angles`.
+- Flag markers (CG_Item 0x10016147): CTF and Attack & Defend `poi_attack`/
+  `poi_defend` over flags, dropped-flag icons, the neutral `poi_capture`.
+
+Still registered without a reader, with their retail behaviour specified but
+not implemented: `cg_predictLocalRailshots` (local rail prediction, so the
+server's beam is always drawn), `cg_itemTimers` (world item countdown polys),
+`cg_powerupPOIs` and `cg_drawTieredArmorAvailability` (item markers),
+`cg_playerTeam` (client re-parse cache) and the `g_training` branch of
+`cg_ignoreMouseInput`. Retail never reads `cg_debugFlags` or
+`cg_currentSelectedPlayerName`.
 
 ## Contract and evidence
 

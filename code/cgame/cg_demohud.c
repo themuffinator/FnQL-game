@@ -10,12 +10,13 @@ or (at your option) any later version.
 */
 
 /* Demo playback controls, retail 0x10010450, drawn during demo playback
- * with cg_drawDemoHUD (default 1) in the centre placement (0x10011418).
- * Observed:
+ * with cg_drawDemoHUD (default 1) in the centre placement, last in the 2D
+ * frame (0x10011418, after the scoreboard and everything else). Observed:
  *
- * - A half-black box (210, 355, 220, 60) holds the time since the
- *   scoreboard was last closed, "[-]m:[0]s.mmm" (0x10001320), at (288, 375)
- *   in font 2, 0.3, white.
+ * - A half-black box (210, 355, 220, 60) holds the time since the initial
+ *   scoreboard was released or the team command last ran (0x10a9c9b0; a
+ *   later -scores does not restart it), "[-]m:[0]s.mmm" (0x10001320), at
+ *   (288, 375) in font 2, 0.3, white.
  * - Each control is a centred label (font 1, 0.25, white, y 395) over a
  *   centred yellow key hint (font 1, 0.15, y 405), all shadowed: Play or
  *   Pause [SPACE] at 235. While cl_freezeDemo is set, and for three frames
@@ -73,7 +74,7 @@ void CG_DrawDemoHud(void) {
     }
     CG_FillRect(210, 355, 220, 60, shade);
     CG_SetTextFont(2);
-    CG_Text_Paint(288, 375, 0.3f, white, CG_DemoHudTime(cg.time - cg.scoreFadeTime), 0, 0, ITEM_TEXTSTYLE_SHADOWED);
+    CG_Text_Paint(288, 375, 0.3f, white, CG_DemoHudTime(cg.time - cg.scoreboardReleaseTime), 0, 0, ITEM_TEXTSTYLE_SHADOWED);
     CG_DemoHudControl(235, frozen ? "Play" : "Pause", "[SPACE]");
     if (frozen) {
         CG_DemoHudControl(320, "Advance", "[RIGHT]");

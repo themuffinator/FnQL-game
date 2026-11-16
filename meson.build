@@ -204,6 +204,9 @@ cgame = shared_library(module_prefix + 'cgame' + module_arch,
     'code/cgame/cg_teamstats.c',
     'code/cgame/cg_itemtimers.c',
     'code/cgame/cg_teamvitals.c',
+    'code/cgame/cg_teamoverlay.c',
+    'code/cgame/cg_hudlines.c',
+    'code/cgame/cg_weaponcolor.c',
     'code/cgame/cg_localsounds.c',
     'code/cgame/cg_flagstatus.c',
     'code/cgame/cg_flagtrack.c',
@@ -1555,6 +1558,21 @@ if get_option('fnql-client') != '' and retail_modules_hostable
       test('fnql-cgame-loading-' + size[0], python,
         args: loading_args + ['--width', size[0], '--height', size[1], '--map', size[2]],
         depends: [cgame, cgame_snapshot_hold_proxy], suite: 'cgame-hosting', timeout: 420, is_parallel: false)
+    endforeach
+    # Milestone 7 visual parity: a recorded bot match replayed frame-locked
+    # (timedemo) with the retail cgame and FnQL-game's must give the same
+    # captures, gameplay frames and the scoreboard, per mode and screen shape.
+    parity_args = [files('scripts/cgame_parity_probe.py'),
+      '--client', get_option('fnql-client'), '--module', cgame.full_path()]
+    if get_option('retail-ql') != ''
+      parity_args += ['--retail', get_option('retail-ql')]
+    endif
+    foreach run : [['ffa', 'campgrounds', '960', '600'], ['tdm', 'campgrounds', '960', '600'],
+                   ['ca', 'campgrounds', '960', '600'], ['ctf', 'spidercrossings', '960', '600'],
+                   ['ffa', 'campgrounds', '1024', '768']]
+      test('fnql-cgame-parity-' + run[0] + '-' + run[2], python,
+        args: parity_args + ['--factory', run[0], '--map', run[1], '--width', run[2], '--height', run[3]],
+        depends: [cgame], suite: 'cgame-parity', timeout: 600, is_parallel: false)
     endforeach
   endif
   test('fnql-cgame-retail-hosting', python, args: cgame_probe_args,

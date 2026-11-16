@@ -76,13 +76,19 @@ static void CG_UseItem( centity_t *cent ) {
 		itemNum = 0;
 	}
 
-	// print a message if the local player
+	// Retail 0x10019af0: the local player's notice through the native
+	// centre printer at y 144, 0.5 for setting 1 and 0.25 for 2, none for 0:
+	// cg_useItemWarning for no item, cg_useItemMessage for a used item.
 	if ( es->number == cg.snap->ps.clientNum ) {
 		if ( !itemNum ) {
-			CG_CenterPrint( "No item to use", SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
+			if ( cg_useItemWarning.integer ) {
+				CG_CenterPrintNative( "No item to use", 144, cg_useItemWarning.integer == 1 ? 0.5f : 0.25f );
+			}
 		} else {
 			item = BG_FindItemForHoldable( itemNum );
-			CG_CenterPrint( va("Use %s", item->pickup_name), SCREEN_HEIGHT * 0.30, BIGCHAR_WIDTH );
+			if ( item && cg_useItemMessage.integer ) {
+				CG_CenterPrintNative( va( "Use %s", item->pickup_name ), 144, cg_useItemMessage.integer == 1 ? 0.5f : 0.25f );
+			}
 		}
 	}
 
@@ -132,7 +138,9 @@ static void CG_ItemPickup( int itemNum ) {
 	cg.itemPickupTime = cg.time;
 	cg.itemPickupBlendTime = cg.time;
 
-	if ( oldItem != itemNum )
+	// retail 0x10019c62: repeats count against the item the line last showed
+	(void)oldItem;
+	if ( itemNum != cg.itemPickupShown )
 		cg.itemPickupCount = 1;
 	else
 		cg.itemPickupCount++;
@@ -664,22 +672,11 @@ void CG_EntityEvent( centity_t *cent, vec3_t position, int entityNum ) {
 
 	case EV_RAILTRAIL:
 		cent->currentState.weapon = WP_RAILGUN;
-
-		if ( cent->currentState.clientNum == cg.snap->ps.clientNum && !cg_thirdPerson.integer ) 
-		{
-			VectorCopy( cg.refdef.vieworg, vec );
-			fovOffset = -0.2f * ( cgs.fov - 90.0f );
-
-			// 13.5, -5.5, -6.0
-			VectorMA( vec, cg_gun_x.value + 13.5f, cg.refdef.viewaxis[0], vec );
-			VectorMA( vec, cg_gun_y.value - 5.5f, cg.refdef.viewaxis[1], vec );
-			VectorMA( vec, cg_gun_z.value + fovOffset - 6.0f, cg.refdef.viewaxis[2], vec );
-		}
-		else
-			VectorCopy( es->origin2, vec );
-
-		// if the end was on a nomark surface, don't make an explosion
-		CG_RailTrail( ci, vec, es->pos.trBase );
+		// retail 0x1001b0b3: the beam starts at the event's muzzle point;
+		// CG_RailTrail moves it to the drawn muzzle. (Retail skips the
+		// viewer's own beam when it predicted it locally; FnQL-game does not
+		// predict rail shots yet, so it always draws the server's.)
+		CG_RailTrail( ci, es->origin2, es->pos.trBase );
 
 		if ( es->eventParm != 255 ) {
 			ByteToDir( es->eventParm, dir );

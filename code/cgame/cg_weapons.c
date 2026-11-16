@@ -192,71 +192,108 @@ static void CG_NailgunEjectBrass( centity_t *cent ) {
 CG_RailTrail
 ==========================
 */
+/* Retail CG_RailTrail 0x1004f7b0. Observed:
+ * - The start moves from the event's muzzle point: another shooter's beam
+ *   5 along the view's left axis and 4 down its up axis; the viewer's own
+ *   beam in first person by (cg_gunX + 4) forward, 0.75 cg_gunY left and
+ *   (cg_gunZ - 4 + fov adjustment) up, the adjustment being
+ *   (cg_fov - 90) * -0.2 above 90; in third person 5.5 to the right and up
+ *   by the model's muzzle height (1 for bitterman, major, orbb, razor, sarge,
+ *   slash, visor and xaero; -4 ranger; -8 uriel; else -3.5).
+ * - A core beam (RT_RAIL_CORE, radius 256) fades for cg_railTrailTime in
+ *   color1 * 0.75, or the forced team/enemy colour.
+ * - cg_railStyle 1 adds rings (RT_RAIL_RINGS, railDisc) in color2 * 0.75 or
+ *   the forced colour; style 2 instead spirals railDisc sprites from 4 below
+ *   the start, every 5 units after the first 20, as Quake III's rail did. */
 void CG_RailTrail( const clientInfo_t *ci, const vec3_t start, const vec3_t end ) {
-	vec3_t axis[36], move, move2, vec, temp;
-	float  len;
-	int    i, j, skip;
- 
+	static const char *const highMuzzle[] = { "bitterman", "major", "orbb", "razor", "sarge", "slash", "visor", "xaero" };
+	vec3_t axis[36], move, move2, vec, temp, origin;
+	float  len, forced[3];
+	byte   forcedBytes[3];
+	int    i, j, skip, shooter;
+	qboolean isForced;
 	localEntity_t *le;
 	refEntity_t   *re;
- 
+
 	#define RADIUS   4
 	#define ROTATION 1
 	#define SPACING  5
- 
+
+	shooter = (int)( ci - cgs.clientinfo );
+	VectorCopy( start, origin );
+	if ( shooter != cg.predictedPlayerState.clientNum ) {
+		VectorMA( origin, 5, cg.refdef.viewaxis[1], origin );
+		VectorMA( origin, -4, cg.refdef.viewaxis[2], origin );
+	} else if ( !cg.renderingThirdPerson ) {
+		const float fovAdjust = cg_fov.integer > 90 ? ( cg_fov.integer - 90 ) * -0.2f : 0.0f;
+		VectorMA( origin, cg_gun_x.value + 4, cg.refdef.viewaxis[0], origin );
+		VectorMA( origin, 0.75f * cg_gun_y.value, cg.refdef.viewaxis[1], origin );
+		VectorMA( origin, fovAdjust + cg_gun_z.value - 4, cg.refdef.viewaxis[2], origin );
+	} else {
+		float up = -3.5f;
+		for ( i = 0; i < (int)ARRAY_LEN( highMuzzle ); i++ ) {
+			if ( !Q_stricmp( ci->modelName, highMuzzle[i] ) ) up = 1;
+		}
+		if ( !Q_stricmp( ci->modelName, "ranger" ) ) up = -4;
+		else if ( !Q_stricmp( ci->modelName, "uriel" ) ) up = -8;
+		VectorMA( origin, -5.5f, cg.refdef.viewaxis[1], origin );
+		VectorMA( origin, up, cg.refdef.viewaxis[2], origin );
+	}
+
+	isForced = CG_ForcedRailColor( ci, forced, forcedBytes );
+
 	le = CG_AllocLocalEntity();
 	re = &le->refEntity;
- 
 	le->leType = LE_FADE_RGB;
 	le->startTime = cg.time;
-	le->endTime = cg.time + cg_railTrailTime.value;
+	le->endTime = (int)( cg.time + cg_railTrailTime.value );
 	le->lifeRate = 1.0 / (le->endTime - le->startTime);
- 
 	if ( intShaderTime )
 		re->u.intShaderTime = cg.time;
 	else
 		re->u.shaderTime = cg.time / 1000.0f;
-
 	re->reType = RT_RAIL_CORE;
 	re->customShader = cgs.media.railCoreShader;
- 
-	VectorCopy(start, re->origin);
-	VectorCopy(end, re->oldorigin);
- 
-	re->shaderRGBA[0] = ci->color1[0] * 255;
-    re->shaderRGBA[1] = ci->color1[1] * 255;
-    re->shaderRGBA[2] = ci->color1[2] * 255;
-    re->shaderRGBA[3] = 255;
-
-	le->color[0] = ci->color1[0] * 0.75;
-	le->color[1] = ci->color1[1] * 0.75;
-	le->color[2] = ci->color1[2] * 0.75;
+	re->radius = 256;
+	VectorCopy( origin, re->origin );
+	VectorCopy( end, re->oldorigin );
+	for ( i = 0; i < 3; i++ ) le->color[i] = isForced ? forced[i] : ci->color1[i] * 0.75f;
 	le->color[3] = 1.0f;
-
 	AxisClear( re->axis );
- 
-	if ( cg_oldRail.integer != 0 ) {
-		// nudge down a bit so it isn't exactly in center
-		//re->origin[2] -= 8;
-		//re->oldorigin[2] -= 8;
+
+	if ( cg_railStyle.integer != 2 ) {
+		le = CG_AllocLocalEntity();
+		re = &le->refEntity;
+		le->leType = LE_FADE_RGB;
+		le->startTime = cg.time;
+		le->endTime = (int)( cg.time + cg_railTrailTime.value );
+		le->lifeRate = 1.0 / (le->endTime - le->startTime);
+		if ( intShaderTime )
+			re->u.intShaderTime = cg.time;
+		else
+			re->u.shaderTime = cg.time / 1000.0f;
+		re->reType = RT_RAIL_RINGS;
+		re->customShader = cgs.media.railRingsShader;
+		VectorCopy( origin, re->origin );
+		VectorCopy( end, re->oldorigin );
+		for ( i = 0; i < 3; i++ ) le->color[i] = isForced ? forced[i] : ci->color2[i] * 0.75f;
+		le->color[3] = 1.0f;
+		AxisClear( re->axis );
 		return;
 	}
 
-	//start[2] -= 4;
-	VectorCopy( start, move );
-	VectorSubtract( end, start, vec );
+	VectorCopy( origin, move );
+	move[2] -= 4;
+	VectorSubtract( end, move, vec );
 	len = VectorNormalize( vec );
 	PerpendicularVector( temp, vec );
-
 	for ( i = 0 ; i < 36; i++ ) {
-		RotatePointAroundVector( axis[i], vec, temp, i * 10 ); //banshee 2.4 was 10
+		RotatePointAroundVector( axis[i], vec, temp, i * 10 );
 	}
-
 	VectorMA( move, 20, vec, move );
 	VectorScale( vec, SPACING, vec );
 
 	skip = -1;
- 
 	j = 18;
 	for ( i = 0; i < len; i += SPACING ) {
 		if ( i != skip ) {
@@ -268,40 +305,37 @@ void CG_RailTrail( const clientInfo_t *ci, const vec3_t start, const vec3_t end 
 			le->startTime = cg.time;
 			le->endTime = cg.time + (i>>1) + 600;
 			le->lifeRate = 1.0 / (le->endTime - le->startTime);
-
 			if ( intShaderTime )
 				re->u.intShaderTime = cg.time;
 			else
 				re->u.shaderTime = cg.time / 1000.0f;
-
 			re->reType = RT_SPRITE;
 			re->radius = 1.1f;
 			re->customShader = cgs.media.railRingsShader;
-
-			re->shaderRGBA[0] = ci->color2[0] * 255;
-			re->shaderRGBA[1] = ci->color2[1] * 255;
-			re->shaderRGBA[2] = ci->color2[2] * 255;
+			if ( isForced ) {
+				re->shaderRGBA[0] = forcedBytes[0];
+				re->shaderRGBA[1] = forcedBytes[1];
+				re->shaderRGBA[2] = forcedBytes[2];
+			} else {
+				re->shaderRGBA[0] = ci->color2[0] * 255;
+				re->shaderRGBA[1] = ci->color2[1] * 255;
+				re->shaderRGBA[2] = ci->color2[2] * 255;
+			}
 			re->shaderRGBA[3] = 255;
-
-			le->color[0] = ci->color2[0] * 0.75;
-			le->color[1] = ci->color2[1] * 0.75;
-			le->color[2] = ci->color2[2] * 0.75;
+			le->color[0] = isForced ? forced[0] : ci->color2[0] * 0.75f;
+			le->color[1] = isForced ? forced[1] : ci->color2[1] * 0.75f;
+			le->color[2] = isForced ? forced[2] : ci->color2[2] * 0.75f;
 			le->color[3] = 1.0f;
-
 			le->pos.trType = TR_LINEAR;
 			le->pos.trTime = cg.time;
-
 			VectorCopy( move, move2 );
 			VectorMA( move2, RADIUS , axis[j], move2 );
 			VectorCopy( move2, le->pos.trBase );
-
 			le->pos.trDelta[0] = axis[j][0]*6;
 			le->pos.trDelta[1] = axis[j][1]*6;
 			le->pos.trDelta[2] = axis[j][2]*6;
 		}
-
 		VectorAdd( move, vec, move );
-
 		j = j + ROTATION < 36 ? j + ROTATION : (j + ROTATION) % 36;
 	}
 }
@@ -475,7 +509,8 @@ static void CG_PlasmaTrail( centity_t *cent, const weaponInfo_t *wi ) {
 
 	float	waterScale = 1.0f;
 
-	if ( cg_noProjectileTrail.integer || cg_oldPlasma.integer ) {
+	// retail 0x10050500: the sprite trail is cg_plasmaStyle 2
+	if ( cg_noProjectileTrail.integer || cg_plasmaStyle.integer != 2 ) {
 		return;
 	}
 
@@ -1758,7 +1793,7 @@ void CG_MissileHitWall( weapon_t weapon, int clientNum, vec3_t origin, vec3_t di
 		lightColor[0] = 1.0;
 		lightColor[1] = 0.75;
 		lightColor[2] = 0.0;
-		if (cg_oldRocket.integer == 0) {
+		if ( cg_rocketStyle.integer == 2 ) {	// retail 0x1005404e
 			// explosion sprite animation
 			VectorMA( origin, 24, dir, sprOrg );
 			VectorScale( dir, 64, sprVel );
@@ -1976,26 +2011,54 @@ Perform the same traces the server did to locate the
 hit splashes
 ================
 */
+/* Retail 0x10055650: origin2 is the aim point. Twenty pellets on three
+ * rings, as the server's pattern: six at radius 4000 (angle (i - 20) pi/3),
+ * six at 8000 (i pi/3 + 30), eight at 12000 (i pi/4), 131072 units out,
+ * each jittered by crandom * 0.4, 0.3 or 0.2 of the radius from the event
+ * seed. cg_trueShotgun drops the jitter (the seed still advances), which
+ * reproduces the server's pellets exactly. */
 static void CG_ShotgunPattern( vec3_t origin, vec3_t origin2, int seed, int otherEntNum ) {
-	int			i;
-	float		r, u;
+	int			i, j, radius;
+	double		base[3], angle;
+	float		fangle, across, along, jitter, crandA, crandB;
 	vec3_t		end;
 	vec3_t		forward, right, up;
 
-	// derive the right and up vectors from the forward vector, because
-	// the client won't have any other information
-	VectorNormalize2( origin2, forward );
+	VectorSubtract( origin2, origin, forward );
+	VectorNormalize( forward );
 	PerpendicularVector( right, forward );
 	CrossProduct( forward, right, up );
+	for ( j = 0; j < 3; j++ ) {
+		base[j] = forward[j] * 131072.0;
+	}
 
-	// generate the "random" spread pattern
-	for ( i = 0 ; i < DEFAULT_SHOTGUN_COUNT ; i++ ) {
-		r = Q_crandom( &seed ) * DEFAULT_SHOTGUN_SPREAD * 16;
-		u = Q_crandom( &seed ) * DEFAULT_SHOTGUN_SPREAD * 16;
-		VectorMA( origin, 8192 * 16, forward, end);
-		VectorMA (end, r, right, end);
-		VectorMA (end, u, up, end);
-
+	for ( i = 0 ; i < 20 ; i++ ) {
+		if ( i < 6 ) {
+			angle = ( i - 20 ) * 1.0471975803375244;
+			radius = 4000;
+			jitter = 0.4f;
+		} else if ( i < 12 ) {
+			angle = 1.0471975803375244 * i + 30.0;
+			radius = 8000;
+			jitter = 0.3f;
+		} else {
+			angle = i * 0.7853981852531433;
+			radius = 12000;
+			jitter = 0.2f;
+		}
+		if ( cg_trueShotgun.integer ) {
+			jitter = 0;
+		}
+		fangle = (float)angle;
+		crandA = Q_crandom( &seed );
+		across = (float)( ( cos( fangle ) + crandA * jitter ) * radius );
+		crandB = Q_crandom( &seed );
+		along = (float)( ( sin( fangle ) + crandB * jitter ) * radius );
+		for ( j = 0; j < 3; j++ ) {
+			end[j] = (float)( origin[j] + base[j] );
+			end[j] = (float)( (double)right[j] * across + end[j] );
+			end[j] = (float)( (double)up[j] * along + end[j] );
+		}
 		CG_ShotgunPellet( origin, end, otherEntNum );
 	}
 }

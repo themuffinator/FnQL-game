@@ -21,6 +21,11 @@ or (at your option) any later version.
 cg_t cg;
 cgs_t cgs;
 vmCvar_t cg_poiMaxWidth, cg_poiMinWidth, cg_teammatePOIsMaxWidth, cg_teammatePOIsMinWidth, cg_flagPOIs, cg_drawDeadFriendTime;
+vmCvar_t cg_gametype;
+static int pregameTurn, pregameState;
+int CG_PregameTurn(void) { return pregameTurn; }
+int CG_PregameState(void) { return pregameState; }
+qhandle_t CG_FlagStatusIcon(int team, int state) { return state == 2 ? 70 + team : 0; }
 static const char *playerString = "n\\Mate";
 const char *CG_ConfigString(int index) { return index == CS_PLAYERS + 6 ? playerString : ""; }
 static snapshot_t snapshot;
@@ -94,25 +99,29 @@ int main(void) {
     /* Registration follows retail 0x100237cf / 0x100240dc / 0x100241f4. */
     for (i = 0; i < ARRAY_LEN(gametypes); ++i) {
         Media(gametypes[i]);
-        /* The A&D capture icon is registered for every gametype (0x10024d40),
-         * last; Harvester adds its own capture icon (0x10023d98). */
-        CHECK(registrations >= 1 && !registeredNoMip[registrations - 1]);
-        CHECK(!strcmp(registered[registrations - 1], "gfx/2d/ad/poi_capture"));
-        CHECK(cgs.poiMedia.flagCapture == 40 + registrations);
+        /* The A&D capture, attack and defend icons are registered for every
+         * gametype (0x10024d28..0x10024d5a), last; Harvester adds its own
+         * capture icon (0x10023d98). */
+        CHECK(registrations >= 3 && !registeredNoMip[registrations - 1] && !registeredNoMip[registrations - 2]);
+        CHECK(!strcmp(registered[registrations - 3], "gfx/2d/ad/poi_capture"));
+        CHECK(!strcmp(registered[registrations - 2], "gfx/2d/ad/poi_attack"));
+        CHECK(!strcmp(registered[registrations - 1], "gfx/2d/ad/poi_defend"));
+        CHECK(cgs.poiMedia.flagCapture == 38 + registrations);
+        CHECK(cgs.poiMedia.flagAttack == 39 + registrations && cgs.poiMedia.flagDefend == 40 + registrations);
         if (cgs.gametype == GT_FFA) {
-            CHECK(registrations == 2 && registeredNoMip[0] && cgs.poiMedia.quadHog == 41);
+            CHECK(registrations == 4 && registeredNoMip[0] && cgs.poiMedia.quadHog == 41);
             CHECK(!strcmp(registered[0], "gfx/2d/quad_hog/quadhog"));
         } else if (cgs.gametype == GT_RED_ROVER) {
-            CHECK(registrations == 2 && registeredNoMip[0] && cgs.poiMedia.infected == 41);
+            CHECK(registrations == 4 && registeredNoMip[0] && cgs.poiMedia.infected == 41);
             CHECK(!strcmp(registered[0], "gfx/2d/infected/bite"));
         } else if (cgs.gametype == GT_CTF || cgs.gametype == GT_1FCTF || cgs.gametype == GT_ATTACK_DEFEND) {
-            CHECK(registrations == 2 && !registeredNoMip[0] && cgs.poiMedia.neutralFlag == 41);
+            CHECK(registrations == 4 && !registeredNoMip[0] && cgs.poiMedia.neutralFlag == 41);
             CHECK(!strcmp(registered[0], "sprites/neutralflagcarrier"));
         } else if (cgs.gametype == GT_HARVESTER) {
-            CHECK(registrations == 2 && registeredNoMip[0] && cgs.poiMedia.harvesterCapture == 41);
+            CHECK(registrations == 4 && registeredNoMip[0] && cgs.poiMedia.harvesterCapture == 41);
             CHECK(!strcmp(registered[0], "gfx/2d/har/poi_capture"));
         } else {
-            CHECK(registrations == 1 && !cgs.poiMedia.quadHog && !cgs.poiMedia.infected &&
+            CHECK(registrations == 3 && !cgs.poiMedia.quadHog && !cgs.poiMedia.infected &&
                   !cgs.poiMedia.neutralFlag && !cgs.poiMedia.harvesterCapture);
         }
     }
@@ -298,6 +307,60 @@ int main(void) {
         self.currentState.generic1 = 3; self.currentState.clientNum = 5;
         CG_ObjectiveMarkers(&self); CHECK(cg.teammateMarkerCount == 0);
         cg.teammateMarkerCount = 0;
+    }
+
+    /* Team item markers (retail CG_Item 0x10016147..0x100166c6). */
+    {
+        centity_t flag;
+        static gitem_t redFlag = { "team_CTF_redflag", NULL, { NULL }, "", "Red Flag", 0, IT_TEAM, PW_REDFLAG };
+        static gitem_t blueFlag = { "team_CTF_blueflag", NULL, { NULL }, "", "Blue Flag", 0, IT_TEAM, PW_BLUEFLAG };
+        static gitem_t neutral = { "team_CTF_neutralflag", NULL, { NULL }, "", "Neutral Flag", 0, IT_TEAM, PW_NEUTRALFLAG };
+        cgTeammateMarker_t *m = &cg.teammateMarkers[0];
+        memset(&flag, 0, sizeof(flag)); memset(&snapshot, 0, sizeof(snapshot));
+        cg.snap = &snapshot; snapshot.ps.clientNum = 3; cgs.clientinfo[3].team = TEAM_RED;
+        cgs.poiMedia.flagCapture = 90; cgs.poiMedia.flagAttack = 92; cgs.poiMedia.flagDefend = 93;
+        cg_flagPOIs.integer = 1; cg_poiMaxWidth.value = 32; cg_poiMinWidth.value = 16;
+        flag.lerpOrigin[0] = 7; flag.lerpOrigin[2] = 1;
+        cgs.gametype = cg_gametype.integer = GT_CTF;
+        /* CTF at base: the own flag is defended, the enemy's attacked. */
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &redFlag);
+        CHECK(cg.teammateMarkerCount == 1 && m->shader == 93 && m->origin[2] == 65 && m->color[0] == 1 && m->color[1] == .2f);
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &blueFlag);
+        CHECK(cg.teammateMarkerCount == 1 && m->shader == 92 && m->color[0] == .2f && m->color[1] == .6f);
+        /* Carrying the enemy flag hides the defend marker. */
+        snapshot.ps.powerups[PW_BLUEFLAG] = 1;
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &redFlag); CHECK(cg.teammateMarkerCount == 0);
+        snapshot.ps.powerups[PW_BLUEFLAG] = 0;
+        /* Blue mirrors red. */
+        cgs.clientinfo[3].team = TEAM_BLUE;
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &redFlag); CHECK(m->shader == 92 && m->color[1] == .2f);
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &blueFlag); CHECK(m->shader == 93 && m->color[1] == .6f);
+        /* cg_flagPOIs gates the team path; spectators get nothing at base. */
+        cg_flagPOIs.integer = 0; cg.teammateMarkerCount = 0;
+        CG_ItemObjectiveMarkers(&flag, &blueFlag); CHECK(cg.teammateMarkerCount == 0);
+        cg_flagPOIs.integer = 1; cgs.clientinfo[3].team = TEAM_SPECTATOR;
+        CG_ItemObjectiveMarkers(&flag, &blueFlag); CHECK(cg.teammateMarkerCount == 0);
+        /* A dropped CTF flag (modelindex2 1) leaves the team path: no marker. */
+        cgs.clientinfo[3].team = TEAM_RED; flag.currentState.modelindex2 = 1;
+        CG_ItemObjectiveMarkers(&flag, &redFlag); CHECK(cg.teammateMarkerCount == 0);
+        /* Attack & Defend: an active state, the turn picks the side; dropped
+         * flags are the owner's to defend and the enemy's to attack, and the
+         * dropped icon for anyone else. */
+        cgs.gametype = cg_gametype.integer = GT_ATTACK_DEFEND; pregameState = 1; pregameTurn = 0;
+        flag.currentState.modelindex2 = 0;
+        CG_ItemObjectiveMarkers(&flag, &blueFlag); CHECK(cg.teammateMarkerCount == 1 && m->shader == 92);
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &redFlag); CHECK(cg.teammateMarkerCount == 0);
+        pregameTurn = 1; CG_ItemObjectiveMarkers(&flag, &redFlag); CHECK(cg.teammateMarkerCount == 1 && m->shader == 93);
+        flag.currentState.modelindex2 = 2;
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &blueFlag); CHECK(m->shader == 92 && m->color[2] == 1);
+        cgs.clientinfo[3].team = TEAM_SPECTATOR;
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &blueFlag); CHECK(m->shader == 72 && m->color[1] == 1);
+        /* Inactive A&D and every other mode: only the neutral flag, white
+         * poi_capture, whatever cg_flagPOIs says. */
+        pregameState = 0; cg_flagPOIs.integer = 0; cgs.gametype = GT_1FCTF;
+        cg.teammateMarkerCount = 0; CG_ItemObjectiveMarkers(&flag, &redFlag); CHECK(cg.teammateMarkerCount == 0);
+        CG_ItemObjectiveMarkers(&flag, &neutral); CHECK(cg.teammateMarkerCount == 1 && m->shader == 90 && m->color[1] == 1);
+        cg.teammateMarkerCount = 0; cg_flagPOIs.integer = 1;
     }
 
     /* Dead teammates (retail obituary 0x10019246). */

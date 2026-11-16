@@ -25,7 +25,7 @@ typedef struct {
 	void (QDECL *trap_Cvar_Set)(const char *var_name, const char *value); // 7
 	void (QDECL *reserved8)(void); // 8, unused by this module
 	void (QDECL *trap_Cvar_VariableStringBuffer)(const char *var_name, char *buffer, int bufsize); // 9
-	void (QDECL *reserved10)(void); // 10, unused by this module
+	float (QDECL *trap_Cvar_VariableValue)(const char *var_name); // 10
 	int (QDECL *trap_Argc)(void); // 11
 	void (QDECL *trap_Argv)(int n, char *buffer, int bufferLength); // 12
 	void (QDECL *trap_Args)(char *buffer, int bufferLength); // 13
