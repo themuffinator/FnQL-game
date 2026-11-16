@@ -705,6 +705,34 @@ if get_option('fnql-dedicated') != ''
   test('retail-client-cgame-unpure', python,
     args: retail_client_args + ['--pure', '0', '--cgame', cgame.full_path()],
     depends: [qagame, cgame], suite: 'retail-client', timeout: 400, is_parallel: false)
+  # G5 per mode (milestone M6): the retail client plays each round-based and
+  # special mode on a pure server.  Admin put places it on a team, the bots
+  # take the other side, the forced ready-up starts the match (its
+  # map_restart included) and the client must stay in through it, on its
+  # team, with the server's gametype, factory and IN_PROGRESS state as
+  # expected.  Opt-in like the joins above (FNQL_ALLOW_RETAIL_CLIENT=1).
+  foreach mode, o : {
+      'ca': ['ca', 'campgrounds', '4', 'r', 'blue'], 'vca': ['vca', 'campgrounds', '4', 'r', 'blue'],
+      'ft': ['ft', 'campgrounds', '9', 'r', 'blue'], 'ift': ['ift', 'campgrounds', '9', 'r', 'blue'],
+      'rr': ['rr', 'campgrounds', '12', 'r', 'blue'], 'infected': ['infected', 'campgrounds', '12', 'r', 'blue'],
+      'ad': ['ad', 'duelingkeeps', '11', 'r', 'blue'], 'dom': ['dom', 'courtyard', '10', 'r', 'blue'],
+      'har': ['har', 'duelingkeeps', '8', 'r', 'blue'], 'race': ['race', 'campgrounds', '2', 'f', ''],
+      'iffa': ['iffa', 'campgrounds', '0', 'f', ''], 'ictf': ['ictf', 'duelingkeeps', '5', 'r', 'blue'],
+      'quadhog': ['quadhog', 'campgrounds', '0', 'f', '']}
+    mode_args = retail_client_args + ['--pure', '1', '--require-auth', '--factory', o[0], '--map', o[1],
+      '--expect-gametype', o[2], '--expect-factory', o[0], '--team', o[3], '--allready', '--seconds', '40']
+    if o[4] != ''
+      mode_args += ['--bot-team', o[4]]
+    endif
+    test('retail-client-mode-' + mode, python, args: mode_args, depends: qagame,
+      suite: 'retail-client', timeout: 400, is_parallel: false)
+  endforeach
+  test('retail-client-mode-overload', python,
+    args: retail_client_args + ['--pure', '1', '--require-auth', '--cheats', '--factory', 'fnql_test_overload',
+      '--map', 'duelingkeeps', '--factories', files('tests/lockstep/factories/objectives.factories'),
+      '--expect-gametype', '7', '--expect-factory', 'fnql_test_overload', '--team', 'r',
+      '--bot-team', 'blue', '--allready', '--seconds', '40'],
+    depends: qagame, suite: 'retail-client', timeout: 400, is_parallel: false)
 
   # Gate G3: the full-server lockstep differential (meson test --suite
   # differential).  FnQL's lockstep dedicated server (FnQL
@@ -1591,6 +1619,59 @@ if get_option('fnql-client') != '' and retail_modules_hostable
         '--factories', files('tests/lockstep/factories/' + options[0] + '.factories')],
       depends: qagame, suite: 'interop-modes', timeout: 240, is_parallel: false)
   endforeach
+  # G5 per mode (milestone M6): the retail cgame plays every round-based and
+  # special mode.  The client joins a team, a bot takes the other side, the
+  # forced ready-up starts the match through its map_restart, and the live
+  # configstrings must show the match in progress, the client on its team
+  # and, in the round modes, a round under way (CS_MATCH_STATE 661).  Each
+  # entry is the factory, map, gametype, client team, bot team and its extra
+  # configstring checks (index, regex pairs).  Every check was taken from the
+  # retail qagame, and each mode also runs against it (retail-cgame-play-
+  # retail-<mode>, --provider retail) so the expectations stay retail's.
+  # The bot's own team is not checked: in Infected and Red Rover it depends
+  # on who dies first; the G3 round scenarios cover conversion exactly.
+  play_in_progress = ['0', '\\\\g_gameState\\\\IN_PROGRESS(\\\\|$)']
+  play_round = ['661', '\\\\round\\\\[1-9]']
+  play_turn = ['661', '\\\\turn\\\\[0-9]+\\\\state\\\\[1-9]']
+  play_red = ['529', '\\\\t\\\\1\\\\']
+  play_free = ['529', '\\\\t\\\\0\\\\']
+  foreach mode, o : {
+      'ca': ['ca', 'campgrounds', '4', 'r', 'blue', play_red + play_round],
+      'vca': ['vca', 'campgrounds', '4', 'r', 'blue', play_red + play_round],
+      'ft': ['ft', 'campgrounds', '9', 'r', 'blue', play_red + play_round],
+      'ift': ['ift', 'campgrounds', '9', 'r', 'blue', play_red + play_round],
+      'rr': ['rr', 'campgrounds', '12', 'r', 'blue', play_round],
+      'infected': ['infected', 'campgrounds', '12', 'r', 'blue', play_round],
+      'ad': ['ad', 'duelingkeeps', '11', 'r', 'blue', play_red + play_turn],
+      'dom': ['dom', 'courtyard', '10', 'r', 'blue', play_red],
+      'har': ['har', 'duelingkeeps', '8', 'r', 'blue', play_red],
+      'race': ['race', 'campgrounds', '2', 'f', '', play_free],
+      'iffa': ['iffa', 'campgrounds', '0', 'f', '', play_free],
+      'ictf': ['ictf', 'duelingkeeps', '5', 'r', 'blue', play_red],
+      'quadhog': ['quadhog', 'campgrounds', '0', 'f', '', play_free]}
+    play_args = probe_args + ['--factory', o[0], '--map', o[1], '--expect-gametype', o[2],
+      '--expect-factory', o[0], '--play', '25', '--team', o[3]]
+    if o[4] != ''
+      play_args += ['--bot-team', o[4]]
+    endif
+    checks = play_in_progress + o[5]
+    foreach index : range(0, checks.length(), 2)
+      play_args += ['--expect-cs', checks[index], checks[index + 1]]
+    endforeach
+    test('retail-cgame-play-' + mode, python, args: play_args, depends: qagame,
+      suite: 'interop-play', timeout: 300, is_parallel: false)
+    test('retail-cgame-play-retail-' + mode, python, args: play_args + ['--provider', 'retail'],
+      depends: qagame, suite: 'interop-play', timeout: 300, is_parallel: false)
+  endforeach
+  overload_play_args = probe_args + ['--cheats', '--factory', 'fnql_test_overload', '--map', 'duelingkeeps',
+    '--factories', files('tests/lockstep/factories/objectives.factories'),
+    '--expect-gametype', '7', '--expect-factory', 'fnql_test_overload', '--play', '25',
+    '--team', 'r', '--bot-team', 'blue',
+    '--expect-cs'] + play_in_progress + ['--expect-cs'] + play_red
+  test('retail-cgame-play-overload', python, args: overload_play_args,
+    depends: qagame, suite: 'interop-play', timeout: 300, is_parallel: false)
+  test('retail-cgame-play-retail-overload', python, args: overload_play_args + ['--provider', 'retail'],
+    depends: qagame, suite: 'interop-play', timeout: 300, is_parallel: false)
 
   # Gate G4a: the retail cgame's prediction of the local player must agree
   # with FnQL-game's server-side Pmove exactly (no "prediction error" at

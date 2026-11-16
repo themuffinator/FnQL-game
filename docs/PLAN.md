@@ -1027,7 +1027,7 @@ Client presentation follow-up (2026-11-15):
   voice-chat cvars, `cg_forceEnemyWeaponColor` and
   `cg_forceTeamWeaponColor`, and `cg_weaponColor_grenade`.
 
-### M6 — Round-based and special modes
+### M6 — Round-based and special modes (complete)
 
 Clan Arena, Freeze Tag (with the thaw-event export), Attack & Defend, Red
 Rover, Race (checkpoints, records), Domination, Harvester, Overload, plus the
@@ -1323,6 +1323,64 @@ a single fresh spectator or queued player: retail stamps spectator order
 with the CRT wall clock (`_time64`, 0x100404ed), which lockstep cannot pin,
 so two such players would order by real time. Unit gates cover the
 tackle (`game-drops`) and `g_teamSpawnAsSpec` (`game-session`).
+
+G5 per mode (2026-11-16): the G5a startup probes showed only that each
+mode's gamestate initializes; nothing joined a team or started a match. Two
+played-mode gates now cover all fourteen M6 modes: Clan Arena, Vampiric CA,
+Freeze Tag, Instagib Freeze Tag, Red Rover, Infected, Attack & Defend,
+Domination, Harvester, Overload (the `objectives` devmap fixture), Race,
+Instagib FFA, Instagib CTF and Quad Hog.
+
+- **`interop-play` (headless, every run):** `listen_probe.py --play` puts
+  the FnQL client, running the retail cgame, on a team. A bot takes the other
+  side, the admin `allready` ends the ready-up warmup and the match plays for
+  25 seconds. The live configstrings must then show `g_gameState
+  IN_PROGRESS` and the client on its team. Round modes must show round 1 or
+  later in CS_MATCH_STATE (661); Attack & Defend must show its
+  `\turn\<n>\state\<n>` payload there instead. Each check was taken from the
+  retail qagame on the same rig, and every mode also runs against it
+  (`retail-cgame-play-retail-<mode>`) so the expectations stay retail's. In
+  the survey, both modules gave the same values everywhere except the bot's
+  own team in Infected, which depends on who is infected first. The gate does
+  not check it; the G3 Infected scenarios cover conversion exactly.
+- **`retail-client` (opt-in, `FNQL_ALLOW_RETAIL_CLIENT=1`, Steam running):**
+  `retail_client_probe.py --team --bot-team --allready` runs the same
+  fourteen modes with the user's retail `quakelive_steam.exe` on a pure FnQL
+  server, with Steam session validation required. Admin `put` places the
+  retail client, bots take the other side and the forced ready-up starts the
+  match. The client must stay in through the match-start `map_restart` for
+  40 seconds, on its team, with the server's `g_gametype`, `g_factory` and
+  `IN_PROGRESS` as expected (`retail-client-mode-<mode>`).
+
+The played gate first stalled every mode at the countdown, under the retail
+qagame as well. This was a probe artefact, not a module or engine bug.
+Observed: the match start appends `map_restart` to the command buffer, and
+the probe's scripted `wait` held the buffer until the script's `quit`.
+FnQL-game's server log still showed the match-start stats event, and the
+retail cgame drew "Connection Interrupted". The play phase therefore runs in
+real time over authenticated loopback rcon (the listen server starts with
+`sv_serverType 1`). The startup-only probes keep their scripted path
+unchanged. Two robustness fixes came from runs on a loaded machine. First,
+the engine binds the next UDP port while `net_port` is taken (another
+session's probe client, for instance), so rcon goes to the last port the
+client's log reports opening. Second, retail announces a connect only after
+the level's first five seconds, so the played gate checks the bot's player
+configstring (CS 530 with a `skill` key) instead of that announcement.
+The retail-client probe got two fixes of its own. Its rcon helper waits up
+to five seconds for a first reply, where it waited 0.5 s. Its teardown waits
+for the killed retail client to exit; without that, the next run found the
+client still exiting and skipped, as `retail-client-join-unpure` had been
+doing behind `retail-client-join`.
+
+Results, 2026-11-16 (x86, FnQL `build-x86-nosdl` client and `build/win32`
+dedicated server): `interop`, `interop-modes` and `interop-play` pass 43 of
+43. All 28 played gates, FnQL-game and retail qagame, are among them. With
+Steam signed in, `retail-client` passes 18 of 18: the four existing joins
+and the fourteen mode gates, each with Steam session validation confirmed.
+The G3 gates per mode are the `round-modes`, `objective-modes`,
+`factory-gameplay`, `runes`, race and `server-rules` suites above. M6's exit
+is met. Played retail-client gates for the non-M6 base modes, and the FnQL
+client ↔ retail server direction, remain M10's G5 matrix.
 
 Exit: G3 per mode; G5 per mode.
 

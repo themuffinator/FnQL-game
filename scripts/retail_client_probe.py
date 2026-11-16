@@ -10,6 +10,11 @@ retail client connects, enters the game and stays in it for the observation
 window without being dropped. It also requires the requested bot to appear
 and the retail client to remain in the final authenticated-rcon status query.
 --require-auth additionally requires successful Steam session validation.
+--team, --bot-team and --allready make it a played-mode gate (G5 per mode):
+the server's admin put places the retail client on a team, the bots take the
+other side, the forced ready-up starts the match through its map_restart, and
+the client must stay in with the server's gametype, factory, match state and
+the client's team as expected.
 
 The retail client keeps its settings and console log under
 <install>/<steamid>/.  The probe stops the client instead of letting it exit
@@ -193,7 +198,21 @@ def main() -> int:
                         help="also require the engine's successful Steam session validation")
     parser.add_argument("--cgame", type=Path,
                         help="FnQL-game cgamex86.dll for the retail client, served from a scratch home pak")
+    parser.add_argument("--factories", type=Path, help="additional hand-authored factory fixture")
+    parser.add_argument("--cheats", action="store_true",
+                        help="use devmap for fixtures outside retail arena mode metadata")
+    parser.add_argument("--expect-gametype", type=int, choices=range(13),
+                        help="require the server's g_gametype")
+    parser.add_argument("--expect-factory", help="require the server's g_factory")
+    parser.add_argument("--team", choices=["r", "b", "f"],
+                        help="move the retail client to this team (admin put) once it is in")
+    parser.add_argument("--bot-team", default="", choices=["", "red", "blue"],
+                        help="team for the added bots")
+    parser.add_argument("--allready", action="store_true",
+                        help="force the ready-up (admin allready) and require the match in progress")
     args = parser.parse_args()
+    if args.factories is not None and not args.factories.is_file():
+        parser.error("--factories needs an existing file")
 
     if not args.engine or not Path(args.engine).is_file():
         raise SystemExit("pass --engine <fnql.ded.exe> or set FNQL_DEDICATED_EXE")
@@ -239,7 +258,9 @@ def main() -> int:
         payload = b"\xff\xff\xff\xff" + f"rcon {rcon_password} {command}\n".encode("ascii")
         replies = []
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.settimeout(0.5)
+            # The first packet can take a loaded server a while; packets that
+            # continue a long reply follow quickly.
+            sock.settimeout(5.0)
             sock.connect(("127.0.0.1", args.port))
             sock.send(payload)
             while True:
@@ -247,6 +268,7 @@ def main() -> int:
                     replies.append(sock.recv(65535).decode("latin-1"))
                 except (socket.timeout, ConnectionResetError):
                     break
+                sock.settimeout(0.5)
         return "\n".join(replies)
 
     # The retail client is launched by Steam and cannot be made windowless;
@@ -256,6 +278,9 @@ def main() -> int:
     try:
         (home / "baseq3").mkdir()
         shutil.copy2(args.module, home / "baseq3" / MODULE_NAME)
+        if args.factories is not None:
+            (home / "baseq3" / "scripts").mkdir()
+            shutil.copy2(args.factories, home / "baseq3" / "scripts" / "probe.factories")
         log_path = home / "baseq3" / "qconsole.log"
         client_home = home / "client"
         client_args: list[str] = []
@@ -275,7 +300,7 @@ def main() -> int:
              "+set", "sv_serverType", "1",
              "+set", "sv_hostname", "FnQL-game retail client probe",
              "+set", "developer", "1" if args.developer or args.require_auth else "0",
-             "+set", "serverstartup", f"map {args.map} {args.factory}"],
+             "+set", "serverstartup", f"{'devmap' if args.cheats else 'map'} {args.map} {args.factory}"],
             cwd=home, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, **headless.popen_options())
 
@@ -322,15 +347,42 @@ def main() -> int:
                 failures.append("the retail client never entered the game"
                                 + ("" if alive() else " (it exited)"))
         if began is not None:
+            if args.team:
+                # The retail client cannot be scripted, so the server's admin
+                # put (FnQL-game g_admin.c) places it, as a referee would.
+                server_command(f"put {began} {args.team}")
+                time.sleep(1)
             for _ in range(args.bots):
-                server_command("addbot sarge 2")
+                server_command(f"addbot sarge 2 {args.bot_team}".rstrip())
+            if args.allready:
+                time.sleep(3)
+                server_command("allready")
             stay = time.monotonic() + args.seconds
             while time.monotonic() < stay and alive():
                 time.sleep(0.5)
             status = server_command("status")
             (home / "server-status.txt").write_text(status, encoding="utf-8")
+            serverinfo = server_command("serverinfo")
+            (home / "server-info.txt").write_text(serverinfo, encoding="utf-8")
             time.sleep(2)
             text = log()
+
+            def info(key: str) -> str | None:
+                m = re.search(rf"(?m)^{re.escape(key)}\s+(\S*)", serverinfo)
+                return m.group(1) if m else None
+
+            if args.expect_gametype is not None and info("g_gametype") != str(args.expect_gametype):
+                failures.append(f"g_gametype {info('g_gametype')!r}, expected {args.expect_gametype}")
+            if args.expect_factory is not None and info("g_factory") != args.expect_factory:
+                failures.append(f"g_factory {info('g_factory')!r}, expected {args.expect_factory!r}")
+            if args.allready and info("g_gameState") != "IN_PROGRESS":
+                failures.append(f"g_gameState {info('g_gameState')!r} after the forced ready-up")
+            if args.team:
+                wanted = {"f": "0", "r": "1", "b": "2"}[args.team]
+                changes = re.findall(rf"ClientUserinfoChanged: {began} .*?\\t\\(\d+)", text)
+                if not changes or changes[-1] != wanted:
+                    failures.append(f"the retail client is on team {changes[-1] if changes else None}, "
+                                    f"expected {wanted}")
             if not alive():
                 failures.append("the retail client exited during the game")
             if re.search(rf"ClientDisconnect: {began}\b", text):
@@ -379,6 +431,8 @@ def main() -> int:
             return 1
         print(f"retail client probe OK: {RETAIL_CLIENT} joined {args.map} ({args.factory}, sv_pure "
               f"{args.pure}) on {engine.name} as client {began}"
+              + (f" on team {args.team}" if args.team else "")
+              + (", match in progress" if args.allready else "")
               + (f" ({name.group(1)})" if name else "") + f" and stayed {args.seconds:.0f}s"
               + (" running FnQL-game's cgame" if args.cgame is not None else ""))
         return 0
@@ -394,6 +448,13 @@ def main() -> int:
         # otherwise teardown can leave a misleading auth rejection in the log.
         for pid in clients:
             kill_tree(pid)
+        # A killed client takes a few seconds to go; the next run would
+        # otherwise find it still there and skip to leave it alone.
+        gone_by = time.monotonic() + 30
+        while clients & client_pids() and time.monotonic() < gone_by:
+            time.sleep(0.5)
+        if clients & client_pids():
+            print("warning: the retail client this run started is still exiting")
         time.sleep(1)
         hider.__exit__(None, None, None)
         # a console log the client created where there was none is the run's own
