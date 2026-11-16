@@ -46,7 +46,7 @@ static const int numNetSources = sizeof(netSources) / sizeof(const char*);
 
 static const serverFilter_t serverFilters[] = {
 	{"All", "" },
-	{"Quake 3 Arena", "" },
+	{"Quake Live", "" }, /* retail filter table 0x100239bc: row 1 */
 	{"Team Arena", "missionpack" },
 	{"Rocket Arena", "arena" },
 	{"Alliance", "alliance20" },
@@ -85,6 +85,11 @@ static int const numTeamArenaGameNames = sizeof(teamArenaGameNames) / sizeof(con
 
 
 static const int numServerFilters = sizeof(serverFilters) / sizeof(serverFilter_t);
+/* The browser filter is module state, not a cvar: retail keeps it in a
+ * global (uix86 0x1074082c, read at 0x100066d0 and 0x10006a7a) and its cvar
+ * table has no ui_serverFilterType row. Retail bounds it with > 7, one past
+ * its seven filters (0x100239bc); this bound stays inside the table. */
+static int uiServerFilterType;
 
 static const char *sortKeys[] = {
 	"Server Name",
@@ -1028,10 +1033,10 @@ static void UI_DrawNetMapCinematic(rectDef_t *rect, float scale, vec4_t color) {
 
 
 static void UI_DrawNetFilter(rectDef_t *rect, float scale, vec4_t color, int textStyle) {
-	if (ui_serverFilterType.integer < 0 || ui_serverFilterType.integer > numServerFilters) {
-		ui_serverFilterType.integer = 0;
+	if (uiServerFilterType < 0 || uiServerFilterType >= numServerFilters) {
+		uiServerFilterType = 0;
 	}
-  Text_Paint(rect->x, rect->y, scale, color, va("Filter: %s", serverFilters[ui_serverFilterType.integer].description), 0, 0, textStyle);
+  Text_Paint(rect->x, rect->y, scale, color, va("Filter: %s", serverFilters[uiServerFilterType].description), 0, 0, textStyle);
 }
 
 
@@ -1394,10 +1399,10 @@ static int UI_OwnerDrawWidth(int ownerDraw, float scale) {
 			s = va("Source: %s", netSources[ui_netSource.integer]);
 			break;
 		case UI_NETFILTER:
-			if (ui_serverFilterType.integer < 0 || ui_serverFilterType.integer > numServerFilters) {
-				ui_serverFilterType.integer = 0;
+			if (uiServerFilterType < 0 || uiServerFilterType >= numServerFilters) {
+				uiServerFilterType = 0;
 			}
-			s = va("Filter: %s", serverFilters[ui_serverFilterType.integer].description );
+			s = va("Filter: %s", serverFilters[uiServerFilterType].description );
 			break;
 		case UI_TIER:
 			break;
@@ -2020,13 +2025,9 @@ static qboolean UI_GameType_HandleKey(int flags, float *special, int key, qboole
 				ui_gameType.integer = 3;
 			}
 		}
-    
-		if (uiInfo.gameTypes[ui_gameType.integer].gtEnum == GT_TOURNAMENT) {
-			trap_Cvar_Set("ui_Q3Model", "1");
-		} else {
-			trap_Cvar_Set("ui_Q3Model", "0");
-		}
 
+		/* Team Arena also wrote ui_Q3Model here; retail uix86 has no such
+		 * cvar or string, so nothing beyond ui_gametype is written. */
 		trap_Cvar_Set("ui_gameType", va("%d", ui_gameType.integer));
 		UI_SetCapFragLimits(qtrue);
 		if (ui_currentMap.integer >= 0 && ui_currentMap.integer < uiInfo.mapCount && ui_gameType.integer >= 0 && ui_gameType.integer < uiInfo.numGameTypes)
@@ -2202,15 +2203,15 @@ static qboolean UI_NetFilter_HandleKey(int flags, float *special, int key) {
   if (key == K_MOUSE1 || key == K_MOUSE2 || key == K_ENTER || key == K_KP_ENTER) {
 
 		if (key == K_MOUSE2) {
-			ui_serverFilterType.integer--;
+			uiServerFilterType--;
 		} else {
-			ui_serverFilterType.integer++;
+			uiServerFilterType++;
 		}
 
-    if (ui_serverFilterType.integer >= numServerFilters) {
-      ui_serverFilterType.integer = 0;
-    } else if (ui_serverFilterType.integer < 0) {
-      ui_serverFilterType.integer = numServerFilters - 1;
+    if (uiServerFilterType >= numServerFilters) {
+      uiServerFilterType = 0;
+    } else if (uiServerFilterType < 0) {
+      uiServerFilterType = numServerFilters - 1;
 		}
 		UI_BuildServerDisplayList(qtrue);
     return qtrue;
@@ -3374,8 +3375,8 @@ static void UI_BuildServerDisplayList(qboolean force) {
 				}
 			}
 				
-			if (ui_serverFilterType.integer > 0) {
-				if (Q_stricmp(Info_ValueForKey(info, "game"), serverFilters[ui_serverFilterType.integer].basedir) != 0) {
+			if (uiServerFilterType > 0) {
+				if (Q_stricmp(Info_ValueForKey(info, "game"), serverFilters[uiServerFilterType].basedir) != 0) {
 					trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
 					continue;
 				}

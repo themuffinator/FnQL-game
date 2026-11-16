@@ -407,6 +407,8 @@ int main(void) {
     assert(!strcmp(keyBindings['w'], "+forward") && !strcmp(keyBindings[K_MOUSE1], "+attack"));
     assert(!strcmp(keyBindings[K_MOUSE2], "+zoom") && !strcmp(keyBindings[K_F3], "readyup"));
     assert(!strcmp(keyBindings[K_KP_INS], "follow 0") && !strcmp(keyBindings[K_KP_PGUP], "follow 9"));
+    /* Retail's key for weapon 14 is '0' (0x1002a374 = 0x30), as default.cfg binds it. */
+    assert(!strcmp(keyBindings['0'], "weapon 14"));
     /* Retail order: dropweapon follows +left on the left arrow. */
     assert(!strcmp(keyBindings[K_LEFTARROW], "dropweapon") && !*keyBindings[0]);
     {

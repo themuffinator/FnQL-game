@@ -15,7 +15,9 @@ compares what it prints with:
   docs/contract/retail_enums.json   curated enum values with retail evidence
 
 It also checks the spawn table (code/game/g_spawn.c) and the bot item
-indices (code/game/inv.h) against the extracted retail ones.
+indices (code/game/inv.h) against the extracted retail ones, and holds the
+cvar tables of all three modules and the ui's binding table
+(code/ui/ui_cvar.h, code/ui/ui_shared.c) to retail's.
 """
 
 from __future__ import annotations
@@ -328,6 +330,75 @@ def main() -> int:
         if row["flags"] & wire_mask:
             failures.append(f"cgame cvar {row['name']} is local but would reach the server (flags {row['flags']:#x})")
 
+    # the ui registers retail's cvar table row for row too (uix86 0x1002afd8):
+    # names, defaults and flags decide what a fresh profile saves and how the
+    # engine guards each setting, and rows that share a change callback in
+    # retail share one here
+    ui_dir = ROOT / "code" / "ui"
+    ui_flag_values = dict(flag_values)
+    ui_flag_values.update((name, int(value, 0)) for name, value in re.findall(
+        r"#define\s+(UI_CVAR_\w+)\s+(0x[0-9a-fA-F]+|\d+)", (ui_dir / "ui_local.h").read_text(encoding="latin-1")))
+    ui_rows = []
+    for name, default, flags, callback in re.findall(
+            r'^UI_CVAR(?:_CB)?\(\s*\w+,\s*"(\w+)",\s*"((?:[^"\\]|\\.)*)",\s*([^,)]+?)\s*(?:,\s*(\w+)\s*)?\)',
+            (ui_dir / "ui_cvar.h").read_text(encoding="latin-1"), re.M):
+        value = 0
+        for token in flags.split("|"):
+            token = token.strip()
+            value |= int(token, 0) if token[:1].isdigit() else ui_flag_values[token]
+        ui_rows.append({"name": name, "default": default, "flags": value, "callback": callback or None})
+    retail_ui = tables["uiCvars"]
+    if len(ui_rows) != len(retail_ui):
+        failures.append(f"ui cvar table has {len(ui_rows)} rows, retail {len(retail_ui)}")
+    callback_pairs = {}
+    for index, (ours, expected) in enumerate(zip(ui_rows, retail_ui)):
+        if [ours[k] for k in ("name", "default", "flags")] != [expected[k] for k in ("name", "default", "flags")]:
+            failures.append(f"ui cvar row {index}: ours {ours} != retail {expected}")
+            break
+        if (ours["callback"] is None) != (expected["callback"] is None):
+            failures.append(f"ui cvar {ours['name']}: callback {ours['callback']}, retail {expected['callback']}")
+        elif ours["callback"]:
+            callback_pairs.setdefault(expected["callback"], set()).add(ours["callback"])
+    ours_to_retail = {}
+    for retail_callback, ours_callbacks in callback_pairs.items():
+        if len(ours_callbacks) != 1:
+            failures.append(f"ui cvars sharing retail callback {retail_callback} use {sorted(ours_callbacks)}")
+        for callback in ours_callbacks:
+            ours_to_retail.setdefault(callback, set()).add(retail_callback)
+    for callback, retail_callbacks in ours_to_retail.items():
+        if len(retail_callbacks) != 1:
+            failures.append(f"ui callback {callback} stands for retail callbacks {sorted(retail_callbacks)}")
+
+    # the controls menu's binding table: retail's commands in retail's order
+    # with retail's keys (uix86 0x1002a0d0), then a fixed list of extensions
+    key_values, next_value = {}, 0
+    keycodes = (ui_dir / "keycodes.h").read_text(encoding="latin-1")
+    for name, value in re.findall(r"^\s*(K_\w+)\s*(?:=\s*(\w+))?\s*,", keycodes, re.M):
+        next_value = int(value, 0) if value else next_value
+        key_values[name] = next_value
+        next_value += 1
+    table = re.search(r"static bind_t g_bindings\[\]\s*=\s*\{(.*?)\n\};", (ui_dir / "ui_shared.c")
+                      .read_text(encoding="latin-1"), re.S)
+    bindings = []
+    for command, key in re.findall(r'\{\s*"([^"]+)",\s*([^,]+?)\s*(?:/\*.*?\*/\s*)?,', table.group(1) if table else ""):
+        if key.startswith("'"):
+            key_value = ord(key[1])
+        elif key.lstrip("-").isdigit():
+            key_value = int(key)
+        else:
+            key_value = key_values.get(key)
+        bindings.append((command, key_value))
+    retail_bindings = [(row["command"], -1 if row["key"] == -2 else row["key"]) for row in tables["uiBindings"]]
+    if bindings[:len(retail_bindings)] != retail_bindings:
+        for index, expected in enumerate(retail_bindings):
+            ours = bindings[index] if index < len(bindings) else None
+            if ours != expected:
+                failures.append(f"ui binding row {index}: ours {ours} != retail {expected}")
+                break
+    binding_extensions = ["+strafe", "+mlook", "+button4", "messagemode3", "messagemode4"]
+    if [command for command, _ in bindings[len(retail_bindings):]] != binding_extensions:
+        failures.append(f"ui binding extensions {bindings[len(retail_bindings):]} != {binding_extensions}")
+
     # curated string lists (e.g. the spawn filter gametype tokens)
     for list_name, spec in enums.get("lists", {}).items():
         file_name, symbol = spec["source"].split()
@@ -344,7 +415,8 @@ def main() -> int:
         return 1
     checks = len(tables["items"]) + len(mods) + sum(len(g["values"]) for g in enums["groups"].values()) \
         + len(spawns) + len(tables["botItemIndices"]) + sum(len(keys) for keys in tables["playerKeys"].values()) \
-        + 1 + len(retail_published) + retail_checked + len(retail_cgame)
+        + 1 + len(retail_published) + retail_checked + len(retail_cgame) + len(retail_ui) \
+        + len(retail_bindings)
     print(f"wire contract OK: {checks} retail values match")
     return 0
 

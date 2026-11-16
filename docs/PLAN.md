@@ -51,7 +51,7 @@ exists.
 |---|---|---|
 | G0 ABI layout | `scripts/check_engine_abi.py`: every structure, offset and constant shared by pointer with the engine matches FnQL | M1 |
 | G1 Boot smoke | `scripts/smoke_dedicated.py`: the module loads through the retail ABI, identifies itself, initializes on a retail map, hosts a bot, keeps running | M1 |
-| G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands) compared with FnQL-game's tables | M2 |
+| G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands; the qagame, cgame and ui cvar tables and the ui binding table) compared with FnQL-game's tables | M2 |
 | G3a Pmove lockstep | `scripts/pmove_lockstep.py` and `tests/lockstep/`: the retail qagame's `Pmove` and FnQL-game's run the same scripted and fuzzed command streams in one process, and every `playerState_t` and `pmove_t` output matches bit for bit | M3 |
 | G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command and engine query answer (FnQL `sv_lockstepQueries`) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
 | G4a Retail prediction | `scripts/prediction_probe.py`: the retail cgame predicts FnQL-game's server-side movement on a stock map with no prediction error at all, VQL and PQL | M3 |
@@ -1552,7 +1552,19 @@ A retail-ABI `fnql_cgamex86.dll`:
 Exit: G4 on retail and FnQL-game servers; visual parity checks against retail
 captures.
 
-### M8 — ui
+### M8 — ui (complete)
+
+Complete (2026-11-16). The exit gates pass: the nine `ui-hosting` gates
+(menu activation, model previews, every in-game menu, tab page and
+out-of-game screen, and scripted interaction with the cvar values it
+stores, all against retail captures at 960x600 and 1024x768) and G2, which
+now also holds the ui's cvar table and binding table to retail's. That last
+check found the table in Team Arena's order rather than retail's, two
+archived cvars retail does not have (`ui_serverFilterType`, which retail
+keeps as module state, and `ui_q3model`), and the `weapon 14` key, which is
+`'0'` in retail; see the eighth pass in [UI.md](UI.md). Live advertising
+stays off and the advert imports unused, as the online-services rule
+requires. Client provider selection and pure-server packaging are M10.
 
 Implemented in the sole `code/ui/` native module; `code/q3_ui/` is removed.
 The installed legacy menu definitions supply all screens and actions. The
@@ -1576,6 +1588,9 @@ A retail-ABI `fnql_uix86.dll`:
 - The Team Arena menu system: in-game, callvote, admin, join and options
   menus; the existing connect/download and advert screens.
 - Coexists with the engine-hosted WebUI.
+
+Exit: the `ui-hosting` gates against retail at 960x600 and 1024x768; G2 on
+the ui's cvar and binding tables.
 
 ### M9 — Bots
 

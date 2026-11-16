@@ -77,7 +77,10 @@ Broader bot behavior and special-mode parity remain in progress.
 The module does not yet claim retail wire parity, so FnQL keeps loading the
 retail modules unless told otherwise. Native cgame and UI builds now have
 local hosting gates. The [native UI](docs/UI.md) replaces the old Q3 UI
-entirely; client provider selection and pure-server packaging remain M10.
+entirely, and milestone 8 is complete: every menu, tab page and scripted
+interaction matches retail captures, and its cvar and binding tables match
+retail's row for row. Client provider selection and pure-server packaging
+remain M10.
 
 ## Using it
 
