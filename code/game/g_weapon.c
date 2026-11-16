@@ -360,6 +360,13 @@ static int ShotgunPellet( const vec3_t start, const vec3_t end, gentity_t *ent, 
 			continue;
 		}
 
+		// each pellet on an enemy player adds a Steam hit before the damage
+		// is dealt (retail qagamex86 0x1006cfe1 to 0x1006d0aa, then G_Damage
+		// at 0x1006d100); the pattern counts the match statistics
+		if ( traceEnt->client && traceEnt != ent && ent->client && !OnSameTeam( traceEnt, ent )
+			&& !( G_FreezeTagActive() && traceEnt->client->ps.powerups[PW_FROZEN] ) ) {
+			G_StatsSteamHit( ent->client, WP_SHOTGUN );
+		}
 		G_Damage( traceEnt, ent, ent, forward, tr.endpos, damage, 0, MOD_SHOTGUN );
 		if ( traceEnt->takedamage && traceEnt != ent && traceEnt->client && ent->client
 			&& !OnSameTeam( traceEnt, ent ) && !traceEnt->client->ps.powerups[PW_FROZEN] ) {
