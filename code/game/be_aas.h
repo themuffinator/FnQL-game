@@ -125,6 +125,20 @@ typedef struct aas_entityinfo_s
 	int		weapon;			// determines weapon and flash model, etc
 	int		legsAnim;		// mask off ANIM_TOGGLEBIT
 	int		torsoAnim;		// mask off ANIM_TOGGLEBIT
+	// Quake Live appends bot_entitystate_t's extension, in the same order:
+	// the retail engine's AAS_EntityInfo copies 0xec bytes and its
+	// AAS_UpdateEntity (quakelive_steam.exe 0x00484e20) fills these from the
+	// state.  FnQL's engine does the same for modules declaring
+	// FNQL_MODULE_CAP_QL_BOT_ENTITIES.
+	float	nextthink;		// the entity's nextthink in whole seconds
+	int		itemQuantity;	// its item's quantity, giType and giTag (0 for non-items)
+	int		itemType;
+	int		itemTag;
+	int		health;			// the entity's health
+	int		maxHealth;		// a client's stats[STAT_MAX_HEALTH], else 0
+	int		ammoFull[16];	// a client's ammo per weapon is at its maximum or unlimited
+	int		trainingClear;	// FL_TRAINING is clear
+	int		carriesFlag;	// a client holds the red or blue flag
 } aas_entityinfo_t;
 
 // area info

@@ -57,6 +57,8 @@ typedef enum {
 #define FL_NO_BOTS				0x00002000	// spawn point not for bot use
 #define FL_NO_HUMANS			0x00004000	// spawn point just for bots
 #define FL_FORCE_GESTURE		0x00008000	// force gesture on client
+#define FL_TRAINING				0x00040000	// retail training code marks clients with it (qagamex86
+											// 0x10024590); bots receive it negated as trainingClear
 #define FL_POWERUP_DECAY		0x00080000	// manual powerup drop: s.time starts its decay (retail 0x10044e28)
 #define FL_ITEM_TIMER			0x00100000	// a taken item that clients see counting down (g_itemTimers)
 

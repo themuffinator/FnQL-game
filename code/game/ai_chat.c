@@ -360,6 +360,18 @@ int BotValidChatPosition(bot_state_t *bs) {
 
 /*
 ==================
+BotChatSilencedByMode
+
+The modes that keep retail bots quiet (qagamex86 0x10001d1e, 0x1000210e and
+0x100030de): bot_followMe, bot_training, bot_gauntletOnly and g_instaGib.
+==================
+*/
+static qboolean BotChatSilencedByMode( void ) {
+	return bot_followMe.integer || bot_training.integer || bot_gauntletOnly.integer || g_instaGib.integer;
+}
+
+/*
+==================
 BotChat_EnterGame
 ==================
 */
@@ -367,7 +379,7 @@ int BotChat_EnterGame(bot_state_t *bs) {
 	char name[32];
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
+	if (BotChatSilencedByMode() || bot_nochat.integer) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	//don't chat in teamplay
 	if (TeamPlayIsOn()) return qfalse;
@@ -433,7 +445,7 @@ int BotChat_StartLevel(bot_state_t *bs) {
 	char name[32];
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
+	if (g_instaGib.integer || bot_nochat.integer) return qfalse;
 	if (BotIsObserver(bs)) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	//don't chat in teamplay
@@ -467,7 +479,7 @@ int BotChat_EndLevel(bot_state_t *bs) {
 	char name[32];
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
+	if (BotChatSilencedByMode() || bot_nochat.integer) return qfalse;
 	if (BotIsObserver(bs)) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	// teamplay
@@ -529,15 +541,13 @@ int BotChat_Death(bot_state_t *bs) {
 	char name[32];
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
-	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
-	rnd = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_CHAT_DEATH, 0, 1);
-	// don't chat in tournament mode
-	if (gametype == GT_TOURNAMENT) return qfalse;
-	//if fast chatting is off
-	if (!bot_fastchat.integer) {
-		if (random() > rnd) return qfalse;
-	}
+	if (bot_nochat.integer || g_instaGib.integer || bot_gauntletOnly.integer) return qfalse;
+	if (bot_training.integer == 2 || bot_training.integer == 1) return qfalse;
+	// Retail guards the Quake III gates with ( bot_training == 0 ) == 3, which
+	// never holds (qagamex86 0x100023a6), so they never run: a dying bot
+	// chats whatever its chat pause, its chat_death characteristic or the
+	// game mode, and draws no random number for it.
+	(void)rnd;
 	if (BotNumActivePlayers() <= 1) return qfalse;
 	//
 	if (bs->lastkilledby >= 0 && bs->lastkilledby < MAX_CLIENTS)
@@ -545,7 +555,7 @@ int BotChat_Death(bot_state_t *bs) {
 	else
 		strcpy(name, "[world]");
 	//
-	if (TeamPlayIsOn() && BotSameTeam(bs, bs->lastkilledby)) {
+	if (TeamPlayIsOn() && BotSameTeam(bs, bs->lastkilledby) && gametype != GT_RED_ROVER) {
 		if (bs->lastkilledby == bs->client) return qfalse;
 		BotAI_BotInitialChat(bs, "death_teammate", name, NULL);
 		bs->chatto = CHAT_TEAM;
@@ -632,7 +642,7 @@ int BotChat_Kill(bot_state_t *bs) {
 	char name[32];
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
+	if (g_instaGib.integer || bot_nochat.integer) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	rnd = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_CHAT_KILL, 0, 1);
 	// don't chat in tournament mode
@@ -667,7 +677,7 @@ int BotChat_Kill(bot_state_t *bs) {
 		if (bs->enemydeathtype == MOD_GAUNTLET) {
 			BotAI_BotInitialChat(bs, "kill_gauntlet", name, NULL);
 		}
-		else if (bs->enemydeathtype == MOD_RAILGUN) {
+		else if (bs->enemydeathtype == MOD_RAILGUN || bs->enemydeathtype == MOD_RAILGUN_HEADSHOT) {
 			BotAI_BotInitialChat(bs, "kill_rail", name, NULL);
 		}
 		else if (bs->enemydeathtype == MOD_TELEFRAG) {
@@ -698,7 +708,7 @@ int BotChat_EnemySuicide(bot_state_t *bs) {
 	char name[32];
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
+	if (g_instaGib.integer || bot_nochat.integer) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	if (BotNumActivePlayers() <= 1) return qfalse;
 	//
@@ -733,7 +743,7 @@ int BotChat_HitTalking(bot_state_t *bs) {
 	int lasthurt_client;
 	float rnd;
 
-	if (bot_nochat.integer) return qfalse;
+	if (g_instaGib.integer || bot_nochat.integer) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	if (BotNumActivePlayers() <= 1) return qfalse;
 	lasthurt_client = g_entities[bs->client].client->lasthurt_client;
@@ -773,6 +783,7 @@ int BotChat_HitNoDeath(bot_state_t *bs) {
 	int lasthurt_client;
 	aas_entityinfo_t entinfo;
 
+	if (g_instaGib.integer) return qfalse;
 	lasthurt_client = g_entities[bs->client].client->lasthurt_client;
 	if (!lasthurt_client) return qfalse;
 	if (lasthurt_client == bs->client) return qfalse;
@@ -817,7 +828,7 @@ int BotChat_HitNoKill(bot_state_t *bs) {
 	float rnd;
 	aas_entityinfo_t entinfo;
 
-	if (bot_nochat.integer) return qfalse;
+	if (g_instaGib.integer || bot_nochat.integer) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	if (BotNumActivePlayers() <= 1) return qfalse;
 	rnd = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_CHAT_HITNOKILL, 0, 1);
@@ -854,7 +865,7 @@ int BotChat_Random(bot_state_t *bs) {
 	float rnd;
 	char name[32];
 
-	if (bot_nochat.integer) return qfalse;
+	if (BotChatSilencedByMode() || g_training.integer || bot_nochat.integer) return qfalse;
 	if (BotIsObserver(bs)) return qfalse;
 	if (bs->lastchat_time > FloatTime() - TIME_BETWEENCHATTING) return qfalse;
 	// don't chat in tournament mode

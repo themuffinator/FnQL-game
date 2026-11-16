@@ -109,6 +109,7 @@ typedef struct bot_state_s
 	int last_eFlags;								//last ps flags
 	usercmd_t lastucmd;								//usercmd from last frame
 	int entityeventTime[MAX_GENTITIES];				//last entity event time
+	unsigned int heardClients;						//clients the latest event came from (retail bs+0x2488)
 	//
 	bot_settings_t settings;						//several bot settings
 	int (*ainode)(struct bot_state_s *bs);			//current AI node
@@ -195,6 +196,7 @@ typedef struct bot_state_s
 	int ws;											//weapon state of the bot
 	//
 	int enemy;										//enemy entity number
+	int enemyheard;									//the enemy was found by hearing, not sight (retail bs+0x248c)
 	int lastenemyareanum;							//last reachability area the enemy was in
 	vec3_t lastenemyorigin;							//last origin of the enemy in the reachability area
 	int weaponnum;									//current weapon number
@@ -267,7 +269,21 @@ int NumBots(void);
 void BotEntityInfo(int entnum, aas_entityinfo_t *info);
 
 extern float floattime;
-#define FloatTime() floattime
+// Retail evaluates the bot code on the x87 at double precision and rounds to
+// float only where it stores (see bg_pmove.c, "Retail arithmetic").  The bot
+// sources therefore see the clock, the random numbers and the shared vector
+// routines in retail's form: expressions such as FloatTime() + 1 + random()
+// then round once, where retail stores them.
+#define FloatTime() ((double)floattime)
+#undef random
+#undef crandom
+#define random()	( ( rand() & 0x7fff ) / 32767.0 )
+#define crandom()	( 2.0 * ( random() - 0.5 ) )
+#undef DotProduct
+#define DotProduct(x,y)	PM_Dot3( x, y )
+#define VectorNormalize( v )	PM_VectorNormalize( v )
+void BotVectoAngles( const vec3_t value, vec3_t angles );
+#define vectoangles( v, a )	BotVectoAngles( v, a )
 
 // from the game source
 void	QDECL BotAI_Print( int type, const char *fmt, ... );

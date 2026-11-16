@@ -143,6 +143,17 @@ typedef struct bot_entitystate_s
 	int		weapon;			// determines weapon and flash model, etc
 	int		legsAnim;		// mask off ANIM_TOGGLEBIT
 	int		torsoAnim;		// mask off ANIM_TOGGLEBIT
+	// Quake Live extension (retail qagamex86 0x10023773 fills it; the engine
+	// copies it into aas_entityinfo_t, which ends with the same fields)
+	float	nextthink;		// the entity's nextthink in whole seconds
+	int		itemQuantity;	// its item's quantity, giType and giTag (0 for non-items)
+	int		itemType;
+	int		itemTag;
+	int		health;			// the entity's health
+	int		maxHealth;		// a client's stats[STAT_MAX_HEALTH], else 0
+	int		ammoFull[16];	// a client's ammo per weapon is at its maximum or unlimited
+	int		trainingClear;	// FL_TRAINING is clear
+	int		carriesFlag;	// a client holds the red or blue flag
 } bot_entitystate_t;
 
 //bot AI library exported functions

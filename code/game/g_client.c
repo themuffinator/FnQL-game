@@ -1792,20 +1792,21 @@ void ClientSpawn(gentity_t *ent) {
 	}
 	client->pers.teamState.state = TEAM_ACTIVE;
 
-#ifdef MISSIONPACK
-	// always clear the kamikaze flag
+	// Retail clears only the kamikaze and ticking flags, on the entity and
+	// the player state, marks the spectator team, and keeps every other
+	// player-state flag (a bot still holding its talk button keeps EF_TALK)
+	// with the teleport bit toggled so the client does not lerp
+	// (qagamex86 0x1003bd74-0x1003bdb7).
 	ent->s.eFlags &= ~EF_KAMIKAZE;
-#endif
-
-	// toggle the teleport bit so the client knows to not lerp
-	// and never clear the voted flag
-	flags = client->ps.eFlags & (EF_TELEPORT_BIT | EF_VOTED | EF_TEAMVOTED);
-	flags ^= EF_TELEPORT_BIT;
+	client->ps.eFlags &= ~EF_KAMIKAZE;
+	ent->s.eFlags &= ~EF_TICKING;
+	client->ps.eFlags &= ~EF_TICKING;
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
-		flags |= EF_SPECTATOR;
+		client->ps.eFlags |= EF_SPECTATOR;
 	} else {
-		flags &= ~EF_SPECTATOR;
+		client->ps.eFlags &= ~EF_SPECTATOR;
 	}
+	flags = client->ps.eFlags ^ EF_TELEPORT_BIT;
 
 	// unlagged
 	G_ResetHistory( ent );
@@ -1936,12 +1937,10 @@ void ClientSpawn(gentity_t *ent) {
 	// the respawned flag will be cleared after the attack and jump keys come up
 	client->ps.pm_flags |= PMF_RESPAWNED;
 
-	client->ps.viewheight = DEFAULT_VIEWHEIGHT;
-	if ( !isSpectator ) {
-		// a spectator keeps retail's zero gravity; SpectatorThink sets its speed
-		client->ps.gravity = g_gravity.integer;
-		client->ps.speed = g_speed.integer;
-	}
+	// Retail leaves the view height, gravity and speed to the client's
+	// first think (qagamex86 0x1003c504-0x1003c592): a human runs it at the
+	// end of the spawn, a bot on its next frame, so a respawned bot keeps
+	// them zero for that frame and a spectator keeps zero gravity.
 
 	trap_GetUsercmd( client - level.clients, &client->pers.cmd );
 	SetClientViewAngle( ent, spawn_angles );

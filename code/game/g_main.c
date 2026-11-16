@@ -940,15 +940,14 @@ static int QDECL SortRanks( const void *a, const void *b ) {
 		return -1;
 	}
 
-	// then spectators
+	// then spectators, earliest arrival first: spectatorTime is the
+	// wall-clock second the client became a spectator (retail 0x10055f1f
+	// compares it ascending; baseq3a counted time spent spectating instead)
 	if ( ca->sess.sessionTeam == TEAM_SPECTATOR && cb->sess.sessionTeam == TEAM_SPECTATOR ) {
-		if ( ca->sess.spectatorTime > cb->sess.spectatorTime ) {
+		if ( ca->sess.spectatorTime < cb->sess.spectatorTime ) {
 			return -1;
 		}
-		if ( ca->sess.spectatorTime < cb->sess.spectatorTime ) {
-			return 1;
-		}
-		return 0;
+		return ca->sess.spectatorTime > cb->sess.spectatorTime;
 	}
 	if ( ca->sess.sessionTeam == TEAM_SPECTATOR ) {
 		return 1;
@@ -3024,8 +3023,9 @@ static void G_RunFrame( int levelTime ) {
 		}
 
 		if ( i < MAX_CLIENTS ) {
+			// spectatorTime is a wall-clock stamp, never advanced here
+			// (retail writes it only from _time64, 0x10037352 / 0x100404ed)
 			client = ent->client;
-			client->sess.spectatorTime += level.msec; 
 			if ( client->pers.connected == CON_CONNECTED )
 				G_RunClient( ent );
 			continue;

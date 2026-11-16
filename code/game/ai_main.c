@@ -37,6 +37,15 @@
 
 #define MAX_PATH		144
 
+// The botlib imports exchange Quake Live's structures (FNQL_MODULE_CAP_QL_BOT_ENTITIES):
+// a 0x70-byte Quake III state plus the extension fields, 0xd0 bytes in all
+// (retail qagamex86 0x10023773 clears 0xd0), and the 0x8c-byte Quake III
+// entity info plus the same fields, 0xec bytes (retail engine 0x004851b0).
+typedef char botEntityStateQ3Prefix[ offsetof( bot_entitystate_t, nextthink ) == 0x70 ? 1 : -1 ];
+typedef char botEntityStateSize[ sizeof( bot_entitystate_t ) == 0xd0 ? 1 : -1 ];
+typedef char aasEntityInfoQ3Prefix[ offsetof( aas_entityinfo_t, nextthink ) == 0x8c ? 1 : -1 ];
+typedef char aasEntityInfoSize[ sizeof( aas_entityinfo_t ) == 0xec ? 1 : -1 ];
+
 //bot states
 bot_state_t	*botstates[MAX_CLIENTS];
 //number of bots
@@ -683,6 +692,9 @@ BotEntityInfo
 ==============
 */
 void BotEntityInfo(int entnum, aas_entityinfo_t *info) {
+	// an engine without FNQL_MODULE_CAP_QL_BOT_ENTITIES fills only the Quake III
+	// part, so the Quake Live fields read as zero rather than stack contents
+	memset(info, 0, sizeof(*info));
 	trap_AAS_EntityInfo(entnum, info);
 }
 
@@ -757,13 +769,18 @@ float BotChangeViewAngle(float angle, float ideal_angle, float speed) {
 /*
 ==============
 BotChangeViewAngles
+
+Retail qagamex86 0x10021740 evaluates the view model on the x87: the speed
+update and the damping round once each, the damping multiplies in the order
+( 1 - factor ) * 0.45 * speed, and the bot_challenge model takes the integer
+absolute value of the angle difference.
 ==============
 */
 void BotChangeViewAngles(bot_state_t *bs, float thinktime) {
 	float diff, factor, maxchange, anglespeed, disired_speed;
 	int i;
 
-	if (bs->ideal_viewangles[PITCH] > 180) bs->ideal_viewangles[PITCH] -= 360;
+	if (bs->ideal_viewangles[PITCH] > 180) bs->ideal_viewangles[PITCH] = (float)( bs->ideal_viewangles[PITCH] - 360.0 );
 	//
 	if (bs->enemy >= 0) {
 		factor = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_VIEW_FACTOR, 0.01f, 1);
@@ -779,7 +796,7 @@ void BotChangeViewAngles(bot_state_t *bs, float thinktime) {
 		//
 		if (bot_challenge.integer) {
 			//smooth slowdown view model
-			diff = fabs(AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]));
+			diff = abs((int)AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]));
 			anglespeed = diff * factor;
 			if (anglespeed > maxchange) anglespeed = maxchange;
 			bs->viewangles[i] = BotChangeViewAngle(bs->viewangles[i],
@@ -791,7 +808,7 @@ void BotChangeViewAngles(bot_state_t *bs, float thinktime) {
 			bs->ideal_viewangles[i] = AngleMod(bs->ideal_viewangles[i]);
 			diff = AngleDifference(bs->viewangles[i], bs->ideal_viewangles[i]);
 			disired_speed = diff * factor;
-			bs->viewanglespeed[i] += (bs->viewanglespeed[i] - disired_speed);
+			bs->viewanglespeed[i] = (float)( bs->viewanglespeed[i] + ( (double)bs->viewanglespeed[i] - disired_speed ) );
 			if (bs->viewanglespeed[i] > 180) bs->viewanglespeed[i] = maxchange;
 			if (bs->viewanglespeed[i] < -180) bs->viewanglespeed[i] = -maxchange;
 			anglespeed = bs->viewanglespeed[i];
@@ -800,13 +817,13 @@ void BotChangeViewAngles(bot_state_t *bs, float thinktime) {
 			bs->viewangles[i] += anglespeed;
 			bs->viewangles[i] = AngleMod(bs->viewangles[i]);
 			//demping
-			bs->viewanglespeed[i] *= 0.45 * (1 - factor);
+			bs->viewanglespeed[i] = (float)( ( 1.0 - factor ) * 0.45 * bs->viewanglespeed[i] );
 		}
 		//BotAI_Print(PRT_MESSAGE, "ideal_angles %f %f\n", bs->ideal_viewangles[0], bs->ideal_viewangles[1], bs->ideal_viewangles[2]);`
 		//bs->viewangles[i] = bs->ideal_viewangles[i];
 	}
 	//bs->viewangles[PITCH] = 0;
-	if (bs->viewangles[PITCH] > 180) bs->viewangles[PITCH] -= 360;
+	if (bs->viewangles[PITCH] > 180) bs->viewangles[PITCH] = (float)( bs->viewangles[PITCH] - 360.0 );
 	//elementary action: view
 	trap_EA_View(bs->client, bs->viewangles);
 }
@@ -1482,7 +1499,10 @@ int BotAIStartFrame(int time) {
 		ent = g_entities;
 		for ( i = 0; i < level.num_entities; i++, s++, ent++ ) {
 			ent = &g_entities[i];
-			if ( !ent->inuse || !ent->r.linked || ent->r.svFlags & SVF_NOCLIENT ) {
+			// a hidden item waiting to respawn stays in the botlib, with its
+			// respawn time in the state (retail qagamex86 0x1002371f)
+			if ( !ent->inuse || !ent->r.linked ||
+				( ( ent->r.svFlags & SVF_NOCLIENT ) && ( !ent->item || !ent->nextthink ) ) ) {
 				if ( *s == qfalse ) {
 					*s = qtrue;
 					trap_BotLibUpdateEntity( i, NULL );
@@ -1540,6 +1560,29 @@ int BotAIStartFrame(int time) {
 			state.legsAnim = ent->s.legsAnim;
 			state.torsoAnim = ent->s.torsoAnim;
 			state.weapon = ent->s.weapon;
+			// the Quake Live extension (retail qagamex86 0x10023870-0x10023a14)
+			state.nextthink = (float)( ent->nextthink / 1000 );
+			if ( ent->item ) {
+				state.itemQuantity = ent->item->quantity;
+				state.itemType = ent->item->giType;
+				state.itemTag = ent->item->giTag;
+			}
+			state.trainingClear = !( ent->flags & FL_TRAINING );
+			if ( ent->client ) {
+				const playerState_t *ps = &ent->client->ps;
+				int w;
+
+				state.health = ent->health;
+				state.maxHealth = ps->stats[STAT_MAX_HEALTH];
+				state.carriesFlag = ps->powerups[PW_REDFLAG] || ps->powerups[PW_BLUEFLAG];
+				for ( w = 0; w < MAX_WEAPONS; w++ ) {
+					// retail compares with its weapon table's maximum ammo; the
+					// sixteenth slot has no row and reads the word after the
+					// table, an address, so only unlimited ammo counts there
+					const int full = w < WP_NUM_WEAPONS ? bg_weaponMaxAmmo[w] : 0x7fffffff;
+					state.ammoFull[w] = ps->ammo[w] >= full || ps->ammo[w] == -1;
+				}
+			}
 			//
 			*s = qfalse;
 			trap_BotLibUpdateEntity( i, &state );

@@ -175,12 +175,10 @@ int BotNearbyGoal(bot_state_t *bs, int tfl, bot_goal_t *ltg, float range) {
 
 	//check if the bot should go for air
 	if (BotGoForAir(bs, tfl, ltg, range)) return qtrue;
-	// if the bot is carrying a flag or cubes
-	if (BotCTFCarryingFlag(bs)
-#ifdef MISSIONPACK
-		|| Bot1FCTFCarryingFlag(bs) || BotHarvesterCarryingCubes(bs)
-#endif
-		) {
+	// if the bot carries a flag in CTF or Attack & Defend (retail qagamex86
+	// 0x10008a12 tests only those modes)
+	if ((gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) &&
+		(bs->inventory[INVENTORY_REDFLAG] > 0 || bs->inventory[INVENTORY_BLUEFLAG] > 0)) {
 		//if the bot is just a few secs away from the base 
 		if (trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin,
 				bs->teamgoal.areanum, TFL_DEFAULT) < 300) {
@@ -2308,11 +2306,26 @@ int AINode_Battle_Chase(bot_state_t *bs)
 	//map specific code
 	BotMapScripts(bs);
 	//create the chase goal
+	memset(&goal, 0, sizeof(goal));
 	goal.entitynum = bs->enemy;
-	goal.areanum = bs->lastenemyareanum;
-	VectorCopy(bs->lastenemyorigin, goal.origin);
-	VectorSet(goal.mins, -8, -8, -8);
-	VectorSet(goal.maxs, 8, 8, 8);
+	if (!bs->enemyheard) {
+		goal.areanum = bs->lastenemyareanum;
+		VectorCopy(bs->lastenemyorigin, goal.origin);
+		VectorSet(goal.mins, -8, -8, -8);
+		VectorSet(goal.maxs, 8, 8, 8);
+	}
+	else {
+		aas_entityinfo_t entinfo;
+
+		// an enemy the bot heard is chased where it is now, with its own
+		// box (retail qagamex86 0x1000db2d)
+		BotEntityInfo(bs->enemy, &entinfo);
+		goal.areanum = BotPointAreaNum(entinfo.origin);
+		VectorCopy(entinfo.origin, goal.origin);
+		VectorCopy(entinfo.mins, goal.mins);
+		VectorCopy(entinfo.maxs, goal.maxs);
+		bs->lastenemyareanum = goal.areanum;
+	}
 	//if the last seen enemy spot is reached the enemy could not be found
 	if (trap_BotTouchingGoal(bs->origin, &goal)) bs->chase_time = 0;
 	//if there's no chase time left
@@ -2327,7 +2340,8 @@ int AINode_Battle_Chase(bot_state_t *bs)
 		//
 		if (BotNearbyGoal(bs, bs->tfl, &goal, range)) {
 			//the bot gets 5 seconds to pick up the nearby goal item
-			bs->nbg_time = FloatTime() + 0.1 * range + 1;
+			//(retail folds 0.1 * range to 15, qagamex86 0x1000dcf0)
+			bs->nbg_time = FloatTime() + 15.0 + 1;
 			trap_BotResetLastAvoidReach(bs->ms);
 			AIEnter_Battle_NBG(bs, "battle chase: nbg");
 			return qfalse;

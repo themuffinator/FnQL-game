@@ -1484,49 +1484,26 @@ const char *stristr(const char *str, const char *charset) {
 /*
 ==================
 EasyClientName
+
+Retail qagamex86 0x10015df0 keeps the player's name as ClientName gives it,
+case and spaces included, and only cuts a [clan] or ]clan[ tag out of it;
+Quake III also stripped spaces and a "Mr" prefix and lowercased the rest.
 ==================
 */
 char *EasyClientName(int client, char *buf, int size) {
-	int i;
-	char *str1, *str2, *ptr, c;
+	char *str1, *str2;
 	char name[128];
 
 	ClientName( client, name, sizeof( name ) );
-	for (i = 0; name[i]; i++) name[i] &= 127;
-	//remove all spaces
-	for (ptr = strchr(name, ' '); ptr; ptr = strchr(name, ' ')) {
-		memmove(ptr, ptr+1, strlen(ptr+1)+1);
-	}
 	//check for [x] and ]x[ clan names
-	str1 = strchr(name, '[');
-	str2 = strchr(name, ']');
+	str1 = strstr(name, "[");
+	str2 = strstr(name, "]");
 	if (str1 && str2) {
 		if (str2 > str1) memmove(str1, str2+1, strlen(str2+1)+1);
 		else memmove(str2, str1+1, strlen(str1+1)+1);
 	}
-	//remove Mr prefix
-	if ((name[0] == 'm' || name[0] == 'M') &&
-			(name[1] == 'r' || name[1] == 'R')) {
-		memmove(name, name+2, strlen(name+2)+1);
-	}
-	//only allow lower case alphabet characters
-	ptr = name;
-	while(*ptr) {
-		c = *ptr;
-		if ((c >= 'a' && c <= 'z') ||
-				(c >= '0' && c <= '9') || c == '_') {
-			ptr++;
-		}
-		else if (c >= 'A' && c <= 'Z') {
-			*ptr += 'a' - 'A';
-			ptr++;
-		}
-		else {
-			memmove(ptr, ptr+1, strlen(ptr + 1)+1);
-		}
-	}
-	
-	Q_strncpyz( buf, name, size );
+	strncpy( buf, name, size - 1 );
+	buf[size - 1] = '\0';
 
 	return buf;
 }
@@ -1793,13 +1770,15 @@ void BotUpdateInventory(bot_state_t *bs) {
 	bs->inventory[INVENTORY_BLUEFLAG] = bs->cur_ps.powerups[PW_BLUEFLAG] != 0;
 #ifdef MISSIONPACK
 	bs->inventory[INVENTORY_NEUTRALFLAG] = bs->cur_ps.powerups[PW_NEUTRALFLAG] != 0;
+	// the cube count is the low six bits of generic1, which Quake Live also
+	// uses for other state (retail qagamex86 0x10016644)
 	if (BotTeam(bs) == TEAM_RED) {
-		bs->inventory[INVENTORY_REDCUBE] = bs->cur_ps.generic1;
+		bs->inventory[INVENTORY_REDCUBE] = bs->cur_ps.generic1 & 0x3f;
 		bs->inventory[INVENTORY_BLUECUBE] = 0;
 	}
 	else {
 		bs->inventory[INVENTORY_REDCUBE] = 0;
-		bs->inventory[INVENTORY_BLUECUBE] = bs->cur_ps.generic1;
+		bs->inventory[INVENTORY_BLUECUBE] = bs->cur_ps.generic1 & 0x3f;
 	}
 #endif
 	BotCheckItemPickup(bs, oldinventory);
@@ -2962,18 +2941,88 @@ float BotEntityVisible(int viewer, vec3_t eye, vec3_t viewangles, float fov, int
 
 /*
 ==================
+BotDistanceSquared
+
+The squared distance as retail's x87 code computes it (qagamex86 0x10019370
+and the copies after it): float components, summed in double precision and
+rounded to float once.
+==================
+*/
+static float BotDistanceSquared( const vec3_t a, const vec3_t b ) {
+	vec3_t dir;
+
+	VectorSubtract( a, b, dir );
+	return (float)( ( (double)dir[0] * dir[0] + (double)dir[1] * dir[1] ) + (double)dir[2] * dir[2] );
+}
+
+/*
+==================
+BotHuntsHeardEnemy
+
+Retail qagamex86 0x10020c10.  A skill 4 or 5 bot without an enemy goes after
+a client it heard (BotCheckEvents' heardClients) although it cannot see it,
+unless it wants to retreat, does not want to chase, or is heading for a
+powerup or for health or armor worth 25 or more (the goal entity's item
+fields in the botlib entity info).
+==================
+*/
+static int BotGoalKeepsBotFromHunting( bot_goal_t *goal ) {
+	aas_entityinfo_t entinfo;
+
+	BotEntityInfo( goal->entitynum, &entinfo );
+	if ( ( entinfo.itemType == IT_HEALTH || entinfo.itemType == IT_ARMOR ) && entinfo.itemQuantity >= 25 ) {
+		return qtrue;
+	}
+	return entinfo.itemType == IT_POWERUP;
+}
+
+static int BotHuntsHeardEnemy( bot_state_t *bs, int client ) {
+	bot_goal_t goal;
+
+	if ( bs->enemy != -1 ) {
+		return qfalse;
+	}
+	if ( BotWantsToRetreat( bs ) || !BotWantsToChase( bs ) ) {
+		return qfalse;
+	}
+	if ( trap_BotGetTopGoal( bs->gs, &goal ) && BotGoalKeepsBotFromHunting( &goal ) ) {
+		return qfalse;
+	}
+	if ( trap_BotGetSecondGoal( bs->gs, &goal ) && BotGoalKeepsBotFromHunting( &goal ) ) {
+		return qfalse;
+	}
+	if ( bs->settings.skill < 4 ) {
+		return qfalse;
+	}
+	return ( bs->heardClients & ( 1u << client ) ) != 0;
+}
+
+/*
+==================
 BotFindEnemy
+
+Retail qagamex86 0x10019290.  Quake Live keeps Quake III's rules with these
+changes: only bots above skill 1 read the easy-fragger characteristic (others
+treat it as 0, so they never shoot chatting players); a skill 4+ bot also
+takes an enemy it only heard (BotHuntsHeardEnemy) and records that in
+bs->enemyheard; the distances and the view cone are evaluated in double
+precision, as retail's x87 code does.
 ==================
 */
 int BotFindEnemy(bot_state_t *bs, int curenemy) {
-	int i, healthdecrease;
+	int i, healthdecrease, heard;
 	float f, alertness, easyfragger, vis;
 	float squaredist, cursquaredist;
 	aas_entityinfo_t entinfo, curenemyinfo;
 	vec3_t dir, angles;
 
 	alertness = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_ALERTNESS, 0, 1);
-	easyfragger = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_EASY_FRAGGER, 0, 1);
+	if (bs->settings.skill > 1) {
+		easyfragger = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_EASY_FRAGGER, 0, 1);
+	}
+	else {
+		easyfragger = 0;
+	}
 	//check if the health decreased
 	healthdecrease = bs->lasthealth > bs->inventory[INVENTORY_HEALTH];
 	//remember the current health value
@@ -2982,8 +3031,7 @@ int BotFindEnemy(bot_state_t *bs, int curenemy) {
 	if (curenemy >= 0) {
 		BotEntityInfo(curenemy, &curenemyinfo);
 		if (EntityCarriesFlag(&curenemyinfo)) return qfalse;
-		VectorSubtract(curenemyinfo.origin, bs->origin, dir);
-		cursquaredist = VectorLengthSquared(dir);
+		cursquaredist = BotDistanceSquared(curenemyinfo.origin, bs->origin);
 	}
 	else {
 		cursquaredist = 0;
@@ -3016,13 +3064,11 @@ int BotFindEnemy(bot_state_t *bs, int curenemy) {
 	}
 #endif
 	//
-	for (i = 0; i < level.maxclients; i++) {
+	for (i = 0; i < level.maxclients && i < MAX_CLIENTS; i++) {
 
 		if (i == bs->client) continue;
 		//if it's the current enemy
 		if (i == curenemy) continue;
-		//if the enemy has targeting disabled
-		if (g_entities[i].flags & FL_NOTARGET) continue;
 		//
 		BotEntityInfo(i, &entinfo);
 		//
@@ -3033,16 +3079,17 @@ int BotFindEnemy(bot_state_t *bs, int curenemy) {
 		if (EntityIsInvisible(&entinfo) && !EntityIsShooting(&entinfo)) {
 			continue;
 		}
+		//if the enemy has targeting disabled (retail 0x10020be0 asks only of
+		//clients in use)
+		if (g_entities[i].client && g_entities[i].inuse && (g_entities[i].flags & FL_NOTARGET)) continue;
 		//if not an easy fragger don't shoot at chatting players
 		if (easyfragger < 0.5 && EntityIsChatting(&entinfo)) continue;
 		//
-		if (lastteleport_time > FloatTime() - 3) {
-			VectorSubtract(entinfo.origin, lastteleport_origin, dir);
-			if (VectorLengthSquared(dir) < Square(70)) continue;
+		if ((double)lastteleport_time > (double)FloatTime() - 3.0) {
+			if (BotDistanceSquared(entinfo.origin, lastteleport_origin) < Square(70)) continue;
 		}
 		//calculate the distance towards the enemy
-		VectorSubtract(entinfo.origin, bs->origin, dir);
-		squaredist = VectorLengthSquared(dir);
+		squaredist = BotDistanceSquared(entinfo.origin, bs->origin);
 		//if this entity is not carrying a flag
 		if (!EntityCarriesFlag(&entinfo))
 		{
@@ -3050,17 +3097,22 @@ int BotFindEnemy(bot_state_t *bs, int curenemy) {
 			if (curenemy >= 0 && squaredist > cursquaredist) continue;
 		} //end if
 		//if the bot has no
-		if (squaredist > Square(900.0 + alertness * 4000.0)) continue;
+		if (squaredist > Square(alertness * 4000.0 + 900.0)) continue;
 		//if on the same team
 		if (BotSameTeam(bs, i)) continue;
 		//if the bot's health decreased or the enemy is shooting
 		if (curenemy < 0 && (healthdecrease || EntityIsShooting(&entinfo)))
 			f = 360;
 		else
-			f = 90 + 90 - (90 - (squaredist > Square(810) ? Square(810) : squaredist) / (810 * 9));
+			f = (float)( 180.0 - ( 90.0 - ( squaredist > Square(810) ? Square(810) : squaredist ) / 7290.0 ) );
 		//check if the enemy is visible
+		heard = qfalse;
 		vis = BotEntityVisible(bs->entitynum, bs->eye, bs->viewangles, f, i);
-		if (vis <= 0) continue;
+		if (vis <= 0) {
+			//a skill 4+ bot also goes after an enemy it heard
+			if (!BotHuntsHeardEnemy(bs, i)) continue;
+			heard = qtrue;
+		}
 		//if the enemy is quite far away, not shooting and the bot is not damaged
 		if (curenemy < 0 && squaredist > Square(100) && !healthdecrease && !EntityIsShooting(&entinfo))
 		{
@@ -3077,8 +3129,9 @@ int BotFindEnemy(bot_state_t *bs, int curenemy) {
 		}
 		//found an enemy
 		bs->enemy = entinfo.number;
-		if (curenemy >= 0) bs->enemysight_time = FloatTime() - 2;
+		if (curenemy >= 0) bs->enemysight_time = (float)( (double)FloatTime() - 2.0 );
 		else bs->enemysight_time = FloatTime();
+		bs->enemyheard = heard;
 		bs->enemysuicide = qfalse;
 		bs->enemydeath_time = 0;
 		bs->enemyvisible_time = FloatTime();
@@ -3296,12 +3349,83 @@ int BotEnemyCubeCarrierVisible(bot_state_t *bs) {
 
 /*
 ==================
+Retail arithmetic for the bot code
+
+Retail evaluates the bot code on the x87 at double precision and rounds to
+float only where it stores a value (see bg_pmove.c).  These helpers are the
+retail forms of the math routines the bot code calls; FloatTime(), random()
+and crandom() are doubles in the bot sources for the same reason (ai_main.h).
+==================
+*/
+
+// retail's vectoangles divides by M_PI rounded to float (qagamex86 0x10070331)
+#define BOT_PI_F	3.1415927410125732
+
+// vectoangles, qagamex86 0x100702b0
+void BotVectoAngles( const vec3_t value, vec3_t angles ) {
+	float forward, yaw, pitch;
+
+	if ( value[1] == 0 && value[0] == 0 ) {
+		angles[PITCH] = value[2] > 0 ? -90.0f : -270.0f;
+		angles[YAW] = 0;
+		angles[ROLL] = 0;
+		return;
+	}
+	if ( value[0] != 0 ) {
+		yaw = (float)( atan2( value[1], value[0] ) * 180.0 / BOT_PI_F );
+		if ( yaw < 0 ) {
+			yaw = (float)( yaw + 360.0 );
+		}
+	} else {
+		yaw = value[1] > 0 ? 90.0f : 270.0f;
+	}
+	forward = (float)sqrt( (double)value[1] * value[1] + (double)value[0] * value[0] );
+	pitch = (float)( atan2( value[2], forward ) * 180.0 / BOT_PI_F );
+	if ( pitch < 0 ) {
+		pitch = (float)( pitch + 360.0 );
+	}
+	angles[PITCH] = -pitch;
+	angles[YAW] = yaw;
+	angles[ROLL] = 0;
+}
+
+// a vector's length with the squares summed in double and not rounded before
+// the square root (retail's inline VectorLength, e.g. qagamex86 0x1001a5f3)
+static float BotVectorLength( const vec3_t v ) {
+	return (float)sqrt( PM_Dot3( v, v ) );
+}
+
+// the squared length rounded to float, as retail stores it before comparing
+static float BotVectorLengthSquared( const vec3_t v ) {
+	return (float)PM_Dot3( v, v );
+}
+
+// ( a - b ) * ( 1 / time ) per component, the reciprocal kept at double
+// precision (qagamex86 0x1001a2d3)
+static void BotEntityVelocity( const vec3_t a, const vec3_t b, float time, vec3_t out ) {
+	const double inverse = 1.0 / time;
+	vec3_t diff;
+
+	VectorSubtract( a, b, diff );
+	out[0] = (float)( diff[0] * inverse );
+	out[1] = (float)( diff[1] * inverse );
+	out[2] = (float)( diff[2] * inverse );
+}
+
+/*
+==================
 BotAimAtEnemy
+
+Retail qagamex86 0x10019e00.  Quake Live adds to Quake III's aim: a bot whose
+weapon has no weapon info switches to the machinegun instead; in instagib
+the aim skill and accuracy both come from bot_instaGibAimSkill; and every
+expression is evaluated as retail's x87 code evaluates it.
 ==================
 */
 void BotAimAtEnemy(bot_state_t *bs) {
 	int i, enemyvisible;
 	float dist, f, aim_skill, aim_accuracy, speed, reactiontime;
+	double inaccuracy;
 	vec3_t dir, bestorigin, end, start, groundtarget, cmdmove, enemyvelocity;
 	vec3_t mins = {-4,-4,-4}, maxs = {4, 4, 4};
 	weaponinfo_t wi;
@@ -3324,31 +3448,36 @@ void BotAimAtEnemy(bot_state_t *bs) {
 		// if attacking an obelisk
 		if ( bs->enemy == redobelisk.entitynum ||
 			bs->enemy == blueobelisk.entitynum ) {
-			target[2] += 32;
+			target[2] = (float)( entinfo.origin[2] + 32.0 );
 		}
 #endif
 		//aim at the obelisk
 		VectorSubtract(target, bs->eye, dir);
-		vectoangles(dir, bs->ideal_viewangles);
+		BotVectoAngles(dir, bs->ideal_viewangles);
 		//set the aim target before trying to attack
 		VectorCopy(target, bs->aimtarget);
 		return;
 	}
-	//
-	//BotAI_Print(PRT_MESSAGE, "client %d: aiming at client %d\n", bs->entitynum, bs->enemy);
 	//
 	aim_skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL, 0, 1);
 	aim_accuracy = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_ACCURACY, 0, 1);
 	//
 	if (aim_skill > 0.95) {
 		//don't aim too early
-		reactiontime = 0.5 * trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_REACTIONTIME, 0, 1);
+		reactiontime = (float)( 0.5 * trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_REACTIONTIME, 0, 1) );
 		if (bs->enemysight_time > FloatTime() - reactiontime) return;
 		if (bs->teleport_time > FloatTime() - reactiontime) return;
 	}
 
 	//get the weapon information
+	wi.number = -1;
 	trap_BotGetWeaponInfo(bs->ws, bs->weaponnum, &wi);
+	// a weapon without weapon info: fall back to the machinegun
+	if (wi.number == -1) {
+		bs->weaponnum = WP_MACHINEGUN;
+		trap_EA_SelectWeapon(bs->client, WP_MACHINEGUN);
+		return;
+	}
 	//get the weapon specific aim accuracy and or aim skill
 	if (wi.number == WP_MACHINEGUN) {
 		aim_accuracy = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_ACCURACY_MACHINEGUN, 0, 1);
@@ -3378,6 +3507,10 @@ void BotAimAtEnemy(bot_state_t *bs) {
 		aim_accuracy = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_ACCURACY_BFG10K, 0, 1);
 		aim_skill = trap_Characteristic_BFloat(bs->character, CHARACTERISTIC_AIM_SKILL_BFG10K, 0, 1);
 	}
+	// instagib aims with bot_instaGibAimSkill (retail 0x1001a204)
+	if (g_instaGib.integer) {
+		aim_accuracy = aim_skill = bot_instaGibAimSkill.value;
+	}
 	//
 	if (aim_accuracy <= 0) aim_accuracy = 0.0001f;
 	//get the enemy entity information
@@ -3387,8 +3520,7 @@ void BotAimAtEnemy(bot_state_t *bs) {
 		if (random() > 0.1) aim_accuracy *= 0.4f;
 	}
 	//
-	VectorSubtract(entinfo.origin, entinfo.lastvisorigin, enemyvelocity);
-	VectorScale(enemyvelocity, 1 / entinfo.update_time, enemyvelocity);
+	BotEntityVelocity(entinfo.origin, entinfo.lastvisorigin, entinfo.update_time, enemyvelocity);
 	//enemy origin and velocity is remembered every 0.5 seconds
 	if (bs->enemyposition_time < FloatTime()) {
 		//
@@ -3400,9 +3532,9 @@ void BotAimAtEnemy(bot_state_t *bs) {
 	if (aim_skill < 0.9) {
 		VectorSubtract(entinfo.origin, bs->enemyorigin, dir);
 		//if the enemy moved a bit
-		if (VectorLengthSquared(dir) > Square(48)) {
+		if (BotVectorLengthSquared(dir) > Square(48)) {
 			//if the enemy changed direction
-			if (DotProduct(bs->enemyvelocity, enemyvelocity) < 0) {
+			if (PM_Dot3(bs->enemyvelocity, enemyvelocity) < 0) {
 				//aim accuracy should be worse now
 				aim_accuracy *= 0.7f;
 			}
@@ -3414,26 +3546,26 @@ void BotAimAtEnemy(bot_state_t *bs) {
 	if (enemyvisible) {
 		//
 		VectorCopy(entinfo.origin, bestorigin);
-		bestorigin[2] += 8;
+		bestorigin[2] = (float)( entinfo.origin[2] + 8.0 );
 		//get the start point shooting from
 		//NOTE: the x and y projectile start offsets are ignored
 		VectorCopy(bs->origin, start);
-		start[2] += bs->cur_ps.viewheight;
+		start[2] = (float)( bs->origin[2] + bs->cur_ps.viewheight );
 		start[2] += wi.offset[2];
 		//
 		BotAI_Trace(&trace, start, mins, maxs, bestorigin, bs->entitynum, MASK_SHOT);
 		//if the enemy is NOT hit
 		if (trace.fraction <= 1 && trace.ent != entinfo.number) {
-			bestorigin[2] += 16;
+			bestorigin[2] = (float)( bestorigin[2] + 16.0 );
 		}
 		//if it is not an instant hit weapon the bot might want to predict the enemy
-		if (wi.speed) {
+		if (wi.speed != 0) {
 			//
 			VectorSubtract(bestorigin, bs->origin, dir);
-			dist = VectorLength(dir);
+			dist = BotVectorLength(dir);
 			VectorSubtract(entinfo.origin, bs->enemyorigin, dir);
 			//if the enemy is NOT pretty far away and strafing just small steps left and right
-			if (!(dist > 100 && VectorLengthSquared(dir) < Square(32))) {
+			if (!(dist > 100 && BotVectorLengthSquared(dir) < Square(32))) {
 				//if skilled anough do exact prediction
 				if (aim_skill > 0.8 &&
 						//if the weapon is ready to fire
@@ -3443,64 +3575,65 @@ void BotAimAtEnemy(bot_state_t *bs) {
 
 					VectorSubtract(entinfo.origin, bs->origin, dir);
 					//distance towards the enemy
-					dist = VectorLength(dir);
+					dist = BotVectorLength(dir);
 					//direction the enemy is moving in
-					VectorSubtract(entinfo.origin, entinfo.lastvisorigin, dir);
-					//
-					VectorScale(dir, 1 / entinfo.update_time, dir);
+					BotEntityVelocity(entinfo.origin, entinfo.lastvisorigin, entinfo.update_time, dir);
 					//
 					VectorCopy(entinfo.origin, origin);
-					origin[2] += 1;
+					origin[2] = (float)( entinfo.origin[2] + 1.0 );
 					//
 					VectorClear(cmdmove);
 					//AAS_ClearShownDebugLines();
 					trap_AAS_PredictClientMovement(&move, bs->enemy, origin,
 														PRESENCE_CROUCH, qfalse,
 														dir, cmdmove, 0,
-														dist * 10 / wi.speed, 0.1f, 0, 0, qfalse);
+														(int)( dist * 10.0 / wi.speed ), 0.1f, 0, 0, qfalse);
 					VectorCopy(move.endpos, bestorigin);
-					//BotAI_Print(PRT_MESSAGE, "%1.1f predicted speed = %f, frames = %f\n", FloatTime(), VectorLength(dir), dist * 10 / wi.speed);
 				}
 				//if not that skilled do linear prediction
 				else if (aim_skill > 0.4) {
+					double lead;
+
 					VectorSubtract(entinfo.origin, bs->origin, dir);
 					//distance towards the enemy
-					dist = VectorLength(dir);
+					dist = BotVectorLength(dir);
 					//direction the enemy is moving in
 					VectorSubtract(entinfo.origin, entinfo.lastvisorigin, dir);
 					dir[2] = 0;
 					//
-					speed = VectorNormalize(dir) / entinfo.update_time;
-					//botimport.Print(PRT_MESSAGE, "speed = %f, wi->speed = %f\n", speed, wi->speed);
+					speed = PM_VectorNormalize(dir) / entinfo.update_time;
 					//best spot to aim at
-					VectorMA(entinfo.origin, (dist / wi.speed) * speed, dir, bestorigin);
+					lead = (double)dist / wi.speed * speed;
+					bestorigin[0] = (float)( dir[0] * lead + entinfo.origin[0] );
+					bestorigin[1] = (float)( dir[1] * lead + entinfo.origin[1] );
+					bestorigin[2] = (float)( dir[2] * lead + entinfo.origin[2] );
 				}
 			}
 		}
 		//if the projectile does radial damage
 		if (aim_skill > 0.6 && wi.proj.damagetype & DAMAGETYPE_RADIAL) {
 			//if the enemy isn't standing significantly higher than the bot
-			if (entinfo.origin[2] < bs->origin[2] + 16) {
+			if (entinfo.origin[2] < bs->origin[2] + 16.0) {
 				//try to aim at the ground in front of the enemy
 				VectorCopy(entinfo.origin, end);
-				end[2] -= 64;
+				end[2] = (float)( entinfo.origin[2] - 64.0 );
 				BotAI_Trace(&trace, entinfo.origin, NULL, NULL, end, entinfo.number, MASK_SHOT);
 				//
 				VectorCopy(bestorigin, groundtarget);
-				if (trace.startsolid) groundtarget[2] = entinfo.origin[2] - 16;
-				else groundtarget[2] = trace.endpos[2] - 8;
+				if (trace.startsolid) groundtarget[2] = (float)( entinfo.origin[2] - 16.0 );
+				else groundtarget[2] = (float)( trace.endpos[2] - 8.0 );
 				//trace a line from projectile start to ground target
 				BotAI_Trace(&trace, start, NULL, NULL, groundtarget, bs->entitynum, MASK_SHOT);
 				//if hitpoint is not vertically too far from the ground target
-				if (fabs(trace.endpos[2] - groundtarget[2]) < 50) {
+				if (fabs((double)trace.endpos[2] - groundtarget[2]) < 50) {
 					VectorSubtract(trace.endpos, groundtarget, dir);
 					//if the hitpoint is near enough the ground target
-					if (VectorLengthSquared(dir) < Square(60)) {
+					if (BotVectorLengthSquared(dir) < Square(60)) {
 						VectorSubtract(trace.endpos, start, dir);
 						//if the hitpoint is far enough from the bot
-						if (VectorLengthSquared(dir) > Square(100)) {
+						if (BotVectorLengthSquared(dir) > Square(100)) {
 							//check if the bot is visible from the ground target
-							trace.endpos[2] += 1;
+							trace.endpos[2] = (float)( trace.endpos[2] + 1.0 );
 							BotAI_Trace(&trace, trace.endpos, NULL, NULL, entinfo.origin, entinfo.number, MASK_SHOT);
 							if (trace.fraction >= 1) {
 								//botimport.Print(PRT_MESSAGE, "%1.1f aiming at ground\n", AAS_Time());
@@ -3511,14 +3644,15 @@ void BotAimAtEnemy(bot_state_t *bs) {
 				}
 			}
 		}
-		bestorigin[0] += 20 * crandom() * (1 - aim_accuracy);
-		bestorigin[1] += 20 * crandom() * (1 - aim_accuracy);
-		bestorigin[2] += 10 * crandom() * (1 - aim_accuracy);
+		inaccuracy = 1.0 - aim_accuracy;
+		bestorigin[0] = (float)( crandom() * 20.0 * inaccuracy + bestorigin[0] );
+		bestorigin[1] = (float)( crandom() * 20.0 * inaccuracy + bestorigin[1] );
+		bestorigin[2] = (float)( crandom() * 10.0 * inaccuracy + bestorigin[2] );
 	}
 	else {
 		//
 		VectorCopy(bs->lastenemyorigin, bestorigin);
-		bestorigin[2] += 8;
+		bestorigin[2] = (float)( bs->lastenemyorigin[2] + 8.0 );
 		//if the bot is skilled enough
 		if (aim_skill > 0.5) {
 			//do prediction shots around corners
@@ -3526,6 +3660,7 @@ void BotAimAtEnemy(bot_state_t *bs) {
 				wi.number == WP_ROCKET_LAUNCHER ||
 				wi.number == WP_GRENADE_LAUNCHER) {
 				//create the chase goal
+				memset(&goal, 0, sizeof(goal));
 				goal.entitynum = bs->client;
 				goal.areanum = bs->areanum;
 				VectorCopy(bs->eye, goal.origin);
@@ -3534,9 +3669,9 @@ void BotAimAtEnemy(bot_state_t *bs) {
 				//
 				if (trap_BotPredictVisiblePosition(bs->lastenemyorigin, bs->lastenemyareanum, &goal, TFL_DEFAULT, target)) {
 					VectorSubtract(target, bs->eye, dir);
-					if (VectorLengthSquared(dir) > Square(80)) {
+					if (BotVectorLengthSquared(dir) > Square(80)) {
 						VectorCopy(target, bestorigin);
-						bestorigin[2] -= 20;
+						bestorigin[2] = (float)( target[2] - 20.0 );
 					}
 				}
 				aim_accuracy = 1;
@@ -3559,29 +3694,31 @@ void BotAimAtEnemy(bot_state_t *bs) {
 		wi.number == WP_LIGHTNING ||
 		wi.number == WP_RAILGUN) {
 		//distance towards the enemy
-		dist = VectorLength(dir);
+		dist = BotVectorLength(dir);
 		if (dist > 150) dist = 150;
-		f = 0.6 + dist / 150 * 0.4;
+		f = (float)( dist / 150.0 * 0.4 + 0.6 );
 		aim_accuracy *= f;
 	}
 	//add some random stuff to the aim direction depending on the aim accuracy
 	if (aim_accuracy < 0.8) {
-		VectorNormalize(dir);
-		for (i = 0; i < 3; i++) dir[i] += 0.3 * crandom() * (1 - aim_accuracy);
+		PM_VectorNormalize(dir);
+		inaccuracy = 1.0 - aim_accuracy;
+		for (i = 0; i < 3; i++) dir[i] = (float)( crandom() * 0.3 * inaccuracy + dir[i] );
 	}
 	//set the ideal view angles
-	vectoangles(dir, bs->ideal_viewangles);
+	BotVectoAngles(dir, bs->ideal_viewangles);
 	//take the weapon spread into account for lower skilled bots
-	bs->ideal_viewangles[PITCH] += 6 * wi.vspread * crandom() * (1 - aim_accuracy);
+	inaccuracy = 1.0 - aim_accuracy;
+	bs->ideal_viewangles[PITCH] = (float)( crandom() * ( wi.vspread * 6.0 ) * inaccuracy + bs->ideal_viewangles[PITCH] );
 	bs->ideal_viewangles[PITCH] = AngleMod(bs->ideal_viewangles[PITCH]);
-	bs->ideal_viewangles[YAW] += 6 * wi.hspread * crandom() * (1 - aim_accuracy);
+	bs->ideal_viewangles[YAW] = (float)( crandom() * ( wi.hspread * 6.0 ) * inaccuracy + bs->ideal_viewangles[YAW] );
 	bs->ideal_viewangles[YAW] = AngleMod(bs->ideal_viewangles[YAW]);
 	//if the bots should be really challenging
 	if (bot_challenge.integer) {
 		//if the bot is really accurate and has the enemy in view for some time
 		if (aim_accuracy > 0.9 && bs->enemysight_time < FloatTime() - 1) {
 			//set the view angles directly
-			if (bs->ideal_viewangles[PITCH] > 180) bs->ideal_viewangles[PITCH] -= 360;
+			if (bs->ideal_viewangles[PITCH] > 180) bs->ideal_viewangles[PITCH] = (float)( bs->ideal_viewangles[PITCH] - 360.0 );
 			VectorCopy(bs->ideal_viewangles, bs->viewangles);
 			trap_EA_View(bs->client, bs->viewangles);
 		}
@@ -4547,18 +4684,16 @@ void BotAIBlocked(bot_state_t *bs, bot_moveresult_t *moveresult, int activate) {
 	CrossProduct(hordir, up, sideward);
 	//
 	if (bs->flags & BFL_AVOIDRIGHT) VectorNegate(sideward, sideward);
-	// try to crouch straight forward?
-	if (!trap_BotMoveInDirection(bs->ms, hordir, 400, movetype)) {
-		// perform the movement
-		if (!trap_BotMoveInDirection(bs->ms, sideward, 400, movetype)) {
-			// flip the avoid direction flag
-			bs->flags ^= BFL_AVOIDRIGHT;
-			// flip the direction
-			// VectorNegate(sideward, sideward);
-			VectorMA(sideward, -1, hordir, sideward);
-			// move in the other direction
-			trap_BotMoveInDirection(bs->ms, sideward, 400, movetype);
-		}
+	// Retail steps aside first (qagamex86 0x1001dbd4): Quake III's "crouch
+	// straight forward" try only ran for MOVE_CROUCH, which this code never
+	// uses, and the baseline had made it run every time.
+	if (!trap_BotMoveInDirection(bs->ms, sideward, 400, movetype)) {
+		// flip the avoid direction flag
+		bs->flags ^= BFL_AVOIDRIGHT;
+		// flip the direction
+		VectorSubtract(sideward, hordir, sideward);
+		// move in the other direction
+		trap_BotMoveInDirection(bs->ms, sideward, 400, movetype);
 	}
 	//
 	if (bs->notblocked_time < FloatTime() - 0.4) {
@@ -4819,6 +4954,9 @@ void BotCheckEvents(bot_state_t *bs, entityState_t *state) {
 	if (bs->entityeventTime[state->number] == g_entities[state->number].eventTime) {
 		return;
 	}
+	// every new event starts a new hearing: the bot remembers only the
+	// clients the latest one came from (retail qagamex86 0x1001e4fd)
+	bs->heardClients = 0;
 	bs->entityeventTime[state->number] = g_entities[state->number].eventTime;
 	//if it's an event only entity
 	if (state->eType > ET_EVENTS) {
@@ -5024,7 +5162,11 @@ void BotCheckEvents(bot_state_t *bs, entityState_t *state) {
 		case EV_NOAMMO:
 		case EV_CHANGE_WEAPON:
 		case EV_FIRE_WEAPON:
-			//FIXME: either add to sound queue or mark player as someone making noise
+			// mark the player as someone making noise (retail qagamex86
+			// 0x1001ea16); BotHuntsHeardEnemy reads the mask
+			if (state->clientNum != bs->client && (unsigned)state->clientNum < 32) {
+				bs->heardClients |= 1u << state->clientNum;
+			}
 			break;
 		case EV_USE_ITEM0:
 		case EV_USE_ITEM1:

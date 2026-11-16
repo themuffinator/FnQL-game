@@ -1190,7 +1190,9 @@ static float G_BoxDistance( const gentity_t *ent, const vec3_t origin ) {
 			v[i] = 0;
 		}
 	}
-	return VectorLength( v );
+	// retail takes the root of the double-precision sum without rounding it
+	// first (qagamex86 0x1004645f)
+	return (float)sqrt( PM_Dot3( v, v ) );
 }
 
 
@@ -1383,13 +1385,16 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		PM_VectorNormalize( dir );
 	}
 
-	// knockback scales by weapon; rocket and plasma jumps have their own
+	// knockback scales by weapon; rocket and plasma jumps have their own.
+	// Retail multiplies the float scale by the damage at double precision
+	// and truncates (qagamex86 0x10048a10 callers): 0.9 * 50 gives 44, where
+	// a float product rounds to 45.
 	if ( client && targ == attacker && ( mod == MOD_ROCKET || mod == MOD_ROCKET_SPLASH ) ) {
-		knockback = (int)( g_knockback_rl_self.value * damage );
+		knockback = (int)( (double)g_knockback_rl_self.value * damage );
 	} else if ( client && targ == attacker && ( mod == MOD_PLASMA || mod == MOD_PLASMA_SPLASH ) ) {
-		knockback = (int)( g_knockback_pg_self.value * damage );
+		knockback = (int)( (double)g_knockback_pg_self.value * damage );
 	} else {
-		knockback = (int)( G_KnockbackScale( mod ) * damage );
+		knockback = (int)( (double)G_KnockbackScale( mod ) * damage );
 		// Retail 0x10048e44: the hook's periodic-damage timestamp (+0x370)
 		// distinguishes its weaker sustained pull from the initial impact.
 		if ( mod == MOD_GRAPPLE && inflictor->wait != 0.0f ) knockback = (int)( knockback * 0.2 );
