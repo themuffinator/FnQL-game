@@ -1825,6 +1825,31 @@ void QDECL G_LogPrintf( const char *fmt, ... ) {
 
 /*
 ================
+G_DuelFlawlessAchievement
+
+Retail qagamex86 0x100575f5, in the exit logger's per-player loop: in a duel
+whose end goes to the stats report, achievement 0x37 is asked for each
+ranked player, and awarded to one who never died and ranks first (+0x578,
+the untied rank; a 0:0 tie ranks both first).  The logger also runs when a
+level shuts down under its match (0x10055686), so a map change during the
+warmup awards it to both undefeated duelists, as the retail fixtures show.
+================
+*/
+static void G_DuelFlawlessAchievement( const gclient_t *cl, qboolean report ) {
+	const gentity_t	*ent = g_entities + ( cl - level.clients );
+
+	if ( g_gametype.integer != GT_TOURNAMENT || !report ) {
+		return;
+	}
+	if ( G_SteamAchievementLacks( ent, 0x37 ) && cl->ps.persistant[PERS_KILLED] == 0
+		&& ( cl->ps.persistant[PERS_RANK] & ~RANK_TIED_FLAG ) == 0 ) {
+		G_SteamAchievementUnlock( ent, 0x37 );
+	}
+}
+
+
+/*
+================
 LogExit
 
 Retail qagamex86 0x10057510: the end of the match is logged with every
@@ -1857,11 +1882,7 @@ void LogExit( const char *string ) {
 			continue;
 		}
 
-		// "Flawless" (achievement 55): won a duel without dying
-		if ( g_gametype.integer == GT_TOURNAMENT && report && !trap_HasSteamAchievement( clientNum, 55 ) && cl->ps.persistant[PERS_KILLED] == 0
-			&& ( cl->ps.persistant[PERS_RANK] & ~RANK_TIED_FLAG ) == 0 ) {
-			trap_UnlockSteamAchievement( clientNum, 55 );
-		}
+		G_DuelFlawlessAchievement( cl, report );
 
 		ping = cl->ps.ping < 999 ? cl->ps.ping : 999;
 		G_LogPrintf( "score: %i  ping: %i  client: %i %s stats: %d \n",
@@ -1922,6 +1943,7 @@ static void G_ReportMatchEnd( qboolean aborted, int restarted, const char *messa
 		if ( cl->pers.connected == CON_CONNECTING || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
 			continue;
 		}
+		G_DuelFlawlessAchievement( cl, qtrue );
 		G_StatsReportPlayer( cl, aborted, qfalse );
 	}
 	G_StatsReportMatch( aborted, restarted, message );

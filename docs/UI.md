@@ -189,8 +189,9 @@ item keyword table around 0x1002a868; `toggle` 0x10016580; script dispatch
 export 9 0x10003910; init tail 0x1000fe9d..0x1000ff33; download panel
 0x100108d0. Inferred, not observed: retail's toggle flag sits at menu offset
 0x4c; this module keeps an equivalent private field. Deliberate differences:
-retail stores 0 and -2 as default keys for `weapon 14` and `forfeit`, which
-name no key, so they are stored as no default; sizes above 4 GiB format
+retail's key for `forfeit` is -2, which names no key, so it is stored as no
+default (the eighth pass corrected `weapon 14`, whose key is `'0'`, not 0);
+sizes above 4 GiB format
 correctly; UIMENU_TEAM falls back to `ingame_join` because the installed
 menus define no `joingame_menu`; ESC still releases input at once. Retail
 calls import 85 when closing menus; FnQL implements it as a no-op, so it is
@@ -257,10 +258,12 @@ preset list stored numeric values as written, where retail's preset apply
 stores them as `%f`. Retail's multi writer (0x1001847d..0x100184f4, `%i` at
 0x10025920 for whole values, else `%f`) already matched.
 
-Client provider
-selection and honest pure-server packaging remain the separate M10 engine
-integration contract. Do not replace the installed retail DLL or advertise
-this development module as a retail-authenticated pure package.
+Since M10, FnQL selects
+the module with `vm_uiProvider`, and on a pure server only from the FnQL-game
+client package the server lists in `sv_fnqlClientPaks`
+([`COMPATIBILITY.md`](COMPATIBILITY.md)). Never replace the installed retail
+DLL; the `retail-client-dropin` gates run the module inside the retail
+engine from a scratch base path instead.
 
 ## Gates
 
@@ -421,6 +424,42 @@ rerun with the FnQL-Steam provider beside the shared `fnql.exe` and a
 signed-in Steam client (`com_steamProviderStatus active`) passed all nine
 `ui-hosting` gates too; the probe homes kept every profile write
 (`qzconfig.cfg`, `repconfig.cfg`, the web UI's data) away from the install.
+
+Eighth pass (2026-11-16, M8 close): gate G2 now holds the ui's tables to
+retail's. `scripts/extract_retail_contract.py` extracts the cvar table
+(0x1002afd8, found through its `ui_findPlayer` row) and the binding table
+(0x1002a0d0, from `+scores`) into `docs/contract/retail_tables.json`
+("uiCvars", "uiBindings"), and `scripts/check_wire_contract.py` requires
+`ui_cvar.h` to register exactly retail's 130 rows in retail's order with
+retail's names, defaults and flags; rows that share a change callback in
+retail share one here. `g_bindings` must list retail's 81 commands in order
+with retail's keys, followed only by the five extensions above. Run against
+the previous sources, the gate fails on three counts, each now fixed:
+
+- The rows were in Team Arena's order. Registration order is the order the
+  engine saves archived cvars in, so `ui_cvar.h` now follows retail's table.
+- Two archived cvars retail does not register. `ui_serverFilterType` is a
+  module global in retail (0x1074082c, read at 0x100066d0 and 0x10006a7a),
+  so a fresh profile no longer saves it; `ui_q3model` has no trace in
+  retail at all, and the game-type key no longer writes it.
+- The `weapon 14` key is `'0'` (0x30 at 0x1002a374), the key retail's
+  `default.cfg` binds it to, not 0. The binding table's layout is
+  {command, key, default 1, default 2, live 1, live 2}: retail's
+  resetDefaults (0x1000b5b3) copies the default columns, which are -1 in
+  every row, and no retail code reads the key column. This module uses the
+  key column as its defaults instead. The bindings that result are the same,
+  because the same script queues `exec default.cfg`, whose `unbindall` and
+  binds replace anything set before it.
+
+Retail's browser filter table (0x100239bc) names its second filter
+"Quake Live", not Team Arena's "Quake 3 Arena", and this module now does too.
+Neither UI shows it: the only menu with the filter, `joinserver.menu`, is
+commented out of retail's `menus.txt`.
+
+All nine `ui-hosting` gates and the 60 `ui`, `unit`, `abi` and `contract`
+tests passed (G2: 1345 retail values). After the filter label changed, the
+60 tests and the five shorter hosting gates passed again; the label is on no
+screen the parity gates capture.
 
 Earlier local validation on 2026-11-05:
 

@@ -1756,6 +1756,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	CG_ParseSysteminfo();
 	CG_ParsePmoveSettings();
 	CG_UpdatePlayerPresentationSettings();
+	CG_FnQLExtInit();	// FnQL extension answer, only to an FnQL-game server
 
 	// load the new map
 	CG_LoadingString( "collision map" );
@@ -1834,6 +1835,7 @@ Called before every level change or subsystem restart
 void CG_Shutdown( void ) {
 	// some mods may need to do cleanup work here,
 	// like closing files or archiving session data
+	CG_FnQLExtShutdown();
 }
 
 

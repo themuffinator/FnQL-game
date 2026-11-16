@@ -215,6 +215,14 @@ int Pickup_Powerup( gentity_t *ent, gentity_t *other ) {
 
 	G_AnnouncePickup( other, ent, qtrue );
 
+	// retail 0x1004e281: every powerup pickup asks for achievement 0x1d,
+	// awarded once the player has taken both a quad and a battle suit
+	// (gclient +0x850 and +0x858, counted above)
+	if ( G_SteamAchievementLacks( other, 0x1d ) && client->stats.quadPickups > 0
+		&& client->stats.battleSuitPickups > 0 ) {
+		G_SteamAchievementUnlock( other, 0x1d );
+	}
+
 	// give any nearby players a "denied" anti-reward
 	for ( i = 0 ; i < level.maxclients ; i++ ) {
 		gclient_t	*witness = &level.clients[i];
@@ -246,6 +254,12 @@ int Pickup_Powerup( gentity_t *ent, gentity_t *other ) {
 		trap_Trace( &tr, witness->ps.origin, NULL, NULL, ent->s.pos.trBase, ENTITYNUM_NONE, CONTENTS_SOLID );
 		if ( tr.fraction != 1.0f ) {
 			continue;
+		}
+
+		// retail 0x1004e416: each denial asks for achievement 0xf, awarded
+		// to the taker for a quad
+		if ( G_SteamAchievementLacks( other, 0xf ) && tag == PW_QUAD ) {
+			G_SteamAchievementUnlock( other, 0xf );
 		}
 
 		// anti-reward

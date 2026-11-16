@@ -141,15 +141,17 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def write_cgame_pak(path: Path, retail_bin: Path, module: Path) -> None:
-    """The retail bin.pk3 with cgamex86.dll replaced by `module`."""
+def write_module_pak(path: Path, retail_bin: Path, modules: dict[str, Path]) -> None:
+    """The retail bin.pk3 with each named retail module replaced, e.g.
+    {"cgamex86.dll": <FnQL-game cgame>}; everything else stays retail."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(retail_bin) as source, zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as pak:
         names = source.namelist()
-        if "cgamex86.dll" not in names:
-            raise SystemExit(f"{retail_bin} carries no cgamex86.dll")
+        for name in modules:
+            if name not in names:
+                raise SystemExit(f"{retail_bin} carries no {name}")
         for item in source.infolist():
-            data = module.read_bytes() if item.filename == "cgamex86.dll" else source.read(item)
+            data = modules[item.filename].read_bytes() if item.filename in modules else source.read(item)
             info = zipfile.ZipInfo(item.filename, date_time=item.date_time)
             info.compress_type = zipfile.ZIP_DEFLATED
             pak.writestr(info, data)
@@ -164,7 +166,7 @@ def mirror_file(source: Path, target: Path) -> None:
         shutil.copy2(source, target)
 
 
-def scratch_basepath(base: Path, retail: Path, module: Path) -> None:
+def scratch_basepath(base: Path, retail: Path, modules: dict[str, Path]) -> None:
     """A base path the retail client mounts in place of the install's."""
     for name in ("web.pak",):
         if (retail / name).is_file():
@@ -172,7 +174,7 @@ def scratch_basepath(base: Path, retail: Path, module: Path) -> None:
     for pak in sorted((retail / "baseq3").glob("*.pk3")):
         if pak.name.lower() != "bin.pk3":
             mirror_file(pak, base / "baseq3" / pak.name)
-    write_cgame_pak(base / "baseq3" / "bin.pk3", retail / "baseq3" / "bin.pk3", module)
+    write_module_pak(base / "baseq3" / "bin.pk3", retail / "baseq3" / "bin.pk3", modules)
 
 
 def kill_tree(pid: int) -> None:
@@ -198,6 +200,14 @@ def main() -> int:
                         help="also require the engine's successful Steam session validation")
     parser.add_argument("--cgame", type=Path,
                         help="FnQL-game cgamex86.dll for the retail client, served from a scratch home pak")
+    parser.add_argument("--ui", type=Path,
+                        help="FnQL-game uix86.dll for the retail client, served the same way (the drop-in check)")
+    parser.add_argument("--server-package", type=Path,
+                        help="load this FnQL-game client package (fnql_game_client.pk3) on the server: the "
+                             "retail client must neither need nor report it")
+    parser.add_argument("--expect-handshake", choices=["yes", "no"],
+                        help="require the FnQL extension handshake to complete (an FnQL-game cgame "
+                             "answers fnql_game, even in the retail engine) or never to start")
     parser.add_argument("--factories", type=Path, help="additional hand-authored factory fixture")
     parser.add_argument("--cheats", action="store_true",
                         help="use devmap for fixtures outside retail arena mode metadata")
@@ -240,8 +250,11 @@ def main() -> int:
         print("a retail client is already running; skipping so it is left alone")
         return SKIP
     engine = Path(args.engine).resolve()
-    if args.cgame is not None and not args.cgame.is_file():
-        raise SystemExit(f"no cgame module at {args.cgame}")
+    for name in ("cgame", "ui", "server_package"):
+        if getattr(args, name) is not None and not getattr(args, name).is_file():
+            raise SystemExit(f"no {name} at {getattr(args, name)}")
+    replaced = {name: path for name, path in (("cgamex86.dll", args.cgame), ("uix86.dll", args.ui))
+                if path is not None}
 
     scratch = ROOT / ".tmp"
     scratch.mkdir(exist_ok=True)
@@ -283,10 +296,12 @@ def main() -> int:
             shutil.copy2(args.factories, home / "baseq3" / "scripts" / "probe.factories")
         log_path = home / "baseq3" / "qconsole.log"
         client_home = home / "client"
+        if args.server_package is not None:
+            shutil.copy2(args.server_package, home / "baseq3" / args.server_package.name)
         client_args: list[str] = []
-        if args.cgame is not None:
+        if replaced:
             client_base = home / "client-base"
-            scratch_basepath(client_base, retail, args.cgame)
+            scratch_basepath(client_base, retail, replaced)
             (client_home / "baseq3").mkdir(parents=True)
             shutil.copy2(client_base / "baseq3" / "bin.pk3", home / "baseq3" / "bin.pk3")
             client_args = ["+set", "fs_basepath", str(client_base), "+set", "fs_homepath", str(client_home)]
@@ -364,8 +379,27 @@ def main() -> int:
             (home / "server-status.txt").write_text(status, encoding="utf-8")
             serverinfo = server_command("serverinfo")
             (home / "server-info.txt").write_text(serverinfo, encoding="utf-8")
+            published = re.search(r'"sv_fnqlClientPaks" is:"([^"^]*)', server_command("sv_fnqlClientPaks"))
+            published = published.group(1) if published else ""
+            userinfo = server_command(f"dumpuser {began}")
             time.sleep(2)
             text = log()
+            if args.server_package is not None:
+                # the package is loaded and offered to FnQL clients, yet the
+                # retail client neither downloads nor reports it
+                if not published and args.pure != "0":
+                    failures.append("the pure server did not publish the FnQL-game client package")
+                if "is pure with the FnQL-game client package" in text:
+                    failures.append("the retail client was accepted by the FnQL-game client package")
+                if args.server_package.stem in server_command("sv_referencedPakNames"):
+                    failures.append("the FnQL-game client package is referenced to clients")
+            confirmed = "FnQL extensions confirmed for client" in text
+            answered = "fnql_cg" in userinfo
+            if args.expect_handshake == "yes" and not (confirmed and answered):
+                failures.append("the FnQL extension handshake did not complete"
+                                + ("" if answered else " (no fnql_cg in the client's userinfo)"))
+            if args.expect_handshake == "no" and (confirmed or answered):
+                failures.append("the retail client took part in FnQL extension negotiation")
 
             def info(key: str) -> str | None:
                 m = re.search(rf"(?m)^{re.escape(key)}\s+(\S*)", serverinfo)
@@ -404,6 +438,14 @@ def main() -> int:
                 if not ours:
                     failures.append("the retail client did not load FnQL-game's cgame from the client home"
                                     + (f" (loaded: {', '.join(map(str, loaded))})" if loaded else ""))
+            if args.ui is not None and alive():
+                wanted = sha256(args.ui)
+                loaded = [p for pid in clients for p in loaded_modules(pid, "uix86.dll")]
+                ours = [p for p in loaded if p.is_file() and p.resolve().is_relative_to(client_home.resolve())
+                        and sha256(p) == wanted]
+                if not ours:
+                    failures.append("the retail client did not load FnQL-game's ui from the client home"
+                                    + (f" (loaded: {', '.join(map(str, loaded))})" if loaded else ""))
         text = log()
         failures += [f"forbidden in server log: {line!r}" for line in FORBIDDEN if line in text]
 
@@ -418,6 +460,8 @@ def main() -> int:
                 if args.keep:
                     shutil.copy2(path, home / "retail-client-qconsole.log")
 
+        if "fnql_hello" in client_log and args.cgame is None:
+            failures.append("the retail cgame was sent an FnQL extension command")
         name = re.search(r'ClientUserinfoChanged: \d+ n\\([^\\]*)', text)
         if failures:
             print("retail client probe FAILED:")
@@ -434,7 +478,10 @@ def main() -> int:
               + (f" on team {args.team}" if args.team else "")
               + (", match in progress" if args.allready else "")
               + (f" ({name.group(1)})" if name else "") + f" and stayed {args.seconds:.0f}s"
-              + (" running FnQL-game's cgame" if args.cgame is not None else ""))
+              + (" running FnQL-game's " + " and ".join(
+                  n.removesuffix("x86.dll") for n in replaced) if replaced else "")
+              + (" beside the FnQL-game client package" if args.server_package is not None else "")
+              + (", extension handshake confirmed" if args.expect_handshake == "yes" else ""))
         return 0
     finally:
         if server is not None and server.poll() is None:

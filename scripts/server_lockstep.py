@@ -10,7 +10,11 @@ FnQL-game's.  Both recordings are decoded and diffed frame by frame:
   - each scripted client's playerState_t, field by field;
   - every client-visible entity: presence, svFlags and entityState_t fields;
   - configstrings (infostrings key by key);
-  - the game's reliable server commands and their targets.
+  - the game's reliable server commands and their targets;
+  - the answers of the engine query exports (sv_lockstepQueries; --no-queries
+    skips them);
+  - the module's Steam statistic and achievement calls, in call order
+    (sv_lockstepSteam; --no-steam-calls skips them).
 
 Both runs must also have executed the same inputs and timeline commands;
 anything else means the rig, not the module, diverged.
@@ -388,6 +392,12 @@ RECORD_MAGIC = b"FNQLLSTP"
 RECORD_VERSION = 1
 # Version 2 is version 1 plus 'G' records (FnQL sv_lockstepQueries 1).
 RECORD_VERSION_QUERIES = 2
+# Version 3 is version 2 plus 'T' records (FnQL sv_lockstepSteam 1); its 'G'
+# records appear only when sv_lockstepQueries is also on.
+RECORD_VERSION_STEAM = 3
+RECORD_VERSIONS = (RECORD_VERSION, RECORD_VERSION_QUERIES, RECORD_VERSION_STEAM)
+# 'T' record kinds: the game module's Steam imports (FnQL server.h)
+STEAM_CALL_KINDS = {0: "overflow", 1: "addStat", 2: "hasAchievement", 3: "unlockAchievement"}
 QUERY_PAIR_BITS = ((1, "canSee"), (2, "suppressVoice"), (4, "enemies"))
 END_REASONS = {0: "frame limit", 1: "server shutdown"}
 COMMAND_KINDS = {0: "cmd", 1: "clientcmd", 2: "userinfo"}
@@ -411,6 +421,7 @@ class Frame:
     server_commands: list = field(default_factory=list)
     dropped_commands: int = 0
     queries: bytes | None = None
+    steam_calls: list = field(default_factory=list)
 
 
 @dataclass
@@ -432,6 +443,15 @@ class Recording:
     clients: list = field(default_factory=list)
     frames: list = field(default_factory=list)
     end: tuple | None = None
+
+    @property
+    def has_queries(self) -> bool:
+        # 'G' is always written on frame 0 when the queries are recorded
+        return self.version == RECORD_VERSION_QUERIES or bool(self.frames and self.frames[0].queries is not None)
+
+    @property
+    def has_steam_calls(self) -> bool:
+        return self.version == RECORD_VERSION_STEAM
 
 
 class Reader:
@@ -469,9 +489,9 @@ def read_recording(path: Path) -> Recording:
     if r.take(8) != RECORD_MAGIC:
         raise RecordError(f"{path}: not an FnQL lockstep recording")
     version = r.u32()
-    if version not in (RECORD_VERSION, RECORD_VERSION_QUERIES):
+    if version not in RECORD_VERSIONS:
         raise RecordError(f"{path}: recording version {version}, this decoder reads "
-                          f"{RECORD_VERSION} and {RECORD_VERSION_QUERIES}")
+                          f"{', '.join(str(v) for v in RECORD_VERSIONS)}")
     rec.version = version
     rec.ps_size, rec.es_size, rec.cmd_size = r.u32(), r.u32(), r.u32()
     rec.max_configstrings, rec.max_entities, rec.maxclients = r.u32(), r.u32(), r.u32()
@@ -518,7 +538,9 @@ def read_recording(path: Path) -> Recording:
             frame.server_commands.append((target, r.string()))
         elif tag == "O":
             frame.dropped_commands += r.u32()
-        elif tag == "G" and version == RECORD_VERSION_QUERIES:
+        elif tag == "T" and version == RECORD_VERSION_STEAM:
+            frame.steam_calls.append(tuple(r.i32() for _ in range(5)))
+        elif tag == "G" and version in (RECORD_VERSION_QUERIES, RECORD_VERSION_STEAM):
             payload = r.take(r.u32())
             decode_queries(payload)  # validate here, so a bad record names its byte
             frame.queries = payload
@@ -652,10 +674,13 @@ class Differ:
         ents = ({}, {})
         css = ({}, {})
         queries = [None, None]
-        query_sides = (self.a.version == RECORD_VERSION_QUERIES, self.b.version == RECORD_VERSION_QUERIES)
+        query_sides = (self.a.has_queries, self.b.has_queries)
+        first = self.a.frames[0] if self.a.frames else Frame(0, 0, 0)
         if query_sides[0] != query_sides[1]:
-            first = self.a.frames[0] if self.a.frames else Frame(0, 0, 0)
             self.add(first, "rig.queries", "only one recording has game query records")
+        steam_sides = (self.a.has_steam_calls, self.b.has_steam_calls)
+        if steam_sides[0] != steam_sides[1]:
+            self.add(first, "rig.steam", "only one recording has Steam call records")
         for fa, fb in zip(self.a.frames, self.b.frames):
             if fa.number != fb.number:
                 raise RecordError(f"frame numbering differs: {fa.number} != {fb.number}")
@@ -679,6 +704,8 @@ class Differ:
                         state.pop(index, None)
             self.compare_configstrings(fa, css[0], css[1])
             self.compare_server_commands(fa, fb)
+            if all(steam_sides):
+                self.compare_steam_calls(fa, fb)
             if all(query_sides):
                 changed = fa.queries is not None or fb.queries is not None
                 for side, frame in enumerate((fa, fb)):
@@ -811,6 +838,21 @@ class Differ:
                 for _ in range(count):
                     self.add(fa, f"cmd.{verb}", f"server command only in {side} run ({where}): {show(text)}")
 
+    def compare_steam_calls(self, fa: Frame, fb: Frame) -> None:
+        if fa.steam_calls == fb.steam_calls:
+            return
+        only_a = Counter(fa.steam_calls) - Counter(fb.steam_calls)
+        only_b = Counter(fb.steam_calls) - Counter(fa.steam_calls)
+        if not only_a and not only_b:
+            self.add(fa, "steam.order", f"same Steam calls in a different order: {fa.steam_calls}")
+            return
+        for side, extra in (("first", only_a), ("second", only_b)):
+            for (kind, client, a, b, result), count in sorted(extra.items()):
+                name = STEAM_CALL_KINDS.get(kind, str(kind))
+                for _ in range(count):
+                    self.add(fa, f"steam.{name}", f"Steam call only in {side} run: {name}(client {client}, "
+                             f"{a}, {b}) -> {result}")
+
     def total(self) -> int:
         return sum(self.counts.values())
 
@@ -899,6 +941,8 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     ]
     if args.queries:
         command += ["+set", "sv_lockstepQueries", "1"]
+    if args.steam_calls:
+        command += ["+set", "sv_lockstepSteam", "1"]
     for name, value in args.set:
         command += ["+set", name, value]
     if args.entities:
@@ -981,9 +1025,12 @@ def run_server(args, label: str, provider: str, scenario: Path) -> RunResult:
     rec = result.recording
     if rec.map.lower() != args.map.lower():
         result.error = result.error or f"the server recorded map {rec.map!r}, not the requested {args.map!r}"
-    if args.queries and rec.version != RECORD_VERSION_QUERIES:
+    if args.queries and not rec.has_queries:
         result.error = result.error or ("the engine did not record game query answers "
                                         "(sv_lockstepQueries needs a newer FnQL; --no-queries skips them)")
+    if args.steam_calls and not rec.has_steam_calls:
+        result.error = result.error or ("the engine did not record Steam calls "
+                                        "(--steam-calls needs FnQL with sv_lockstepSteam)")
     if rec.end is None:
         result.error = result.error or "recording has no end record (the server did not shut down cleanly)"
     elif rec.end[1] != 0 or rec.end[0] != args.frames or len(rec.frames) != args.frames:
@@ -1104,6 +1151,11 @@ def main() -> int:
                         help="extra +set for both runs (repeatable)")
     parser.add_argument("--no-queries", dest="queries", action="store_false",
                         help="do not record and compare the engine query exports (FnQL sv_lockstepQueries)")
+    parser.add_argument("--steam-calls", dest="steam_calls", action="store_true", default=True,
+                        help="record and compare the module's Steam statistic and achievement calls "
+                             "(FnQL sv_lockstepSteam; the default)")
+    parser.add_argument("--no-steam-calls", dest="steam_calls", action="store_false",
+                        help="do not record and compare the Steam calls (an FnQL without sv_lockstepSteam)")
     parser.add_argument("--port", type=int, default=27995)
     parser.add_argument("--timeout", type=float, default=300.0, help="seconds allowed per run")
     parser.add_argument("--keep", action="store_true", help="keep the scratch homes")

@@ -3246,9 +3246,16 @@ typedef struct
 
 
 /* Retail binding table (uix86.dll 0x1002a0d0, 81 rows of 0x18 bytes:
- * command, default key 1/2, live key 1/2). Order and default keys follow
- * retail; the default keys are only staged until saveControls applies them.
- * Retail's sentinels 0 and -2 name no key and are stored as -1 here. */
+ * command, key, default key 1/2, live key 1/2). Order and keys follow
+ * retail, and gate G2 holds them to docs/contract/retail_tables.json
+ * "uiBindings". Retail's code never reads the key column: its default
+ * columns are -1 throughout, so resetDefaults (0x1000b5b3) leaves every
+ * live key unset until vid_restart reloads the bindings default.cfg made.
+ * Here the key column is the default instead. The final bindings are the
+ * same: resetDefaults queues "exec default.cfg", whose unbindall and binds
+ * (pak00.pk3, including "bind 0 weapon 14") replace any key a saveControls
+ * set before it runs. Retail's key for forfeit is -2, which names no key,
+ * and is stored as -1 here. */
 static bind_t g_bindings[] = 
 {
 	{"+scores", K_TAB, -1, -1, -1},
@@ -3279,7 +3286,7 @@ static bind_t g_bindings[] =
 	{"weapon 11", -1, -1, -1, -1},
 	{"weapon 12", -1, -1, -1, -1},
 	{"weapon 13", -1, -1, -1, -1},
-	{"weapon 14", -1 /* retail stores 0, not a key */, -1, -1, -1},
+	{"weapon 14", '0', -1, -1, -1},
 	{"weapon toggle", 'f', -1, -1, -1},
 	{"+attack", K_MOUSE1, -1, -1, -1},
 	{"weapprev", '[', -1, -1, -1},

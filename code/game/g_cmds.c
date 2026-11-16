@@ -1641,11 +1641,54 @@ match waits in PRE_GAME, and everyone hears about it.  Nobody readies up
 while g_teamForcePresent finds players missing (0x10068140) or
 g_teamForceBalance finds the teams more than one apart (0x10068100); a
 player who was ready is quietly made unready instead.  During the
-intermission the command only sets the flag, for the scoreboard.  (Retail
-also ends the training tour from here, 0x10045a80; training is not
-implemented.)
+intermission the command only sets the flag, for the scoreboard.  In
+either state, under g_training with g_skipTrainingEnable, it first ends the
+training tour (0x10045c08), even for a spectator.
 =================
 */
+
+/*
+=================
+G_SkipTrainingTour
+
+Retail qagamex86 0x10045a80: the training cvars go to their match values
+(g_training stays "1"; bot_dynamicSkill turns on; the tour's bot, follow
+and gauntlet settings and g_skipTrainingEnable go to "0").  Every connected
+client respawns: a bot is armed with the machinegun and 100 rounds and loses
+the tour flags, and everyone loses god mode.  The caller's chat and sounds
+are cleared.
+=================
+*/
+static void G_SkipTrainingTour( int callerNum ) {
+	int		i;
+
+	trap_Cvar_Set( "g_training", "1" );
+	trap_Cvar_Set( "bot_training", "0" );
+	trap_Cvar_Set( "bot_dynamicSkill", "1" );
+	trap_Cvar_Set( "bot_followMe", "0" );
+	trap_Cvar_Set( "bot_gauntlet", "0" );
+	trap_Cvar_Set( "g_skipTrainingEnable", "0" );
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		gentity_t	*other = g_entities + i;
+		gclient_t	*cl = level.clients + i;
+
+		if ( cl->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		if ( other->r.svFlags & SVF_BOT ) {
+			other->flags &= ~FL_TRAINING_BOT;
+			cl->ps.ammo[WP_MACHINEGUN] = 100;
+			cl->ps.stats[STAT_WEAPONS] |= 1 << WP_MACHINEGUN;
+		}
+		other->flags &= ~( FL_TRAINING_GUIDE | FL_GODMODE );
+		ClientSpawn( other );
+	}
+
+	trap_SendServerCommand( callerNum, "clearChat" );
+	trap_SendServerCommand( callerNum, "clearSounds" );
+}
+
 static qboolean G_ReadyUpPlayersPresent( void ) {
 	const int	red = TeamCount( -1, TEAM_RED );
 	const int	blue = TeamCount( -1, TEAM_BLUE );
@@ -1671,6 +1714,9 @@ static void Cmd_ReadyUp_f( gentity_t *ent ) {
 
 	if ( !preGame && !level.intermissiontime ) {
 		return;
+	}
+	if ( g_training.integer && g_skipTrainingEnable.integer ) {
+		G_SkipTrainingTour( clientNum );
 	}
 	if ( client->ps.pm_type == PM_SPECTATOR || client->sess.sessionTeam == TEAM_SPECTATOR
 		|| ( client->ps.pm_flags & PMF_FOLLOW ) ) {
@@ -2513,6 +2559,11 @@ void ClientCommand( int clientNum ) {
 			}
 		}
 		return;	// not fully in game yet
+	}
+
+	// FnQL extension commands, from negotiated clients only (not retail)
+	if ( G_FnQLExtCommand( ent, cmd ) ) {
+		return;
 	}
 
 	// the match and admin commands come first (retail qagamex86 0x10045e28)

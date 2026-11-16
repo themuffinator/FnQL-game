@@ -346,7 +346,8 @@ int main(void) {
     assert(version == 8 && exports && sizeof(imports) == 97 * sizeof(void (*)(void)));
     for (before = 0; before < 14; ++before) assert(exports[before]);
     assert(!strcmp(FnQL_GetModuleInfo()->module, "ui"));
-    assert(!(FnQL_GetModuleInfo()->capabilities & FNQL_MODULE_CAP_RETAIL_WIRE));
+    /* M10: the ui claims retail parity (M8's gates) and negotiates nothing */
+    assert(FnQL_GetModuleInfo()->capabilities == FNQL_MODULE_CAP_RETAIL_WIRE);
     assert(offsetof(uiNativeImports_t, AppendCommand) == 20 * sizeof(void *));
     assert(offsetof(uiNativeImports_t, MeasureText) == 95 * sizeof(void *));
     trap_Cmd_ExecuteText(EXEC_APPEND, "echo native\n"); assert(!strcmp(command, "echo native\n"));
@@ -407,6 +408,8 @@ int main(void) {
     assert(!strcmp(keyBindings['w'], "+forward") && !strcmp(keyBindings[K_MOUSE1], "+attack"));
     assert(!strcmp(keyBindings[K_MOUSE2], "+zoom") && !strcmp(keyBindings[K_F3], "readyup"));
     assert(!strcmp(keyBindings[K_KP_INS], "follow 0") && !strcmp(keyBindings[K_KP_PGUP], "follow 9"));
+    /* Retail's key for weapon 14 is '0' (0x1002a374 = 0x30), as default.cfg binds it. */
+    assert(!strcmp(keyBindings['0'], "weapon 14"));
     /* Retail order: dropweapon follows +left on the left arrow. */
     assert(!strcmp(keyBindings[K_LEFTARROW], "dropweapon") && !*keyBindings[0]);
     {

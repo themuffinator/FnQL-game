@@ -274,7 +274,9 @@ int main(void) {
     supplied.numEntities = 1; supplied.entities[0].number = MAX_GENTITIES; CHECK(!trap_GetSnapshot(0,&result));
     supplied.entities[0].number = 0; supplied.ps.clientNum = MAX_CLIENTS; CHECK(!trap_GetSnapshot(0,&result));
     CHECK(!trap_GetSnapshot(0,NULL));
-    info = FnQL_GetModuleInfo(); CHECK(!strcmp(info->module,"cgame") && info->nativeApi == 8 && info->capabilities == 0);
+    /* M10: retail wire parity is claimed, extensions only after negotiation */
+    info = FnQL_GetModuleInfo(); CHECK(!strcmp(info->module,"cgame") && info->nativeApi == 8 &&
+        info->capabilities == (FNQL_MODULE_CAP_RETAIL_WIRE | FNQL_MODULE_CAP_EXTENSIONS));
     puts("cgame native ABI: exports, float calls, snapshots, identity, mute import and bounds OK");
     return 0;
 }

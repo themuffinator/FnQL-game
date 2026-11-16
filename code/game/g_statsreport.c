@@ -380,33 +380,40 @@ void G_StatsSteamHit( const gclient_t *client, int weapon ) {
 	trap_AddSteamStat( client->ps.clientNum, statsSteamHits[weapon], 1 );
 }
 
-// every retail award asks first whether the player already holds it
-void G_SteamAchievement( const gentity_t *ent, int id ) {
-	if ( !ent || !ent->client ) {
-		return;
-	}
-	if ( !trap_HasSteamAchievement( ent->client->ps.clientNum, id ) ) {
-		trap_UnlockSteamAchievement( ent->client->ps.clientNum, id );
-	}
-}
-
 static qboolean Stats_Airborne( const gclient_t *client ) {
 	return client->ps.groundEntityNum == ENTITYNUM_NONE || client->ps.powerups[PW_FLIGHT] != 0;
+}
+
+// Every retail award asks import 204 whether the player already holds the
+// achievement; where it asks (before or after which part of the condition)
+// is observed per site and holds the order of the Steam calls, which the G3
+// --steam-calls gates compare.  True when the player does not hold it.
+qboolean G_SteamAchievementLacks( const gentity_t *ent, int id ) {
+	return !trap_HasSteamAchievement( ent->client->ps.clientNum, id );
+}
+
+void G_SteamAchievementUnlock( const gentity_t *ent, int id ) {
+	trap_UnlockSteamAchievement( ent->client->ps.clientNum, id );
 }
 
 /*
 ================
 G_StatsKillAchievements
 
-The achievement tests of retail's kill builder (0x10073062-0x10073dc8), run
-for a kill by a player after the kill has been counted.  An enemy kill is
-one of another player who is not a teammate.
+The achievement tests of retail's kill builder (0x1007303d-0x10073dc8), run
+for a kill by a player after the kill has been counted.  Observed order:
+the killer's tests each ask import 204 first and then test their
+condition, so every kill by a player asks for 0x10, 0x14, 0x15, 0x16, 0x19,
+0x1a and 0x1c whatever happened; the victim's two (0x11, 0x13) ask only for
+the kill of an enemy other than the killer.  Enemies are players who are
+not teammates; for the victim's tests outside the team modes, everyone but
+a spectator killing a spectator (0x10073c69).
 ================
 */
 void G_StatsKillAchievements( gentity_t *victim, gentity_t *attacker, int mod ) {
 	const gclient_t	*killer, *target;
 	const int		weapon = G_WeaponForMod( mod );
-	qboolean		enemy, quadded;
+	qboolean		enemy, victimEnemy;
 	int				i;
 
 	if ( !victim || !victim->client || !attacker || !attacker->client ) {
@@ -415,44 +422,54 @@ void G_StatsKillAchievements( gentity_t *victim, gentity_t *attacker, int mod ) 
 	killer = attacker->client;
 	target = victim->client;
 	enemy = attacker != victim && !OnSameTeam( attacker, victim );
-	quadded = target->ps.powerups[PW_QUAD] != 0;
+	if ( g_gametype.integer >= GT_TEAM ) {
+		victimEnemy = killer->sess.sessionTeam != target->sess.sessionTeam;
+	} else {
+		victimEnemy = killer->sess.sessionTeam != TEAM_SPECTATOR
+			|| killer->sess.sessionTeam != target->sess.sessionTeam;
+	}
+	victimEnemy = victimEnemy && attacker != victim;
 
-	if ( weapon == WP_RAILGUN && killer->stats.weaponKills[WP_RAILGUN] >= 15 ) {
-		G_SteamAchievement( attacker, 0x10 );
+	if ( G_SteamAchievementLacks( attacker, 0x10 ) && weapon == WP_RAILGUN
+		&& killer->stats.weaponKills[WP_RAILGUN] >= 15 ) {
+		G_SteamAchievementUnlock( attacker, 0x10 );
 	}
-	if ( enemy && Stats_Airborne( killer ) ) {
-		G_SteamAchievement( attacker, 0x14 );
+	if ( G_SteamAchievementLacks( attacker, 0x14 ) && enemy && Stats_Airborne( killer ) ) {
+		G_SteamAchievementUnlock( attacker, 0x14 );
 	}
-	if ( enemy && killer->ps.stats[STAT_HEALTH] == 1 ) {
-		G_SteamAchievement( attacker, 0x15 );
+	if ( G_SteamAchievementLacks( attacker, 0x15 ) && killer->ps.stats[STAT_HEALTH] == 1 && enemy ) {
+		G_SteamAchievementUnlock( attacker, 0x15 );
 	}
-	if ( enemy && quadded ) {
-		// with no powerup of the killer's own
+	// an enemy quad carrier killed with no powerup of the killer's own
+	if ( G_SteamAchievementLacks( attacker, 0x16 ) && target->ps.powerups[PW_QUAD] && enemy ) {
 		for ( i = PW_QUAD; i < PW_NUM_POWERUPS; i++ ) {
 			if ( killer->ps.powerups[i] ) {
 				break;
 			}
 		}
 		if ( i == PW_NUM_POWERUPS ) {
-			G_SteamAchievement( attacker, 0x16 );
+			G_SteamAchievementUnlock( attacker, 0x16 );
 		}
 	}
-	if ( weapon == WP_GAUNTLET && killer->stats.weaponKills[WP_GAUNTLET] >= 5 ) {
-		G_SteamAchievement( attacker, 0x19 );
+	if ( G_SteamAchievementLacks( attacker, 0x19 ) && weapon == WP_GAUNTLET
+		&& killer->stats.weaponKills[WP_GAUNTLET] >= 5 ) {
+		G_SteamAchievementUnlock( attacker, 0x19 );
 	}
-	if ( target->ps.powerups[PW_FLIGHT] || ( weapon == WP_GAUNTLET && Stats_Airborne( killer )
-			&& target->ps.groundEntityNum == ENTITYNUM_NONE ) ) {
-		G_SteamAchievement( attacker, 0x1a );
+	if ( G_SteamAchievementLacks( attacker, 0x1a ) && ( target->ps.powerups[PW_FLIGHT] || ( weapon == WP_GAUNTLET
+			&& Stats_Airborne( killer ) && target->ps.groundEntityNum == ENTITYNUM_NONE ) ) ) {
+		G_SteamAchievementUnlock( attacker, 0x1a );
 	}
-	if ( weapon == WP_GAUNTLET && quadded ) {
-		G_SteamAchievement( attacker, 0x1c );
+	if ( G_SteamAchievementLacks( attacker, 0x1c ) && weapon == WP_GAUNTLET && target->ps.powerups[PW_QUAD] ) {
+		G_SteamAchievementUnlock( attacker, 0x1c );
 	}
-	if ( enemy && weapon == WP_ROCKET_LAUNCHER && Stats_Airborne( target ) ) {
-		G_SteamAchievement( attacker, 0x11 );
+	if ( victimEnemy && G_SteamAchievementLacks( attacker, 0x11 ) && weapon == WP_ROCKET_LAUNCHER
+		&& Stats_Airborne( target ) ) {
+		G_SteamAchievementUnlock( attacker, 0x11 );
 	}
 	// a rail kill of a player an enemy had left on one health
-	if ( enemy && weapon == WP_RAILGUN && target->stats.lastHealth == 1 ) {
-		G_SteamAchievement( attacker, 0x13 );
+	if ( victimEnemy && G_SteamAchievementLacks( attacker, 0x13 ) && weapon == WP_RAILGUN
+		&& target->stats.lastHealth == 1 ) {
+		G_SteamAchievementUnlock( attacker, 0x13 );
 	}
 }
 
@@ -688,17 +705,17 @@ void G_StatsReportMedal( const gentity_t *ent, const char *medal, int total ) {
 	if ( !ent || !ent->client ) {
 		return;
 	}
-	// in Capture the Flag every medal also tests the all-rounder
-	// achievements: a capture, an assist and a defense, and three of each
-	// (0x1007173a, 0x1007179b)
+	// in Capture the Flag every medal also asks for the all-rounder
+	// achievements and then tests them: a capture, an assist and a defense,
+	// and three of each (0x10071705, 0x10071761)
 	if ( g_gametype.integer == GT_CTF ) {
 		const clientStats_t	*st = &ent->client->stats;
 
-		if ( st->captures >= 1 && st->assists >= 1 && st->defends >= 1 ) {
-			G_SteamAchievement( ent, 0x38 );
+		if ( G_SteamAchievementLacks( ent, 0x38 ) && st->captures >= 1 && st->assists >= 1 && st->defends >= 1 ) {
+			G_SteamAchievementUnlock( ent, 0x38 );
 		}
-		if ( st->captures >= 3 && st->assists >= 3 && st->defends >= 3 ) {
-			G_SteamAchievement( ent, 0x39 );
+		if ( G_SteamAchievementLacks( ent, 0x39 ) && st->captures >= 3 && st->assists >= 3 && st->defends >= 3 ) {
+			G_SteamAchievementUnlock( ent, 0x39 );
 		}
 	}
 	if ( !trap_StatsAvailable() ) {
@@ -815,17 +832,19 @@ void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean qu
 	}
 	st = &client->stats;
 
-	// an accuracy of six in ten over every weapon (retail 0x1007493b, tested
-	// as the builder walks the weapons; no shots, no award)
+	// an accuracy of six in ten over every weapon (retail 0x10074905: import
+	// 204 first, then hits / shots against the double 0.6 with fcomip/jb, so
+	// 0/0 is unordered and awards nothing, while hits with no shots would)
 	{
-		int	hits = 0, shots = 0;
+		const gentity_t	*ent = &g_entities[client - level.clients];
+		int				hits = 0, shots = 0;
 
 		for ( i = WP_GAUNTLET; i < WP_NUM_WEAPONS; i++ ) {
 			hits += st->weaponHits[i];
 			shots += st->weaponShots[i];
 		}
-		if ( shots > 0 && (float)hits / (float)shots >= 0.6f ) {
-			G_SteamAchievement( &g_entities[client - level.clients], 0x1b );
+		if ( G_SteamAchievementLacks( ent, 0x1b ) && ( shots ? (double)hits / (double)shots >= 0.6 : hits > 0 ) ) {
+			G_SteamAchievementUnlock( ent, 0x1b );
 		}
 	}
 	if ( !trap_StatsAvailable() ) {

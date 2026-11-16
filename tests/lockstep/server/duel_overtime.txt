@@ -1,0 +1,33 @@
+# G3 (scripts/server_lockstep.py --factory duel --frames 4300): a duel that
+# ends at the timelimit after overtime, retail qagamex86 CheckExitRules
+# 0x10058030.  Both duelists ready up; the countdown restarts the level into
+# the match at frame 425.  Tied at the one-minute limit, the match goes into
+# overtime: each check broadcasts EV_OVERTIME (0x54, SVF_BROADCAST) and
+# extends the limit by g_overtime seconds.  The retail recording has three,
+# at frames 2808, 3208 and 3608.  A point for Alpha at frame 3900 breaks the
+# tie, and "Timelimit hit." ends the match at the third extension's end
+# (frame 4008, with EV_GAMEOVER); the intermission starts 200 msec later
+# with the duel result (0x10056cb0).  The script sets the limits after the
+# match restart, as the factory sets them at load.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team f
+clientcmd 2 bravo team f
+at 0 alpha weapon=2
+at 0 bravo weapon=2
+clientcmd 20 alpha readyup
+clientcmd 24 bravo readyup
+
+cmd 1000 timelimit 1
+cmd 1000 g_overtime 10
+cmd 1000 fraglimit 0
+clientcmd 1100 alpha score
+clientcmd 3500 bravo score
+cmd 3900 addscore 0 1
+clientcmd 3950 alpha score
+# The end scoreboard, after the intermission starts.
+clientcmd 4250 bravo score

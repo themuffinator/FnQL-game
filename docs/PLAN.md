@@ -51,16 +51,16 @@ exists.
 |---|---|---|
 | G0 ABI layout | `scripts/check_engine_abi.py`: every structure, offset and constant shared by pointer with the engine matches FnQL | M1 |
 | G1 Boot smoke | `scripts/smoke_dedicated.py`: the module loads through the retail ABI, identifies itself, initializes on a retail map, hosts a bot, keeps running | M1 |
-| G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands) compared with FnQL-game's tables | M2 |
+| G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands; the qagame, cgame and ui cvar tables and the ui binding table) compared with FnQL-game's tables | M2 |
 | G3a Pmove lockstep | `scripts/pmove_lockstep.py` and `tests/lockstep/`: the retail qagame's `Pmove` and FnQL-game's run the same scripted and fuzzed command streams in one process, and every `playerState_t` and `pmove_t` output matches bit for bit | M3 |
-| G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command and engine query answer (FnQL `sv_lockstepQueries`) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
+| G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command, engine query answer (FnQL `sv_lockstepQueries`) and Steam statistic and achievement call (FnQL `sv_lockstepSteam`, since M5) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
 | G3b Bot differential | `tests/lockstep/server/bots_*.txt` (suite `bots`): the G3 rig with skill-4 bots and no scripted player, per mode up to each mode's recorded horizon, with a negative control that must diverge | M9 |
 | G4a Retail prediction | `scripts/prediction_probe.py`: the retail cgame predicts FnQL-game's server-side movement on a stock map with no prediction error at all, VQL and PQL | M3 |
 | G4 Prediction | FnQL-game cgame predicts retail and FnQL-game servers with zero prediction errors over recorded demo and live corpora | M7 |
 | G4v cgame visual parity | `scripts/cgame_parity_probe.py` (suite `cgame-parity`): a recorded bot match replayed under `timedemo` through the retail cgame and FnQL-game's gives matching captures, gameplay and scoreboard, per mode and screen shape | M7 |
 | G5a Retail cgame probe | `scripts/listen_probe.py`: the retail cgame joins an FnQL-game listen server, reaches CS_ACTIVE, no errors | M2 |
 | G5b Retail client join | `scripts/retail_client_probe.py` (opt-in suite `retail-client`): the user's retail `quakelive_steam.exe`, launched windowed through Steam, joins an FnQL dedicated server running FnQL-game (pure) and stays in the game | M3 |
-| G5 Interop matrix | Retail client ↔ FnQL server, and FnQL client ↔ retail server, both pure and unpure, scripted where possible and manual (Steam) otherwise | M5, M10 |
+| G5 Interop matrix | Retail client ↔ FnQL server, FnQL client ↔ FnQL server and FnQL client ↔ retail server, both pure and unpure, with and without the FnQL-game client package and the drop-in modules in the retail engine: suites `interop-fnql` (`scripts/client_package_probe.py`) and opt-in `retail-client` (`retail_client_probe.py`, `retail_server_probe.py`) | M5, M10 |
 | G6 Engine non-regression | FnQL's suites, including the retail-module provider tests, stay green on every engine change | M1 |
 
 ## Milestones
@@ -559,7 +559,7 @@ Open after M4:
 
 Exit: G3 differential over combat and item scenarios — met (2026-11-16).
 
-### M5 — Match flow and core gametypes
+### M5 — Match flow and core gametypes (complete)
 
 - Gametypes: FFA, Duel (queue and forfeit), TDM, CTF, 1FCTF.
 - Match flow: warmup, ready-up, timeouts, overtime, sudden death,
@@ -579,7 +579,9 @@ Exit: G3 differential over combat and item scenarios — met (2026-11-16).
   engine's and is default-off there (`zmq_stats_enable`, `sv_statsJournal`).
 
 Exit: G3 over full matches; first G5 runs with retail clients on an FnQL
-server.
+server. Met (2026-11-16): every exit rule has a full-match G3 pair, the G5b
+pure and unpure runs pass, and G3 also holds the Steam statistic and
+achievement calls to retail ("Closing M5", at the end of this section).
 
 Progress (G3, both with no divergence):
 
@@ -865,7 +867,11 @@ CS_INTERMISSION: the inherited initialization clear is removed.
 
 The initial pure/unpure G5 runs with retail clients now pass. Spectators also honour a
 0x800 button retail checks in SpectatorThink (0x10033f93: it frees a
-follower); which client key sends it is not yet identified.
+follower). No retail key sends it (observed): the retail engine binds button
+commands to buttons 0, 2 and 3 only (quakelive_steam 0x4b64ba-0x4b6505), and
+its usercmd builder (0x4b5bd0) ORs in the fifteen button states, 2 while
+typing and 0x1000 while any key is down. A retail client never reaches the
+branch.
 
 Qagame validation, 2026-11-05: the x86 build and 325 selected ABI, contract,
 unit, runtime, differential, factory, round, objective, combat and stock-map
@@ -976,11 +982,8 @@ them. Until now FnQL-game reported nothing.
     report's accuracy test (0x1b, six hits in ten shots, 0x1007493b).
   - The names of the achievements are inferences from the conditions; only
     the numbers and the conditions are observed.
-- **Open:** achievements 0x1f, 0x31 and 0x32 and any award site outside the
-  kill, medal and report paths; a `stats-events` run in Race, Domination and
-  Red Rover. No gate observes the three imports yet: lockstep runs without a
-  Steam provider and the stats journal does not record them, so the award
-  conditions are covered by reading only.
+- **Closed 2026-11-16** ("Closing M5", below): every award site, and a G3
+  gate that records the three imports.
 
 Chat tokens (2026-11-15): team chat and tells expand `#h`, `#a` and `#w` to
 the speaker's health, armor and weapon with its ammo; `##` is a literal `#`
@@ -1043,8 +1046,8 @@ Ready-up and arena size (2026-11-15):
   announcements. Negative control: the module at `d1c6efe` diverges on both
   from frame 20 (it readies the lone player), and on the worldspawn-keys
   pair from frame 0.
-- Not implemented: retail's `readyup` also ends the training tour
-  (0x10045a80).
+- Retail's `readyup` also ends the training tour (0x10045a80): implemented
+  on 2026-11-16 ("Closing M5", below).
 
 Client presentation follow-up (2026-11-15):
 
@@ -1071,7 +1074,7 @@ Client presentation follow-up (2026-11-15):
   green. Gate: `cgame-itempresentation`.
 - Not verified in a running client: the shared client build these gates use
   was being rebuilt by other work, so these have unit or reading coverage
-  only.
+  only. Carried to M7, whose cgame gates cover presentation.
 - Smoke: `cg_smoke_SG` turns the shotgun's muzzle smoke off (0x1005598c);
   `cg_smokeRadius_RL`, `_GL` and `_NG` size the rocket, grenade and nail
   trails (0x1005023e, 0x10050367), `cg_smokeRadius_haste` and `_dust` the
@@ -1082,7 +1085,8 @@ Client presentation follow-up (2026-11-15):
   with `cg_lightningImpact`, never on a no-impact surface, and within
   `cg_lightningImpactCap` units of the muzzle it shrinks with the distance,
   to an eighth at the least.
-- Still unread by FnQL-game's cgame, from the retail cvar table:
+- Still unread by FnQL-game's cgame (carried to M7), from the retail cvar
+  table:
   `cg_drawItemPickups`, `cg_speedometer`, `cg_vignette`,
   `cg_trueShotgun`, `cg_thirdPersonPitch`, `cg_forceDrawCrosshair`,
   `cg_playerLean`, `cg_deadBodyColor`, `cg_railStyle`, `cg_rocketStyle`,
@@ -1090,6 +1094,99 @@ Client presentation follow-up (2026-11-15):
   `cg_drawInputCmds*`, the `cg_drawTeamOverlay*` placement cvars, the
   voice-chat cvars, `cg_forceEnemyWeaponColor` and
   `cg_forceTeamWeaponColor`, and `cg_weaponColor_grenade`.
+
+Closing M5 (2026-11-16):
+
+- **Match exits.** Retail CheckExitRules (0x10058030) was already followed
+  branch for branch: the 200 msec intermission delay, the forfeit check, the
+  round modes that end by their rounds (CA 4, FT 9 without a round delay, AD
+  11, RR 12), then the tie test (0x10057c60) before every limit, overtime
+  (`EV_OVERTIME` broadcast, `g_overtime` seconds), the timelimit, the
+  fraglimit (FFA, duel and TDM: team scores first, then each `TEAM_FREE`
+  player), the capturelimit (5-8), the scorelimit (Domination) and the mercy
+  limit (gametype 3 and up, after `g_mercytime`). What was missing was a gate
+  for each ending. The `match-flow` suite adds four G3 pairs, each checked
+  against its retail recording for the ending it claims:
+  - `fraglimit-ffa` (1,200 frames): two players level at the fraglimit
+    play on, a suicide breaks the tie, "Bravo^7 hit the fraglimit." at frame
+    300, the intermission at 308, and the map votes;
+  - `overtime-duel` (4,300): tied at the one-minute limit, three
+    `EV_OVERTIME` extensions (frames 2808, 3208, 3608), then "Timelimit
+    hit." at 4008;
+  - `mercylimit-tdm` (3,500): a six-point lead held back until
+    `g_mercytime`, then "Red hit the mercylimit." at 3367;
+  - `capturelimit-ctf` (3,600): level team scores into overtime (3367),
+    then "Blue hit the capturelimit." at 3500.
+  Observed while writing them: retail's `addscore` also adds to the team
+  score in the team modes, so a player's score ends a team game through
+  the team's fraglimit.
+- **Training.** Retail's tour frame (0x10024fa0, last in BotAIStartFrame
+  while bots are not paused, 0x10023bdf) first turns training off on a
+  level whose worldspawn is not a training map: `g_training`, `bot_gauntlet`
+  and `bot_training` to "0", `bot_dynamicSkill` to "1", each written only
+  when it differs (0x10024f20). FnQL-game kept `g_training` set from the
+  command line, so an ordinary map ran with training rules (no connect
+  greeting, `killserver` at the exit). The `training-reset-ffa` pair holds
+  it; the module before the fix diverged from frame 0. `readyup` now also
+  ends the tour, as 0x10045a80 does, in warmup or at the intermission and
+  for spectators too: the training cvars go to their match values
+  (`g_training` stays "1"), every connected client respawns, a bot gets the
+  machinegun and 100 rounds and loses the tour flags (`FL_TRAINING_BOT`
+  0x10000, `FL_TRAINING_GUIDE` 0x20000; names inferred), everyone loses god
+  mode, and the caller gets `clearChat` and `clearSounds`. That path needs
+  `g_skipTrainingEnable`, a ROM cvar that only the tour sets; registration
+  puts it back to 0 over the command line, so no gate can reach it, and it
+  is covered by reading only. The tour itself moves to M9.
+- **Steam calls gated.** FnQL's lockstep server records the module's calls
+  of imports 201, 203 and 204 with the answers (`sv_lockstepSteam`,
+  recording format 3, FnQL `docs/fnql/SERVER_LOCKSTEP.md`), and
+  `server_lockstep.py` compares them, in call order, by default
+  (`--no-steam-calls` skips them). All 180 retail self-checks stay at zero
+  with them. The first sweep over the 192 differentials found 59 that
+  diverged, every one a call retail made and FnQL-game did not; the Steam
+  statistic calls already matched everywhere. Retail asks import 204 before
+  it tests an award's condition, so the question itself is on record:
+  - the kill builder asks for 0x10, 0x14, 0x15, 0x16, 0x19, 0x1a and 0x1c on
+    every kill by a player, and for 0x11 and 0x13 on the kill of an enemy
+    other than the killer (0x1007303d-0x10073d70); the player report asks
+    for 0x1b, and 0/0 is unordered under fcomip/jb, so no shots awards
+    nothing (0x10074905);
+  - player_die asks for 0x18, 0x2f, 0x30 (every humiliation, awarded in a
+    duel), 0x17, 0x35 and 0x12 (every kill, awarded for a kamikaze);
+  - the medal builder asks for 0x38 and 0x39 on every Capture the Flag
+    medal; `target_achievement` already asked first;
+  - the duel's 0x37 is asked in the exit logger's loop, which retail also
+    runs when a level shuts down under its match (0x10055686): a map change
+    in a duel warmup awards it to both undefeated players, as the factory
+    fixtures show.
+  The award sites outside those paths are now implemented: 0x1d on every
+  powerup pickup (a quad and a battle suit taken, 0x1004e281), 0xf on a
+  denied quad (0x1004e416), 0x36 on a capture that reaches the capturelimit
+  one ahead (0x10069c73), 0x1e on an Attack and Defend capture against three
+  or more defenders all standing (0x10069bcf), 0x1f for attackers who win a
+  round without the flag leaving its base (0x10035ed0), 0x20 for three
+  skulls or more in one Harvester capture (0x1006a9c9), 0x29 as a
+  Domination team's three-point hold time passes thirty seconds (0x1004b649,
+  gclient +0x88c, new `domHoldTime`), 0x31 for Clan Arena's last one
+  standing with a streak of three (0x100387bc), and 0x32 and 0x33 for a kill
+  that leaves a Clan Arena team with nobody standing, by gauntlet or grenade
+  (0x100485be). `dom-hold` (a third point in `domination_three.ent`)
+  reaches 0x29: in the retail run Red holds three points from frame 2166,
+  Alpha is asked on every tick from 2171 and earns it at 3171. Observed
+  there too: after an unlock the engine answers import 204 with 1. After
+  these every differential and self-check passes with the Steam calls
+  compared. Not every award condition is reached by a scenario; the sweep
+  proves the calls the scenarios do reach. The achievement names are still
+  inferences; the ids, the conditions and the order of the questions are
+  observed.
+- **Stats events in more modes.** `stats-events-rr` (Red Rover, a bot
+  match to the report) passes with both providers. Domination and Race
+  cannot be run with bots yet: in Domination no bot killed another in 400
+  seconds and no match ended, on brimstoneabbey or on campgrounds, with
+  either provider; in Race the bots run no course, so nothing finishes. Both
+  move to M9. Domination's scoring and 0x29 are held by G3 instead.
+- **Moved on:** the client presentation follow-up and the unread cgame cvars
+  to M7, the training tour to M9.
 
 ### M6 — Round-based and special modes (complete)
 
@@ -1464,6 +1561,10 @@ attacker presentation and the padded time/ping columns; see
 CGAME.md lists the few still open (local rail prediction, world item timers,
 item POIs). Capability bits remain zero until M10's negotiation.
 
+M5 carried its client presentation follow-up and the cgame cvars it found
+unread here (see the M5 section, 2026-11-16); CGAME.md tracks which remain
+open.
+
 The retail score command family now has bounded parsers and main per-mode
 player rows. FFA/TDM scoreboards pass with both qagame providers and repeated
 HUD reloads; retail Duel, Race, CA and CTF also pass command/menu bring-up.
@@ -1553,7 +1654,19 @@ A retail-ABI `fnql_cgamex86.dll`:
 Exit: G4 on retail and FnQL-game servers; visual parity checks against retail
 captures.
 
-### M8 — ui
+### M8 — ui (complete)
+
+Complete (2026-11-16). The exit gates pass: the nine `ui-hosting` gates
+(menu activation, model previews, every in-game menu, tab page and
+out-of-game screen, and scripted interaction with the cvar values it
+stores, all against retail captures at 960x600 and 1024x768) and G2, which
+now also holds the ui's cvar table and binding table to retail's. That last
+check found the table in Team Arena's order rather than retail's, two
+archived cvars retail does not have (`ui_serverFilterType`, which retail
+keeps as module state, and `ui_q3model`), and the `weapon 14` key, which is
+`'0'` in retail; see the eighth pass in [UI.md](UI.md). Live advertising
+stays off and the advert imports unused, as the online-services rule
+requires. Client provider selection and pure-server packaging are M10.
 
 Implemented in the sole `code/ui/` native module; `code/q3_ui/` is removed.
 The installed legacy menu definitions supply all screens and actions. The
@@ -1578,7 +1691,18 @@ A retail-ABI `fnql_uix86.dll`:
   menus; the existing connect/download and advert screens.
 - Coexists with the engine-hosted WebUI.
 
+Exit: the `ui-hosting` gates against retail at 960x600 and 1024x768; G2 on
+the ui's cvar and binding tables.
+
 ### M9 — Bots (exit gates pass)
+
+Carried from M5 (2026-11-16): the training tour. Its bots and their AI
+(qagamex86 0x1000ed0d onwards, the tour frame 0x10024fa0) are not
+implemented. Two observed facts wait for it: a training map's worldspawn
+sets `g_training` to "2", not "1" (0x1006667c), and the tour frame turns
+it to "1" once the match starts (0x1002517f); FnQL-game sets "1" at once.
+Also from M5: `stats-events` runs in Domination and Race, which wait for
+bots that fight in Domination and run race courses.
 
 The FFA movement/restart slice passes G3: `BotInputToUserCommand` now
 preserves retail's projected speed, wide arithmetic before command-byte
@@ -1720,27 +1844,105 @@ Quake Live bot behavior over FnQL's botlib:
 - gametype goals for every mode;
 - chat.
 
-### M10 — Engine integration completion (FnQL)
+### M10 — Engine integration completion (FnQL) (complete)
 
 - `vm_cgameProvider` and `vm_uiProvider` with honest purity. On a pure server,
   an FnQL-game client module is used only when the server lists the FnQL-game
   client package. The client then reports that package's checksum and FnQL
   servers accept it. Retail pure servers always get retail client modules.
+  **Done** (FnQL `docs/fnql/GAME_MODULES.md`, "Client modules under a pure
+  server"). A pure FnQL server lists the loaded paks holding the FnQL-game
+  cgame in the `sv_fnqlClientPaks` systeminfo key. The key is empty, and so
+  absent, without such a pak or with `sv_fnqlClientModules 0`. The client
+  reads the key from each gamestate. It loads an FnQL-game cgame or ui under a
+  pure server only from a listed pak, reading the bytes from that pak itself,
+  and reports its checksum where retail reports the `cgamex86.dll` pak. In
+  every other case it loads the retail image it pinned beforehand.
 - Separate server and client packages:
   - server packages are never referenced to clients (done in M1 for the
     module file);
   - client packages are never required of retail clients.
+
+  **Done.** The build makes `fnql_game_client.pk3` (cgame and ui) and
+  `fnql_game_server.pk3` (qagame) with `scripts/make_package.py`: sorted
+  entries, fixed timestamps, so the same modules give the same checksum.
+  FnQL never marks a pak referenced for reading any FnQL-game module.
 - Capability negotiation:
   - `fnql_game` serverinfo key (server side);
   - an FnQL-game cgame userinfo key (client side);
   - per-client extension channels;
   - the first FnQL extensions.
+
+  **Done** ([`COMPATIBILITY.md`](COMPATIBILITY.md), "Extension channels";
+  `bg_fnql_ext.h`, `g_fnql_ext.c`, `cg_fnql_ext.c`). The cgame answers
+  `fnql_game` with the `fnql_cg` userinfo key and withdraws it on shutdown
+  and on any other server. The qagame enables a channel for that client
+  alone, never for bots or retail clients. The first extension is the
+  handshake (`fnql_hello` / `fnql_ack`), which confirms the channel and the
+  peers' versions each level. `game-fnql-ext` gates the channel rules. That
+  is one extension so far: later ones take the next mask bits.
 - An `auto` provider value that selects FnQL-game only for modules declaring
-  `FNQL_MODULE_CAP_RETAIL_WIRE`.
+  `FNQL_MODULE_CAP_RETAIL_WIRE`. **Done** for all three slots. The modules
+  now claim the bit (qagame and cgame also `FNQL_MODULE_CAP_EXTENSIONS`),
+  on the strength of G2, the G3 differentials, G4, G4v, the ui-hosting gates
+  and this milestone's G5 matrix.
 - Verification that the same binaries also run as drop-ins in the retail
-  engine.
+  engine. **Done.** The retail engine runs FnQL-game's cgame and ui
+  (`retail-client-dropin`, `-unpure`; the handshake completes through it)
+  and hosts FnQL-game's qagame (`retail-server-dropin-qagame`, `-unpure`).
+  Each loads from a scratch base path whose `bin.pk3` swaps in the module,
+  and the gate checks the loaded module's SHA-256.
 
 Exit: G5 matrix complete, pure and unpure.
+
+G5 matrix (2026-11-16, x86; FnQL `m10-client-providers` client and dedicated
+server, the dedicated server with FnQL's Steam provider staged for the
+retail-client rows and without it for `interop-fnql`). The table in
+[`COMPATIBILITY.md`](COMPATIBILITY.md) maps each row to its gates.
+
+- **FnQL ↔ FnQL (`interop-fnql`, 11 rows, headless, over UDP):** all pass.
+  - Pure with the package: the client ran FnQL-game's cgame and ui from the
+    listed pak, the server logged it pure by the package, and the handshake
+    confirmed mask 1. Provider `auto` behaves the same.
+  - Pure without the package, with the package refused
+    (`sv_fnqlClientModules 0`) or with only loose modules: the retail cgame
+    and ui, accepted, no handshake.
+  - The retail qagame: the package is accepted pure, there is no handshake,
+    and the server's copy of the userinfo has no `fnql_cg`.
+  - Unpure, loose modules or package: FnQL-game's cgame and handshake.
+  - Provider `retail`: the retail cgame throughout.
+  - Negative control: the pre-M10 FnQL client fails the pure-package row (the
+    retail cgame and ui, no acceptance, no handshake).
+- **Retail client ↔ FnQL server (`retail-client`):**
+  - `retail-client-package` and `-unpure`: the retail client joined with the
+    FnQL-game client package loaded and published on the server, with Steam
+    session validation, never reported the package, and never took part in
+    negotiation.
+  - `retail-client-dropin` and `-unpure`: the retail client ran FnQL-game's
+    cgame and ui (SHA-256 checked) and completed the handshake.
+- **Retail engine as the server:** `retail-server-dropin-qagame` and
+  `-unpure` pass. The `retail-server-fnql-client*` rows skip on this machine,
+  for an observed reason. The retail engine refused the FnQL client with "No
+  Steam auth token.", because a directly started FnQL client cannot
+  initialize Steam here (the stale `ActiveProcess` PID; the user declined
+  that registry fix). That is the retail server's legitimate decision, so
+  those rows report it instead of passing. They pass where the FnQL client
+  can get a Steam ticket. The pure variant must also show the FnQL client
+  falling back to the retail cgame, because retail servers never publish
+  `sv_fnqlClientPaks`.
+
+Non-regression on the same builds: `unit` and `contract` (G0 against the M10
+engine headers, G2) pass 60 of 60. `runtime`, `interop`, `interop-fnql` and
+`interop-modes` pass 28 of 28. The G3 `differential` suite and
+`interop-play` pass 138 of 138. FnQL's own suite passes 108, with the two
+opt-in runtime probes skipped.
+
+Defaults stay `retail` on x86, as M12 plans. On targets with no retail
+client modules, FnQL defaults `vm_cgameProvider` and `vm_uiProvider` to
+`fnql`. The FnQL release packages still carry the loose modules only.
+Adding `fnql_game_client.pk3` to them, so that pure FnQL servers and clients
+can use the FnQL-game client modules out of the box, belongs to M12's
+packaging work.
 
 ### M11 — Architecture and platform range
 

@@ -1570,6 +1570,12 @@ void CG_RegisterLocalSounds(void);
 void CG_QLCheckLocalSounds(const playerState_t *ps, const playerState_t *ops);
 void CG_ClearMatchNotice(void);
 qboolean CG_MatchNoticeCommand(const char *command);
+
+// cg_fnql_ext.c -- FnQL extension negotiation (not retail)
+void CG_FnQLExtInit( void );
+void CG_FnQLExtShutdown( void );
+unsigned CG_FnQLExtensions( void );
+qboolean CG_FnQLExtCommand( const char *cmd );
 qboolean CG_DrawMatchNotice(void);
 void CG_CenterPrintNative(const char *text, int y, float scale);
 void CG_DrawMatchPause(void);

@@ -2831,7 +2831,7 @@ hand out before the bot respawns or the level ends.
 static void BotInstaGibClearTraining(bot_state_t *bs) {
 	gentity_t *ent = &g_entities[bs->client];
 
-	ent->flags &= ~FL_BOT_TRAINING_TARGET;
+	ent->flags &= ~FL_TRAINING_BOT;
 	if (ent->client) {
 		ent->client->ps.powerups[PW_HASTE] = 0;
 		ent->client->ps.powerups[PW_INVIS] = 0;

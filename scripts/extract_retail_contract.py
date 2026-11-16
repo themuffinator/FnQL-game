@@ -249,6 +249,71 @@ def extract_cgame_cvars(image: PeImage) -> list[dict]:
     return rows
 
 
+UI_CVAR_ROW_STRIDE = 20  # {vmCvar *, name, default, change callback, flags}
+
+
+def extract_ui_cvars(image: PeImage) -> list[dict]:
+    """Rows of the ui cvar table (uix86 0x1002afd8): name, default and flags.
+
+    Rows are {vmCvar *, name, default, change callback, flags}; registration
+    (0x10011730) walks them in order, and the update pass (0x100118a0) runs
+    a row's callback only when a later update changes the cvar. The table is
+    found through the row naming ui_findPlayer and walked while rows keep
+    that shape (the map-alias table that follows holds pointers where the
+    flags would be). Callbacks are recorded as retail's addresses so the
+    gate can check that rows sharing one handler share one here too.
+    """
+    def row(va: int) -> dict | None:
+        if image.offset(va) is None or image.offset(va + 16) is None:
+            return None
+        vm, name_va, default_va, callback, flags = (image.dword(va + 4 * i) for i in range(5))
+        name = image.string(name_va)
+        if name is None or not image.base <= vm < image.base + 0x01000000 or flags >= 0x10000:
+            return None
+        return {"name": name, "default": (image.string(default_va) or "") if default_va else "",
+                "flags": flags, "callback": f"{callback:08x}" if callback else None}
+
+    anchor = next(ref - 4 for ref in image.references(image.string_va("ui_findPlayer"))
+                  if row(ref - 4) is not None)
+    start = anchor
+    while row(start - UI_CVAR_ROW_STRIDE) is not None:
+        start -= UI_CVAR_ROW_STRIDE
+    rows, cursor = [], start
+    while (entry := row(cursor)) is not None:
+        rows.append(entry)
+        cursor += UI_CVAR_ROW_STRIDE
+    return rows
+
+
+UI_BINDING_ROW_STRIDE = 24  # {command, key, default 1, default 2, live 1, live 2}
+
+
+def extract_ui_bindings(image: PeImage) -> list[dict]:
+    """Rows of the ui binding table (uix86 0x1002a0d0): command and key.
+
+    Rows are {command, key, default key 1, default key 2, live key 1, live
+    key 2}. resetDefaults (0x1000b5b3) copies +8/+0xc into +0x10/+0x14 and
+    the binding code (0x1001b0c0, 0x1001baef) reads and writes only
+    +0x10/+0x14. The key column at +4 holds the intended default key and is
+    read by no retail code; the default columns hold -1 throughout. The
+    table starts at the row naming +scores and ends at the first row whose
+    first word is not a command.
+    """
+    anchors = [ref for ref in image.references(image.string_va("+scores"))
+               if image.string(image.dword(ref + UI_BINDING_ROW_STRIDE)) == "+button2"]
+    if len(anchors) != 1:
+        raise SystemExit("ambiguous retail ui binding table")
+    rows, cursor = [], anchors[0]
+    while (command := image.string(image.dword(cursor))) is not None:
+        key, default1, default2 = (struct.unpack("<i", struct.pack("<I", image.dword(cursor + 4 * i)))[0]
+                                   for i in (1, 2, 3))
+        if not -2 <= key < 256:  # the item keyword table that follows holds handler pointers
+            break
+        rows.append({"command": command, "key": key, "defaults": [default1, default2]})
+        cursor += UI_BINDING_ROW_STRIDE
+    return rows
+
+
 def extract_bot_item_indices(retail: Path) -> dict[str, int]:
     with zipfile.ZipFile(retail / "baseq3" / "pak00.pk3") as package:
         text = package.read("botfiles/inv.h").decode("latin-1")
@@ -293,10 +358,11 @@ def extract(retail: Path) -> dict:
     with zipfile.ZipFile(retail / "baseq3" / "bin.pk3") as package:
         qagame = PeImage(package.read("qagamex86.dll"))
         cgame = PeImage(package.read("cgamex86.dll"))
+        ui = PeImage(package.read("uix86.dll"))
     mods = qagame.string_table("MOD_UNKNOWN")
     pm_types = qagame.string_table("PM_NORMAL")
     return {
-        "source": "retail Quake Live baseq3/bin.pk3 (qagamex86.dll, cgamex86.dll)",
+        "source": "retail Quake Live baseq3/bin.pk3 (qagamex86.dll, cgamex86.dll, uix86.dll)",
         "items": extract_items(qagame),
         "meansOfDeath": mods[:mods.index("MOD_RAILGUN_HEADSHOT") + 1],
         "gametypes": cgame.string_table("Free For All"),
@@ -307,6 +373,8 @@ def extract(retail: Path) -> dict:
         "warmupFormat": "\\time\\%i" if qagame.data.find(b"\\time\\%i\x00") >= 0 else None,
         "cvars": extract_cvars(qagame),
         "cgameCvars": extract_cgame_cvars(cgame),
+        "uiCvars": extract_ui_cvars(ui),
+        "uiBindings": extract_ui_bindings(ui),
     }
 
 

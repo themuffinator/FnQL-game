@@ -123,6 +123,32 @@ static void DomScore( gentity_t *point ) {
 	if ( level.warmupTime || level.intermissiontime || level.intermissionQueued ) return;
 	if ( point->s.modelindex2 ) level.domPending[point->s.modelindex2]++;
 	if ( ++level.domTickCount < level.domPointCount ) return;
+	// Retail 0x1004b649, once every point has ticked and before the scores
+	// move: when the first point's owner also holds two more (points no
+	// longer in use count), each of that team's players is asked for
+	// achievement 0x29, earned as the hold time (gclient +0x88c) passes
+	// thirty, and the hold time grows by g_domScoreRate.
+	{
+		const int	owner = level.domPoints[0]->s.modelindex2;
+		int			held = 0, i;
+
+		for ( i = 0; i < level.domPointCount; ++i ) {
+			const gentity_t *other = level.domPoints[i];
+			if ( !other->inuse || ( other->s.modelindex2 && other->s.modelindex2 == owner ) ) held++;
+		}
+		if ( held >= 3 ) {
+			for ( i = 0; i < level.maxclients; ++i ) {
+				gclient_t *cl = g_entities[i].client;
+				long long next;
+				if ( !cl || (int)cl->sess.sessionTeam != owner ) continue;
+				// a server's score rate can be anything: add without overflowing
+				next = (long long)cl->stats.domHoldTime + g_domScoreRate.integer;
+				if ( G_SteamAchievementLacks( &g_entities[i], 0x29 ) && cl->stats.domHoldTime < 30
+					&& next >= 30 ) G_SteamAchievementUnlock( &g_entities[i], 0x29 );
+				cl->stats.domHoldTime = next > INT_MAX ? INT_MAX : next < INT_MIN ? INT_MIN : (int)next;
+			}
+		}
+	}
 	oldRed = level.teamScores[TEAM_RED]; oldBlue = level.teamScores[TEAM_BLUE];
 	red = oldRed + level.domPending[TEAM_RED]; blue = oldBlue + level.domPending[TEAM_BLUE];
 	if ( (oldRed <= oldBlue && red > blue) || (oldBlue <= oldRed && blue > red) ) {

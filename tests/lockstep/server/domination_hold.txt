@@ -1,0 +1,27 @@
+# G3 (scripts/server_lockstep.py --cheats --factory dom --entities
+# domination_three.ent --frames 3800): one team holds all three points.
+# Retail's score tick (qagamex86 0x1004b5d0) counts, once every point has
+# ticked, the points the first point's owner holds; with three, each of
+# that team's players is asked for achievement 0x29 and adds the score rate
+# to a hold time (gclient +0x88c), and the tick that takes it past thirty
+# seconds awards it (0x1004b649).  Alpha takes the three points in turn
+# after the match starts and Red keeps them; Bravo stays clear of them.
+# Observed in the retail run: Red holds three from frame 2166, Alpha is
+# asked on every tick from 2171 and earns it at 3171, the sixth.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+
+client alpha name Alpha
+client bravo name Bravo
+
+clientcmd 1 alpha team r
+clientcmd 2 bravo team b
+clientcmd 10 alpha setviewpos -400 320 40 0
+clientcmd 12 bravo setviewpos -900 -320 40 0
+cmd 250 allready
+clientcmd 1400 alpha setviewpos -400 320 40 0
+clientcmd 1402 bravo setviewpos -900 -320 40 0
+clientcmd 1700 alpha setviewpos -400 -320 40 0
+clientcmd 2000 alpha setviewpos -700 320 40 0
+clientcmd 2350 alpha score
+clientcmd 3700 alpha score

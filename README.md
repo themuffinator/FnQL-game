@@ -74,25 +74,43 @@ Overload damage/destruction/regeneration/reset have strict retail server gates.
 See [server command compatibility](docs/SERVER_COMMANDS.md) for coverage.
 Broader bot behavior and special-mode parity remain in progress.
 
-The module does not yet claim retail wire parity, so FnQL keeps loading the
-retail modules unless told otherwise. Native cgame and UI builds now have
-local hosting gates. The [native UI](docs/UI.md) replaces the old Q3 UI
-entirely; client provider selection and pure-server packaging remain M10.
+The [native UI](docs/UI.md) replaces the old Q3 UI entirely, and milestone 8
+is complete: every menu, tab page and scripted interaction matches retail
+captures, and its cvar and binding tables match retail's row for row.
+Milestone 10 is complete: FnQL selects the cgame and UI too, a pure server
+accepts them only from the FnQL-game client package, FnQL-game peers
+negotiate extensions that retail peers never see, and the same binaries run
+as drop-ins in the retail engine. The modules now claim retail wire parity
+(`FNQL_MODULE_CAP_RETAIL_WIRE`), so FnQL's `auto` provider takes them; FnQL
+still loads the retail modules by default.
 
 ## Using it
 
-FnQL releases include the modules in `baseq3/` (`fnql_qagamex86.dll` on
-Windows, `fnql_qagamei386.so` on Linux, plus the cgame and UI modules that
-FnQL cannot select yet). To use your own build instead (see
-[`BUILD.md`](BUILD.md)), place the module in your FnQL home `baseq3`
-directory. Then start an FnQL server with:
+FnQL releases include the modules in `baseq3/` (`fnql_qagamex86.dll`,
+`fnql_cgamex86.dll` and `fnql_uix86.dll` on Windows, the `i386.so` set on
+Linux). To use your own build instead (see [`BUILD.md`](BUILD.md)), place the
+modules in your FnQL home `baseq3` directory. Then start an FnQL server with:
 
 ```bash
 fnql.ded.exe +set vm_gameProvider fnql +map campgrounds ffa
 ```
 
-If the module is missing or invalid, FnQL falls back to the retail module and
-says so. Run `vminfo` to see which module is active.
+and an FnQL client with FnQL-game's cgame and UI with:
+
+```bash
+fnql.exe +set vm_cgameProvider fnql +set vm_uiProvider fnql
+```
+
+`auto` instead of `fnql` takes a module only if it declares retail wire
+parity. If a module is missing or invalid, FnQL falls back to the retail
+module and says so. Run `vminfo` to see which module is active.
+
+Loose modules serve unpure servers and local play. On a pure server the
+client keeps FnQL-game's cgame and UI only if the server has loaded the same
+client package, `fnql_game_client.pk3` (the build makes it, and
+`fnql_game_server.pk3` for the qagame), and lists it in `sv_fnqlClientPaks`.
+Put the package in `baseq3` on both sides. On any other pure server the
+client uses the retail modules. Retail clients never need the package.
 
 ## Documents
 

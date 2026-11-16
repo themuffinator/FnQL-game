@@ -57,8 +57,14 @@ typedef enum {
 #define FL_NO_BOTS				0x00002000	// spawn point not for bot use
 #define FL_NO_HUMANS			0x00004000	// spawn point just for bots
 #define FL_FORCE_GESTURE		0x00008000	// force gesture on client
-#define FL_BOT_TRAINING_TARGET	0x00010000	// set by retail's torment-human and training lead nodes
-								// (qagamex86 0x10011959, 0x100124f4), cleared by the instagib node
+// Training tour bot flags.  Observed: retail sets both on a tour bot
+// (qagamex86 0x1000ed3a, 0x1000ed5b) and the tour's end clears them
+// (0x10045b4c, 0x10045b6d); the torment-human and lead nodes set the first
+// as well (0x10011959, 0x100124f4) and the instagib node clears it
+// (0x100134b0).  Their meaning is inferred; FnQL-game has no tour bot AI
+// yet, so only the end and the instagib node clear them.
+#define FL_TRAINING_BOT			0x00010000
+#define FL_TRAINING_GUIDE		0x00020000
 #define FL_TRAINING				0x00040000	// retail training code marks clients with it (qagamex86
 											// 0x10024590); bots receive it negated as trainingClear
 #define FL_POWERUP_DECAY		0x00080000	// manual powerup drop: s.time starts its decay (retail 0x10044e28)
@@ -304,6 +310,12 @@ typedef struct {
 	int			readyToPlay;		// rp
 	int			privileges;			// p
 	char		country[24];		// c, userinfo "country"
+
+	// FnQL extension channel (g_fnql_ext.c), not retail: the extensions
+	// this client enabled by answering fnql_game, and whether its cgame has
+	// acknowledged this level's handshake.
+	unsigned	fnqlExtensions;
+	qboolean	fnqlExtConfirmed;
 } clientPersistant_t;
 
 // One controlled item's pickups (retail gclient +0x81c onwards): those that
@@ -359,6 +371,7 @@ typedef struct {
 	int			holyShits;			// near-captures stopped or suffered (+0x804)
 	int			lastHealth, lastArmor;	// health and armor when an enemy last did damage (+0x810, +0x814)
 	int			flagPickups[3];		// red, blue and neutral flags taken from their base (+0x868)
+	int			domHoldTime;		// Domination: seconds of score ticks with the team on three points (+0x88c)
 } clientStats_t;
 
 // unlagged
@@ -840,6 +853,16 @@ void Weapon_HookThink (gentity_t *ent);
 
 
 //
+// g_fnql_ext.c -- FnQL extension channels (bg_fnql_ext.h), not retail
+//
+unsigned G_FnQLExtensions( int clientNum );
+qboolean G_FnQLExtSend( int clientNum, unsigned extension, const char *text );
+int G_FnQLExtBroadcast( unsigned extension, const char *text );
+void G_FnQLExtUserinfo( int clientNum, const char *userinfo );
+void G_FnQLExtBegin( int clientNum );
+qboolean G_FnQLExtCommand( gentity_t *ent, const char *cmd );
+
+//
 // g_client.c
 //
 int TeamCount( int ignoreClientNum, team_t team );
@@ -866,7 +889,8 @@ void G_StatsReportPlayer( const gclient_t *client, qboolean aborted, qboolean qu
 void G_StatsReportMatchStarted( void );
 void G_StatsReportMatch( qboolean aborted, int restarted, const char *exitMessage );
 int G_LoadoutWeaponMask( const char *list );
-void G_SteamAchievement( const gentity_t *ent, int id );
+qboolean G_SteamAchievementLacks( const gentity_t *ent, int id );
+void G_SteamAchievementUnlock( const gentity_t *ent, int id );
 void G_StatsSteamShots( const gentity_t *ent, int weapon, int count );
 void G_StatsSteamHit( const gclient_t *client, int weapon );
 void G_StatsKillAchievements( gentity_t *victim, gentity_t *attacker, int mod );

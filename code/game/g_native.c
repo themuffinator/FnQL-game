@@ -430,9 +430,10 @@ static const fnqlModuleInfo_t g_moduleInfo = {
 	"qagame",
 	FNQL_GAME_VERSION_STRING,
 	__DATE__ " " __TIME__,
-	// no retail wire parity claimed yet (docs/PLAN.md milestone 2+); the
-	// botlib entity structures have the Quake Live layout (ai_main.c)
-	FNQL_MODULE_CAP_QL_BOT_ENTITIES,
+	// retail wire parity: G2, the G3 differentials and G5 pass (docs/PLAN.md
+	// M2-M6, M10); extensions only through negotiated channels (g_fnql_ext.c);
+	// the botlib entity structures have the Quake Live layout (ai_main.c)
+	FNQL_MODULE_CAP_RETAIL_WIRE | FNQL_MODULE_CAP_EXTENSIONS | FNQL_MODULE_CAP_QL_BOT_ENTITIES,
 	GAME_NATIVE_API_VERSION
 };
 
