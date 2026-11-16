@@ -1999,15 +1999,13 @@ Enabled targets:
 
   Gates (2026-11-16): gcc 13 cross builds under WSL Ubuntu 24.04, run
   through qemu-user 8.2. Each target runs on its own FnQL `m11-arch-range`
-  dedicated server, on retail campgrounds.
-  - G0 `engine-abi-parity`: 221 checks on every target, against the FnQL
-    engine headers plus the one header change that FnQL's `m9-bot-entities`
-    adds (`FNQL_MODULE_CAP_QL_BOT_ENTITIES`; until that branch lands, G0
-    against FnQL `main` fails on every target, x86 included).
+  dedicated server (merged with FnQL main at M12), on retail campgrounds.
+  All 64 tests outside the slow `sweep` and `stats` suites pass on each, as
+  they do on Linux i686 and x86_64 with the same sources. The two slow
+  suites were not run under emulation.
+  - G0 `engine-abi-parity`: 221 checks on every target.
   - G2 `wire-contract`, `retail-tables-current` and the other 58 unit
-    tests pass. That is 63 of the 64 tests outside the slow `sweep` and
-    `stats` suites, which were not run under emulation. The 64th is G0
-    against the plain engine headers.
+    tests.
   - G3c `pmove-replay`: all 57 records (56 scenarios, 46,270 frames, and
     3,408 sine trajectory evaluations) match the retail golden bit for bit,
     big-endian ppc64 included.
@@ -2058,10 +2056,9 @@ Open:
   reference.
 - **CI for the new targets.** FnQL's release workflow cross-builds the
   engine for the four targets and runs its suite under qemu-user
-  (`linux-cross-regression`). It cannot build FnQL-game for them until its
-  pin (`version/fnql_game.json`) moves past this milestone, and that waits
-  for FnQL's `m9-bot-entities` (G0). The FnQL release packages do not carry
-  the new targets yet; that belongs to M12.
+  (`linux-cross-regression`). FnQL-game jobs for them need the pin
+  (`version/fnql_game.json`) to reach this milestone's commit, once it is
+  pushed. The FnQL release packages do not carry the new targets yet.
 
 ### M12 — Release (complete)
 
