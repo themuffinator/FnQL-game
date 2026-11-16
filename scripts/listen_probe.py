@@ -143,7 +143,9 @@ def main() -> int:
                    "+set", "in_mouse", "0", "+set", "in_nograb", "1", "+set", "in_joystick", "0",
                    "+set", "s_initsound", "0", "+set", "logfile", "2", "+set", "developer", "1",
                    "+set", "cl_allowDownload", "0", "+set", "net_port", str(args.port),
-                   "+set", "vm_gameProvider", args.provider]
+                   "+set", "vm_gameProvider", args.provider,
+                   # the retail cgame and ui, which FnQL now defaults to auto (M12)
+                   "+set", "vm_cgameProvider", "retail", "+set", "vm_uiProvider", "retail"]
         if args.play:
             # sv_serverType 1 admits loopback UDP, which retail's 0 ignores.
             command += ["+set", "sv_serverType", "1", "+set", "rconPassword", rcon_password]

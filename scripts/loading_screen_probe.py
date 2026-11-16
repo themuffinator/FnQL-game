@@ -63,6 +63,9 @@ def run(client: Path, proxy: Path, target: Path, retail: Path, scratch: Path, la
         'in_mouse': '0', 'in_nograb': '1', 'in_joystick': '0', 's_initsound': '0',
         'logfile': '2', 'developer': '1', 'con_notifytime': '0', 'cl_allowDownload': '0',
         'net_port': '28131', 'com_maxfps': '125', 'vm_gameProvider': 'retail',
+        # The engine defaults these to auto (FnQL-game M12); this probe
+        # loads its module under the retail name, so it asks for retail.
+        'vm_cgameProvider': 'retail', 'vm_uiProvider': 'retail',
         **headless.CLIENT_SETTINGS,
     }
     command = [str(client)]

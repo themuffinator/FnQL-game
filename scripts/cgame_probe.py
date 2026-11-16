@@ -330,6 +330,9 @@ def main() -> int:
             's_initsound': '0', 'logfile': '2', 'developer': '1',
             'cl_allowDownload': '0', 'net_port': '28097', 'com_maxfps': '125',
             'vm_gameProvider': 'fnql' if args.qagame else 'retail',
+            # The engine defaults these to auto (FnQL-game M12); this probe
+            # loads its module under the retail name, so it asks for retail.
+            'vm_cgameProvider': 'retail', 'vm_uiProvider': 'retail',
         }
         if args.combat or args.overtime or args.round_result or args.race or args.clock_hud:
             settings.update({'g_doWarmup': '0', 'g_log': 'combat.log', 'g_logSync': '1'})

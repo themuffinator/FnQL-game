@@ -101,7 +101,9 @@ def main() -> int:
                    "+set", "in_mouse", "0", "+set", "in_joystick", "0", "+set", "in_nograb", "1",
                    "+set", "cl_allowDownload", "0", "+set", "net_port", str(args.port),
                    "+set", "com_maxfps", "125", "+set", "vm_gameProvider",
-                   "retail" if args.retail_qagame else "fnql", "+exec", "course.cfg"]
+                   "retail" if args.retail_qagame else "fnql",
+                   # the retail cgame and ui, which FnQL now defaults to auto (M12)
+                   "+set", "vm_cgameProvider", "retail", "+set", "vm_uiProvider", "retail", "+exec", "course.cfg"]
         process = subprocess.Popen(command, cwd=home, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    **headless.popen_options())
