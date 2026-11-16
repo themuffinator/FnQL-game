@@ -403,17 +403,6 @@ int BotGetLongTermGoal(bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal) 
 	if (gametype == GT_CLAN_ARENA || gametype == GT_RED_ROVER) {
 		return BotGetHuntLongTermGoal(bs, goal);
 	}
-	// Instagib has no items either.  Retail gives it an AI node of its own
-	// ("insta gib!", 0x10013410, entered from BotDeathmatchAI at 0x1001f328
-	// while g_instaGib is set and the bot has no enemy): walk to the nearest
-	// enemy, fight what comes into view.  The same hunt serves here as the
-	// long term goal of the modes without an objective; the flag and
-	// objective modes keep their team goals (an inference: what retail's
-	// node does to those goals was not traced).
-	if (g_instaGib.integer && (gametype == GT_FFA || gametype == GT_TOURNAMENT
-			|| gametype == GT_TEAM || gametype == GT_FREEZE)) {
-		return BotGetHuntLongTermGoal(bs, goal);
-	}
 
 	if (bs->ltgtype == LTG_TEAMHELP && !retreat) {
 		//check for bot typing status message
@@ -836,7 +825,8 @@ int BotGetLongTermGoal(bot_state_t *bs, int tfl, int retreat, bot_goal_t *goal) 
 		return qtrue;
 	}
 #ifdef CTF
-	if (gametype == GT_CTF) {
+	// Attack & Defend shares the CTF goals (retail qagamex86 0x1000a42f)
+	if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 		//if going for enemy flag
 		if (bs->ltgtype == LTG_GETFLAG) {
 			//check for bot typing status message
@@ -1258,6 +1248,7 @@ void AIEnter_Observer(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "observer", "", s);
 	//reset the bot state
 	BotResetState(bs);
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000bfdf), see AIEnter_Stand
 	bs->ainode = AINode_Observer;
 }
 
@@ -1282,6 +1273,10 @@ AIEnter_Stand
 void AIEnter_Stand(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "stand", "", s);
 	bs->standfindenemy_time = FloatTime() + 1;
+	// Quake Live clears the long term goal type whenever a bot enters a
+	// node other than intermission, respawn or suicidal fight (retail
+	// qagamex86 0x1000b5e0); flag-mode bots reassign it every think
+	bs->ltgtype = 0;
 	bs->ainode = AINode_Stand;
 }
 
@@ -1528,6 +1523,7 @@ AIEnter_Seek_ActivateEntity
 */
 void AIEnter_Seek_ActivateEntity(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "activate entity", "", s);
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1001d785), see AIEnter_Stand
 	bs->ainode = AINode_Seek_ActivateEntity;
 }
 
@@ -1747,6 +1743,7 @@ void AIEnter_Seek_NBG(bot_state_t *bs, char *s) {
 	else {
 		BotRecordNodeSwitch(bs, "seek NBG", "no goal", s);
 	}
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000c6b8), see AIEnter_Stand
 	bs->ainode = AINode_Seek_NBG;
 }
 
@@ -1880,6 +1877,7 @@ void AIEnter_Seek_LTG(bot_state_t *bs, char *s) {
 	else {
 		BotRecordNodeSwitch(bs, "seek LTG", "no goal", s);
 	}
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000cbb6), see AIEnter_Stand
 	bs->ainode = AINode_Seek_LTG;
 }
 
@@ -2059,6 +2057,7 @@ AIEnter_Battle_Fight
 void AIEnter_Battle_Fight(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "battle fight", "", s);
 	trap_BotResetLastAvoidReach(bs->ms);
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000d289), see AIEnter_Stand
 	bs->ainode = AINode_Battle_Fight;
 	bs->flags &= ~BFL_FIGHTSUICIDAL;
 }
@@ -2245,6 +2244,7 @@ AIEnter_Battle_Chase
 void AIEnter_Battle_Chase(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "battle chase", "", s);
 	bs->chase_time = FloatTime();
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000d8f4), see AIEnter_Stand
 	bs->ainode = AINode_Battle_Chase;
 }
 
@@ -2371,7 +2371,10 @@ int AINode_Battle_Chase(bot_state_t *bs)
 			BotAimAtEnemy(bs);
 		}
 		else {
-			if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl, 300, target)) {
+			// an airborne bot looks further along its path in the battle nodes
+			// (retail qagamex86 0x1000de2f, 0x1000e5e3 and 0x1000ebca)
+			if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl,
+					bs->cur_ps.groundEntityNum != ENTITYNUM_NONE ? 300 : 2048, target)) {
 				VectorSubtract(target, bs->origin, dir);
 				vectoangles(dir, bs->ideal_viewangles);
 			}
@@ -2400,6 +2403,7 @@ AIEnter_Battle_Retreat
 */
 void AIEnter_Battle_Retreat(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "battle retreat", "", s);
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000df94), see AIEnter_Stand
 	bs->ainode = AINode_Battle_Retreat;
 }
 
@@ -2512,7 +2516,8 @@ int AINode_Battle_Retreat(bot_state_t *bs) {
 		bs->check_time = FloatTime() + 1;
 		range = 150;
 #ifdef CTF
-		if (gametype == GT_CTF) {
+		// Attack & Defend too (retail qagamex86 0x1000e41d)
+		if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 			//if carrying a flag the bot shouldn't be distracted too much
 			if (BotCTFCarryingFlag(bs))
 				range = 50;
@@ -2564,7 +2569,10 @@ int AINode_Battle_Retreat(bot_state_t *bs) {
 			BotAimAtEnemy(bs);
 		}
 		else {
-			if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl, 300, target)) {
+			// an airborne bot looks further along its path in the battle nodes
+			// (retail qagamex86 0x1000de2f, 0x1000e5e3 and 0x1000ebca)
+			if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl,
+					bs->cur_ps.groundEntityNum != ENTITYNUM_NONE ? 300 : 2048, target)) {
 				VectorSubtract(target, bs->origin, dir);
 				vectoangles(dir, bs->ideal_viewangles);
 			}
@@ -2589,6 +2597,7 @@ AIEnter_Battle_NBG
 */
 void AIEnter_Battle_NBG(bot_state_t *bs, char *s) {
 	BotRecordNodeSwitch(bs, "battle NBG", "", s);
+	bs->ltgtype = 0;	// as retail (qagamex86 0x1000e6ef), see AIEnter_Stand
 	bs->ainode = AINode_Battle_NBG;
 }
 
@@ -2711,7 +2720,10 @@ int AINode_Battle_NBG(bot_state_t *bs) {
 			BotAimAtEnemy(bs);
 		}
 		else {
-			if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl, 300, target)) {
+			// an airborne bot looks further along its path in the battle nodes
+			// (retail qagamex86 0x1000de2f, 0x1000e5e3 and 0x1000ebca)
+			if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl,
+					bs->cur_ps.groundEntityNum != ENTITYNUM_NONE ? 300 : 2048, target)) {
 				VectorSubtract(target, bs->origin, dir);
 				vectoangles(dir, bs->ideal_viewangles);
 			}
@@ -2729,3 +2741,236 @@ int AINode_Battle_NBG(bot_state_t *bs) {
 	return qtrue;
 }
 
+/*
+==================
+BotInstaGibTarget
+
+Retail qagamex86 0x10020200. The instagib hunter's quarry: its enemy while
+that is in sight and reachable, else the nearest reachable client that is
+alive and playing, else the nearest reachable client of any state. Distances
+run from the bot to each client's current origin and team does not matter.
+==================
+*/
+static int BotInstaGibTarget(bot_state_t *bs) {
+	aas_entityinfo_t entinfo;
+	gentity_t *ent;
+	vec3_t dir;
+	float dist, bestdist;
+	int i, area, best;
+
+	best = -1;
+	bestdist = 100000000.0f;
+	if (bs->enemy != -1 && BotEntityVisible(bs->client, bs->eye, bs->viewangles, 360, bs->enemy) != 0) {
+		BotEntityInfo(bs->enemy, &entinfo);
+		VectorSubtract(bs->origin, entinfo.origin, dir);
+		area = BotPointAreaNum(entinfo.origin);
+		if (area > 0 && trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, area, TFL_DEFAULT) > 0) {
+			bestdist = (float)sqrt(PM_Dot3(dir, dir));
+			best = bs->enemy;
+		}
+	}
+	for (i = 0; i < MAX_CLIENTS; i++) {
+		if (i == bs->client) continue;
+		BotEntityInfo(i, &entinfo);
+		if (!entinfo.valid) continue;
+		ent = &g_entities[i];
+		// only clients that are alive and playing
+		if (ent->inuse && ent->client && ent->client->ps.pm_type != PM_NORMAL) continue;
+		VectorSubtract(bs->origin, ent->r.currentOrigin, dir);
+		dist = (float)sqrt(PM_Dot3(dir, dir));
+		if (!(bestdist > dist)) continue;
+		area = BotPointAreaNum(entinfo.origin);
+		if (!area) continue;
+		if (!trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, area, TFL_DEFAULT)) continue;
+		bestdist = dist;
+		best = i;
+	}
+	if (best != -1) {
+		return best;
+	}
+	// nobody alive is reachable: any reachable client will do
+	for (i = 0; i < MAX_CLIENTS; i++) {
+		if (i == bs->client) continue;
+		BotEntityInfo(i, &entinfo);
+		if (!entinfo.valid) continue;
+		VectorSubtract(bs->origin, g_entities[i].r.currentOrigin, dir);
+		dist = (float)sqrt(PM_Dot3(dir, dir));
+		if (!(bestdist > dist)) continue;
+		area = BotPointAreaNum(entinfo.origin);
+		if (!area) continue;
+		if (!trap_AAS_AreaTravelTimeToGoalArea(bs->areanum, bs->origin, area, TFL_DEFAULT)) continue;
+		bestdist = dist;
+		best = i;
+	}
+	return best;
+}
+
+/*
+==================
+BotInstaGibLookAt
+
+Retail qagamex86 0x10024530: face a point.
+==================
+*/
+static void BotInstaGibLookAt(bot_state_t *bs, vec3_t point) {
+	vec3_t dir;
+
+	VectorSubtract(point, bs->origin, dir);
+	vectoangles(dir, bs->ideal_viewangles);
+	bs->ideal_viewangles[2] *= 0.5;
+}
+
+/*
+==================
+BotInstaGibClearTraining
+
+Retail qagamex86 0x100134ab: the node drops what the retail training nodes
+hand out before the bot respawns or the level ends.
+==================
+*/
+static void BotInstaGibClearTraining(bot_state_t *bs) {
+	gentity_t *ent = &g_entities[bs->client];
+
+	ent->flags &= ~FL_BOT_TRAINING_TARGET;
+	if (ent->client) {
+		ent->client->ps.powerups[PW_HASTE] = 0;
+		ent->client->ps.powerups[PW_INVIS] = 0;
+	}
+}
+
+/*
+==================
+AIEnter_InstaGib
+
+Retail qagamex86 0x100133c0 ("insta gib!"): with g_instaGib set, a bot
+without an enemy hunts the nearest player instead of seeking items.
+==================
+*/
+void AIEnter_InstaGib(bot_state_t *bs) {
+	bs->ltg_time = (float)(FloatTime() + 99999.0);
+	bs->ltgtype = LTG_INSTAGIB;
+	bs->ainode = AINode_InstaGib;
+	BotRecordNodeSwitch(bs, "insta gib!", "", "");
+}
+
+/*
+==================
+AINode_InstaGib
+
+Retail qagamex86 0x10013410.
+==================
+*/
+int AINode_InstaGib(bot_state_t *bs) {
+	bot_goal_t goal;
+	bot_moveresult_t moveresult;
+	aas_entityinfo_t entinfo;
+	vec3_t target, dir;
+	float dist, rnd;
+	int victim;
+
+	victim = BotInstaGibTarget(bs);
+	if (BotIsObserver(bs)) {
+		bs->ltgtype = 0;
+		AIEnter_Observer(bs, "insta gib!: observer");
+		return qfalse;
+	}
+	if (bs->cur_ps.pm_type == PM_INTERMISSION) {
+		BotInstaGibClearTraining(bs);
+		bs->ltgtype = 0;
+		AIEnter_Intermission(bs, "insta gib!: intermission");
+		return qfalse;
+	}
+	if (bs->cur_ps.pm_type == PM_DEAD) {
+		BotInstaGibClearTraining(bs);
+		bs->ltgtype = 0;
+		AIEnter_Respawn(bs, "insta gib!: bot dead");
+		return qfalse;
+	}
+	if (!g_instaGib.integer) {
+		bs->ltgtype = 0;
+		AIEnter_Seek_LTG(bs, "insta gib!: no ai node");
+		return qfalse;
+	}
+	if (BotFindEnemy(bs, -1)) {
+		bs->ltgtype = 0;
+		trap_BotResetLastAvoidReach(bs->ms);
+		trap_BotEmptyGoalStack(bs->gs);
+		AIEnter_Battle_Fight(bs, "insta gib!: found enemy");
+		return qfalse;
+	}
+	if (victim == -1) {
+		if (random() < bs->thinktime * 0.8) {
+			BotRoamGoal(bs, target);
+			BotInstaGibLookAt(bs, target);
+		}
+		return qtrue;
+	}
+	// head for the victim
+	bs->tfl = TFL_DEFAULT;
+	BotEntityInfo(victim, &entinfo);
+	trap_BotEmptyGoalStack(bs->gs);
+	memset(&goal, 0, sizeof(goal));
+	VectorCopy(entinfo.origin, goal.origin);
+	goal.areanum = BotPointAreaNum(entinfo.origin);
+	VectorCopy(entinfo.mins, goal.mins);
+	VectorCopy(entinfo.maxs, goal.maxs);
+	goal.entitynum = victim;
+	goal.number = entinfo.number;
+	trap_BotPushGoal(bs->gs, &goal);
+	VectorCopy(goal.origin, target);
+	VectorSubtract(bs->origin, goal.origin, dir);
+	dist = (float)sqrt(PM_Dot3(dir, dir));
+	// right next to it the bot sometimes looks around instead
+	if (!(50.0 <= dist)) {
+		rnd = random();
+		if (!(bs->thinktime * 0.8 <= rnd)) {
+			BotRoamGoal(bs, target);
+			BotInstaGibLookAt(bs, target);
+			return qtrue;
+		}
+	}
+	if (BotInLavaOrSlime(bs)) bs->tfl |= TFL_LAVA|TFL_SLIME;
+	if (BotCanAndWantsToRocketJump(bs)) bs->tfl |= TFL_ROCKETJUMP;
+	BotMapScripts(bs);
+	if (BotAIPredictObstacles(bs, &goal)) {
+		bs->ltgtype = 0;
+		return qfalse;
+	}
+	BotSetupForMovement(bs);
+	trap_BotMoveToGoal(&moveresult, bs->ms, &goal, bs->tfl);
+	if (moveresult.failure) {
+		trap_BotResetAvoidReach(bs->ms);
+		// a victim in the air: just watch it
+		if (entinfo.groundent == ENTITYNUM_NONE) {
+			BotInstaGibLookAt(bs, entinfo.origin);
+			return qtrue;
+		}
+	}
+	BotAIBlocked(bs, &moveresult, qtrue);
+	BotClearPath(bs, &moveresult);
+	if (moveresult.flags & (MOVERESULT_MOVEMENTVIEWSET|MOVERESULT_MOVEMENTVIEW|MOVERESULT_SWIMVIEW)) {
+		VectorCopy(moveresult.ideal_viewangles, bs->ideal_viewangles);
+	}
+	else if (moveresult.flags & MOVERESULT_WAITING) {
+		if (random() < bs->thinktime * 0.8) {
+			BotRoamGoal(bs, target);
+			BotInstaGibLookAt(bs, target);
+		}
+	}
+	else if (!(bs->flags & BFL_IDEALVIEWSET)) {
+		if (trap_BotMovementViewTarget(bs->ms, &goal, bs->tfl, 300, target)) {
+			BotInstaGibLookAt(bs, target);
+		}
+		else if (VectorLengthSquared(moveresult.movedir)) {
+			vectoangles(moveresult.movedir, bs->ideal_viewangles);
+		}
+		else if (random() < bs->thinktime * 0.8) {
+			BotRoamGoal(bs, target);
+			BotInstaGibLookAt(bs, target);
+		}
+	}
+	if (moveresult.flags & MOVERESULT_MOVEMENTWEAPON) {
+		bs->weaponnum = moveresult.weapon;
+	}
+	return qtrue;
+}

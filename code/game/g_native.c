@@ -20,6 +20,8 @@ or (at your option) any later version.
 
 #include "g_local.h"
 #include "g_native.h"
+#include "be_ai_goal.h"
+#include "be_ai_move.h"
 #include "fnql_module.h"
 #include "../../version/fnql_game_version.h"
 
@@ -1139,7 +1141,27 @@ void trap_BotAddAvoidSpot( int movestate, vec3_t origin, float radius, int type 
 }
 
 void trap_BotMoveToGoal( void /* struct bot_moveresult_s */ *result, int movestate, void /* struct bot_goal_s */ *goal, int travelflags ) {
-	gi->BotMoveToGoal( result, movestate, goal, travelflags );
+	static const unsigned int untouched = 0x7fc0d1e5u;	// a NaN botlib never produces
+	bot_moveresult_t *moveresult = (bot_moveresult_t *)result;
+	unsigned int bits;
+
+	// Botlib clears only the first six words of the result (the retail
+	// engine likewise, quakelive_steam.exe 0x004a4a7f) and a failed move
+	// never sets the direction, so retail's bot code reads whatever its
+	// stack held there. Start from zero so every build reads the same values.
+	memset( moveresult, 0, sizeof( *moveresult ) );
+	memcpy( &moveresult->movedir[0], &untouched, sizeof( untouched ) );
+	gi->BotMoveToGoal( moveresult, movestate, goal, travelflags );
+	memcpy( &bits, &moveresult->movedir[0], sizeof( bits ) );
+	if ( bits == untouched ) {
+		// Observed: in a retail bots-only Attack & Defend lockstep run, 621
+		// of 624 failed moves came back with a code address (a large
+		// positive float) and two zero words in the direction, so the nodes
+		// that fall back to the move direction turned the bot to yaw 0,
+		// pitch 0. Inferred: that is a return address left on the stack. Any
+		// positive x with zero y and z gives the same view angles.
+		VectorSet( moveresult->movedir, 1, 0, 0 );
+	}
 }
 
 int trap_BotMoveInDirection( int movestate, vec3_t dir, float speed, int type ) {

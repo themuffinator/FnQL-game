@@ -1,0 +1,13 @@
+# Gate G3 bots-only scenario (scripts/server_lockstep.py --scenario ...):
+# four skill-4 bots and no scripted player, for the free-for-all modes
+# (FFA, instagib FFA, Red Rover).  Bots are deterministic under the rig, so
+# the differential holds FnQL-game's bot AI to the retail qagame's frame by
+# frame through every bot's entity state, chat and configstrings.
+# Milestone M9 (docs/PLAN.md) records each mode's horizon and what ends it.
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+cmd 5 addbot sarge 4
+cmd 6 addbot doom 4
+cmd 7 addbot anarki 4
+cmd 8 addbot ranger 4

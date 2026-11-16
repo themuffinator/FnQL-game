@@ -1991,6 +1991,94 @@ int FindHumanTeamLeader(bot_state_t *bs) {
 
 /*
 ==================
+BotTeamFlagCarrierAny
+
+The first team mate carrying a flag, the bot itself included (retail
+qagamex86 0x10019970 called with a zero second argument), or -1.
+==================
+*/
+static int BotTeamFlagCarrierAny(bot_state_t *bs) {
+	int i;
+	aas_entityinfo_t entinfo;
+
+	for (i = 0; i < level.maxclients && i < MAX_CLIENTS; i++) {
+		BotEntityInfo(i, &entinfo);
+		if (!entinfo.valid) continue;
+		if (!EntityCarriesFlag(&entinfo)) continue;
+		if (!BotSameTeam(bs, i)) continue;
+		return i;
+	}
+	return -1;
+}
+
+/*
+==================
+BotFlagSelfAssign
+
+Retail qagamex86 0x1002af2a (Attack & Defend) and 0x1002b17a (CTF): Quake
+Live's flag-mode bots have no team leader. Every think a bot that is not
+carrying a flag picks its own long term goal from the two flag states
+(0 home, 1 taken, 2 dropped): fetch the enemy flag, return its own,
+defend (the defending side in Attack & Defend), hunt a visible enemy
+carrier or escort the team mate carrying one. It then marks the goal as
+its own order.
+==================
+*/
+static void BotFlagSelfAssign(bot_state_t *bs) {
+	int carrier, own, enemy, ltgtype, defending;
+	vec3_t dir;
+
+	carrier = BotTeamFlagCarrierAny(bs);
+	if (carrier == bs->client) return;
+	// red counts the red flag twice, blue the blue flag
+	if (BotTeam(bs) == TEAM_RED) {
+		own = bs->blueflagstatus + bs->redflagstatus * 2;
+		enemy = bs->redflagstatus + bs->blueflagstatus * 2;
+		VectorSubtract(bs->origin, ctf_blueflag.origin, dir);
+		defending = gametype == GT_ATTACK_DEFEND && level.adTurn != 0;
+	}
+	else {
+		own = bs->redflagstatus + bs->blueflagstatus * 2;
+		enemy = bs->blueflagstatus + bs->redflagstatus * 2;
+		VectorSubtract(bs->origin, ctf_redflag.origin, dir);
+		defending = gametype == GT_ATTACK_DEFEND && level.adTurn != 1;
+	}
+	if (own > 1) {
+		if (defending) ltgtype = LTG_DEFENDKEYAREA;
+		else if (enemy > 1) ltgtype = LTG_RETURNFLAG;
+		else ltgtype = (1000.0 > (float)sqrt(PM_Dot3(dir, dir))) ? LTG_GETFLAG : LTG_RETURNFLAG;
+	}
+	else if (enemy < 1) {
+		ltgtype = defending ? LTG_DEFENDKEYAREA : LTG_GETFLAG;
+	}
+	else {
+		int enemycarrier = BotEnemyFlagCarrierVisible(bs);
+
+		if (enemycarrier != -1) {
+			ltgtype = LTG_KILL;
+			bs->teamgoal.entitynum = enemycarrier;
+		}
+		else if (carrier == -1) {
+			ltgtype = LTG_GETFLAG;
+		}
+		else {
+			bs->teammate = carrier;
+			ltgtype = LTG_TEAMACCOMPANY;
+		}
+	}
+	bs->ltgtype = ltgtype;
+	bs->ctfstrategy ^= CTFS_AGRESSIVE;
+	bs->decisionmaker = bs->client;
+	bs->ordered = qtrue;
+	bs->order_time = FloatTime();
+	bs->teammessage_time = (float)( 2.0 * random() + FloatTime() );
+	bs->teamgoal_time = FloatTime() + 600;
+	BotSetTeamStatus(bs);
+	BotRememberLastOrderedTask(bs);
+}
+
+/*
+==================
 BotTeamAI
 ==================
 */
@@ -1999,19 +2087,25 @@ void BotTeamAI(bot_state_t *bs) {
 	char netname[MAX_NETNAME];
 
 	//
-	if ( gametype < GT_TEAM  )
+	if ( gametype < GT_TEAM || bot_gauntletOnly.integer )
 		return;
+	// CTF and Attack & Defend bots assign themselves (retail qagamex86 0x1002af21)
+	if ( gametype == GT_CTF || gametype == GT_ATTACK_DEFEND ) {
+		BotFlagSelfAssign(bs);
+		return;
+	}
 	// make sure we've got a valid team leader
 	if (!BotValidTeamLeader(bs)) {
 		//
 		if (!FindHumanTeamLeader(bs)) {
 			//
 			if (!bs->askteamleader_time && !bs->becometeamleader_time) {
+				// retail sums random() * 10 + 5 + now (qagamex86 0x1002b3fe)
 				if (bs->entergame_time + 10 > FloatTime()) {
-					bs->askteamleader_time = FloatTime() + 5 + random() * 10;
+					bs->askteamleader_time = random() * 10 + 5 + FloatTime();
 				}
 				else {
-					bs->becometeamleader_time = FloatTime() + 5 + random() * 10;
+					bs->becometeamleader_time = random() * 10 + 5 + FloatTime();
 				}
 			}
 			if (bs->askteamleader_time && bs->askteamleader_time < FloatTime()) {
@@ -2019,7 +2113,7 @@ void BotTeamAI(bot_state_t *bs) {
 				BotAI_BotInitialChat(bs, "whoisteamleader", NULL);
 				trap_BotEnterChat(bs->cs, 0, CHAT_TEAM);
 				bs->askteamleader_time = 0;
-				bs->becometeamleader_time = FloatTime() + 8 + random() * 10;
+				bs->becometeamleader_time = random() * 10 + 8 + FloatTime();
 			}
 			if (bs->becometeamleader_time && bs->becometeamleader_time < FloatTime()) {
 				BotAI_BotInitialChat(bs, "iamteamleader", NULL);

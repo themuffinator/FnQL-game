@@ -54,6 +54,7 @@ exists.
 | G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands) compared with FnQL-game's tables | M2 |
 | G3a Pmove lockstep | `scripts/pmove_lockstep.py` and `tests/lockstep/`: the retail qagame's `Pmove` and FnQL-game's run the same scripted and fuzzed command streams in one process, and every `playerState_t` and `pmove_t` output matches bit for bit | M3 |
 | G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command and engine query answer (FnQL `sv_lockstepQueries`) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
+| G3b Bot differential | `tests/lockstep/server/bots_*.txt` (suite `bots`): the G3 rig with skill-4 bots and no scripted player, per mode up to each mode's recorded horizon, with a negative control that must diverge | M9 |
 | G4a Retail prediction | `scripts/prediction_probe.py`: the retail cgame predicts FnQL-game's server-side movement on a stock map with no prediction error at all, VQL and PQL | M3 |
 | G4 Prediction | FnQL-game cgame predicts retail and FnQL-game servers with zero prediction errors over recorded demo and live corpora | M7 |
 | G4v cgame visual parity | `scripts/cgame_parity_probe.py` (suite `cgame-parity`): a recorded bot match replayed under `timedemo` through the retail cgame and FnQL-game's gives matching captures, gameplay and scoreboard, per mode and screen shape | M7 |
@@ -1577,7 +1578,7 @@ A retail-ABI `fnql_uix86.dll`:
   menus; the existing connect/download and advert screens.
 - Coexists with the engine-hosted WebUI.
 
-### M9 — Bots
+### M9 — Bots (exit gates pass)
 
 The FFA movement/restart slice passes G3: `BotInputToUserCommand` now
 preserves retail's projected speed, wide arithmetic before command-byte
@@ -1611,8 +1612,8 @@ Observed while gating the stats reports, still open:
   remain this milestone.
 - Instagib (2026-11-15). Retail's bots hunt in instagib: FnQL-game's stood
   in for retail's "insta gib!" node (0x10013410) with the CA/RR hunt goal in
-  FFA, Duel, TDM and Freeze Tag (leaving the objective modes alone is an
-  inference), and bots now read the unlimited-ammo sentinel as plenty of
+  FFA, Duel, TDM and Freeze Tag until the node itself replaced it
+  (2026-11-16, below), and bots now read the unlimited-ammo sentinel as plenty of
   ammo (the end of the inventory update, 0x100162d0: an ammo slot of -1
   becomes 999). Before: 18 gauntlet kills and no rail shot in a bot match;
   after: 23 railgun kills.
@@ -1630,11 +1631,88 @@ Observed while gating the stats reports, still open:
   four bots all stayed spectators for five minutes; two of FnQL-game's
   joined. Neither is a match anyone can use, so the probes add bots with
   their sides.
-- Retail's instagib node itself ("insta gib!", 0x100133c0, entered from
-  BotDeathmatchAI at 0x1001f328 when `g_instaGib` is set and the bot has no
-  enemy; the hunt goal above stands in for it) and its training nodes
-  ("seek teammate", "lead teammate", "torment human", the tour points) are
-  not implemented.
+- Retail's instagib node is implemented (2026-11-16, below); its training
+  nodes are not.
+
+Retail bot AI parity (2026-11-16). Bots-only G3 differentials (four skill-4
+bots, or two a side, no scripted player) now hold FnQL-game's bots to the
+retail qagame frame by frame. They are gated per mode (`meson test --suite
+bots`) up to the frame where each still parts from retail:
+
+| Mode | Map | Gated frames | First divergence (of 2400) and cause |
+|------|-----|-------------:|--------------------------------------|
+| Duel | campgrounds | 2400 | none |
+| TDM | campgrounds | 2400 | none |
+| Domination | courtyard | 2400 | none |
+| Harvester | spidercrossings | 1600 | 1650, not analysed |
+| Instagib FFA | campgrounds | 1450 | 1489, not analysed |
+| FFA | campgrounds | 1100 | 1140, stack residue (below) |
+| Attack & Defend | spidercrossings | 1000 | 1060, a damage count, not analysed |
+| CTF | spidercrossings | 790 | 818, not analysed |
+| Freeze Tag | campgrounds | 340 | 367, game code: a thawed player's respawn event expires a frame early |
+| Clan Arena | campgrounds | 75 | 79, stack residue |
+| Red Rover | campgrounds | 80 | 83, stack residue |
+
+A further test runs FFA past its residue frame and must fail, so the gates
+are known to see a bot's divergence. Retail ships no One Flag CTF factory.
+
+Exit: G3b (suite `bots`) passes against an FnQL engine with the bot
+entity exchange; the open items below stay with this milestone.
+
+What changed, each from retail evidence (qagamex86 addresses in the code):
+
+- The botlib exchange carries Quake Live's entity extension (item timers,
+  item tags, health, ammo, flag carriers; `FNQL_MODULE_CAP_QL_BOT_ENTITIES`,
+  FnQL docs/fnql/GAME_MODULES.md), which retail's goal and enemy choices read.
+- Hearing (footsteps, jumps, fire, weapon changes, taunts), the hunt of a
+  heard enemy, the skill-4 enemy choice, aiming (x87 arithmetic, the
+  instagib aim skill), view damping, blocked sidestepping, the chase node's
+  heard-enemy goal and the airborne look-ahead.
+- Chat gates per mode (training, follow-me, gauntlet-only and instagib
+  silence the bots) and the team-chat location: the bare location message,
+  without the mapper's colour (0x10041a15).
+- Every node a bot enters except intermission, respawn and suicidal fight
+  clears its long term goal type, as retail's do.
+- The flag modes: Quake Live has no flag-mode team leader. Each think a bot
+  that is not carrying assigns itself fetch, return, defend (the defending
+  side in Attack & Defend), kill the visible enemy carrier or escort its own
+  carrier (0x1002af2a, 0x1002b17a). Attack & Defend uses the CTF goals,
+  flags, alternate routes, chat contexts and orders throughout. A carrier
+  whose own flag is away stays near home.
+- Retail's instagib node ("insta gib!", 0x100133c0/0x10013410): without an
+  enemy a bot heads for the nearest reachable client and fights whatever
+  comes into view. It replaces the CA/RR hunt goal that stood in for it in
+  instagib.
+- Firing: the shot test's start and end points use retail's x87 sums, the
+  teammate test covers entities 1 to 64 as retail's does, and a bot fires an
+  empty weapon as retail's bots do (the baseq3a ammo test is gone).
+- A frozen bot keeps thinking: Quake Live's PM_FREEZE is a frozen freeze tag
+  player, not intermission. A frozen body still takes knockback.
+
+Retail behaviour that cannot be reproduced. Botlib leaves a move result's
+direction alone when a move fails or needs no direction, and retail's nodes
+then read whatever their stack held there:
+
+- Attack & Defend: 621 of 624 failed moves left an address-like large
+  positive x and zero y and z (the bot looks at yaw 0, pitch 0). FnQL-game
+  substitutes (1, 0, 0) for any direction botlib left unset, which gives
+  those view angles.
+- Clan Arena and Red Rover: mostly small y-only vectors such as (0, 1, 0)
+  and (0, 7, 0), sometimes other values. TDM: zero.
+- FFA frame 1140: a successful move with no direction, where retail read
+  (0, NaN, a denormal).
+
+Still open:
+
+- The analysed horizons above: Harvester, instagib FFA, Attack & Defend
+  and CTF part from retail after 20 to 40 seconds for reasons not yet
+  traced, and Freeze Tag's thaw respawn needs its event time.
+- Weapon choice, the Red Rover join order and joining without a team (the
+  measurements above) were not measured again.
+- The training nodes ("seek teammate", "lead teammate", "torment human" and
+  the tour points). When `bot_training`, `bot_followMe` or
+  `bot_gauntletOnly` would select them, FnQL-game's bots keep their usual
+  nodes.
 
 Quake Live bot behavior over FnQL's botlib:
 

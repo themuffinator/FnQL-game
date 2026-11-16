@@ -1711,7 +1711,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 				targ->pain( targ, attacker, take );
 			}
 		} else {
-			if ( client ) {
+			// frozen players can still be pushed around: retail (qagamex86
+			// 0x10049bdc) skips the flag in freeze tag outside intermission,
+			// warmup included (0x10067e20 or 0x10067e50)
+			if ( client && !( g_gametype.integer == GT_FREEZE && !level.intermissionQueued
+					&& !level.intermissiontime ) ) {
 				targ->flags |= FL_NO_KNOCKBACK;
 			}
 			if ( targ->health < -999 ) {

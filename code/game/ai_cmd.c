@@ -863,7 +863,8 @@ void BotMatch_AttackEnemyBase(bot_state_t *bs, bot_match_t *match) {
 	char netname[MAX_MESSAGE_SIZE];
 	int client;
 
-	if (gametype == GT_CTF) {
+	// Attack & Defend as CTF (retail qagamex86 0x10006365)
+	if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 		BotMatch_GetFlag(bs, match);
 	}
 #ifdef MISSIONPACK

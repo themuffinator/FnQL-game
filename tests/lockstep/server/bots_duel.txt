@@ -1,0 +1,7 @@
+# Gate G3 bots-only scenario (scripts/server_lockstep.py --scenario ...):
+# two skill-4 bots in a duel.  Milestone M9 (docs/PLAN.md).
+# Frames are server frames: 25 msec each at the default sv_fps 40.
+# Grammar: FnQL docs/fnql/SERVER_LOCKSTEP.md.
+fnql-lockstep 1
+cmd 5 addbot sarge 4
+cmd 6 addbot doom 4

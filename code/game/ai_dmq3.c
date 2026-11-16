@@ -92,26 +92,12 @@ int blue_numaltroutegoals;
 
 /*
 ==================
-BotSetUserInfo
-==================
-*/
-static void BotSetUserInfo( bot_state_t *bs, const char *key, const char *value ) {
-	char userinfo[MAX_INFO_STRING];
-
-	trap_GetUserinfo( bs->client, userinfo, sizeof( userinfo ) );
-	Info_SetValueForKey( userinfo, key, value );
-	trap_SetUserinfo( bs->client, userinfo );
-	ClientUserinfoChanged( bs->client );
-}
-
-
-/*
-==================
 BotCTFCarryingFlag
 ==================
 */
 int BotCTFCarryingFlag(bot_state_t *bs) {
-	if (gametype != GT_CTF) return CTF_FLAG_NONE;
+	// Attack & Defend counts as well (retail qagamex86 0x10013ac0)
+	if (gametype != GT_CTF && gametype != GT_ATTACK_DEFEND) return CTF_FLAG_NONE;
 
 	if (bs->inventory[INVENTORY_REDFLAG] > 0) return CTF_FLAG_RED;
 	else if (bs->inventory[INVENTORY_BLUEFLAG] > 0) return CTF_FLAG_BLUE;
@@ -395,7 +381,10 @@ void BotSetTeamStatus(bot_state_t *bs) {
 			teamtask = TEAMTASK_PATROL;
 			break;
 	}
-	BotSetUserInfo(bs, "teamtask", va("%d", teamtask));
+	// Retail bots never publish a team task: the only "teamtask" writers in
+	// the retail qagame are the teamtask command (0x10040190) and a reset in
+	// the server code (0x10058410), so the CS_PLAYERS "tt" key stays 0.
+	(void)teamtask;
 #endif
 }
 
@@ -406,7 +395,8 @@ BotSetLastOrderedTask
 */
 int BotSetLastOrderedTask(bot_state_t *bs) {
 
-	if (gametype == GT_CTF) {
+	// Attack & Defend shares the CTF rules (retail qagamex86 0x10013e20)
+	if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 		// don't go back to returning the flag if it's at the base
 		if ( bs->lastgoal_ltgtype == LTG_RETURNFLAG ) {
 			if ( BotTeam(bs) == TEAM_RED ) {
@@ -431,7 +421,7 @@ int BotSetLastOrderedTask(bot_state_t *bs) {
 		bs->teamgoal_time = FloatTime() + 300;
 		BotSetTeamStatus(bs);
 		//
-		if ( gametype == GT_CTF ) {
+		if ( gametype == GT_CTF || gametype == GT_ATTACK_DEFEND ) {
 			if ( bs->ltgtype == LTG_GETFLAG ) {
 				bot_goal_t *tb, *eb;
 				int tt, et;
@@ -483,11 +473,25 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 
 	//when carrying a flag in ctf the bot should rush to the base
 	if (BotCTFCarryingFlag(bs)) {
+		// retail qagamex86 0x100140c0: a carrier whose own flag is not at
+		// home keeps its goal while it is within 1000 units of its own base
+		if (BotTeam(bs) == TEAM_RED) {
+			if (bs->blueflagstatus + bs->redflagstatus * 2 > 1) {
+				VectorSubtract(bs->origin, ctf_redflag.origin, dir);
+				if (1000.0 > (float)sqrt(PM_Dot3(dir, dir))) return;
+			}
+		}
+		else if (BotTeam(bs) == TEAM_BLUE) {
+			if (bs->redflagstatus + bs->blueflagstatus * 2 > 1) {
+				VectorSubtract(bs->origin, ctf_blueflag.origin, dir);
+				if (1000.0 > (float)sqrt(PM_Dot3(dir, dir))) return;
+			}
+		}
 		//if not already rushing to the base
 		if (bs->ltgtype != LTG_RUSHBASE) {
 			BotRefuseOrder(bs);
-			bs->ltgtype = LTG_RUSHBASE;
 			bs->teamgoal_time = FloatTime() + CTF_RUSHBASE_TIME;
+			bs->ltgtype = LTG_RUSHBASE;
 			bs->rushbaseaway_time = 0;
 			bs->decisionmaker = bs->client;
 			bs->ordered = qfalse;
@@ -498,14 +502,14 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 				default: VectorSet(dir, 999, 999, 999); break;
 			}
 			// if the bot picked up the flag very close to the enemy base
-			if ( VectorLength(dir) < 128 ) {
+			if ( 128.0 > (float)sqrt(PM_Dot3(dir, dir)) ) {
 				// get an alternative route goal through the enemy base
 				BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
 			} else {
 				// don't use any alt route goal, just get the hell out of the base
 				bs->altroutegoal.areanum = 0;
 			}
-			BotSetUserInfo(bs, "teamtask", va("%d", TEAMTASK_OFFENSE));
+			// (no team task: retail bots never publish one, see BotSetTeamStatus)
 #ifdef MISSIONPACK
 			BotVoiceChat(bs, -1, VOICECHAT_IHAVEFLAG);
 #endif
@@ -534,7 +538,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 	//if our team has the enemy flag and our flag is at the base
 	if (flagstatus == 1) {
 		//
-		if (bs->owndecision_time < FloatTime()) {
+		if (FloatTime() > (double)bs->owndecision_time) {
 			//if Not defending the base already
 			if (!(bs->ltgtype == LTG_DEFENDKEYAREA &&
 					(bs->teamgoal.number == ctf_redflag.number ||
@@ -566,7 +570,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 					bs->ltgtype = LTG_TEAMACCOMPANY;
 					bs->formation_dist = 3.5 * 32;		//3.5 meter
 					BotSetTeamStatus(bs);
-					bs->owndecision_time = FloatTime() + 5;
+					bs->owndecision_time = (int)(FloatTime() + 5);
 				}
 			}
 		}
@@ -575,7 +579,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 	//if the enemy has our flag
 	else if (flagstatus == 2) {
 		//
-		if (bs->owndecision_time < FloatTime()) {
+		if (FloatTime() > (double)bs->owndecision_time) {
 			//if enemy flag carrier is visible
 			c = BotEnemyFlagCarrierVisible(bs);
 			if (c >= 0) {
@@ -609,7 +613,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 				BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
 				//
 				BotSetTeamStatus(bs);
-				bs->owndecision_time = FloatTime() + 5;
+				bs->owndecision_time = (int)(FloatTime() + 5);
 			}
 		}
 		return;
@@ -617,7 +621,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 	//if both flags Not at their bases
 	else if (flagstatus == 3) {
 		//
-		if (bs->owndecision_time < FloatTime()) {
+		if (FloatTime() > (double)bs->owndecision_time) {
 			// if not trying to return the flag and not following the team flag carrier
 			if ( bs->ltgtype != LTG_RETURNFLAG && bs->ltgtype != LTG_TEAMACCOMPANY ) {
 				//
@@ -646,7 +650,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 					bs->formation_dist = 3.5 * 32;		//3.5 meter
 					//
 					BotSetTeamStatus(bs);
-					bs->owndecision_time = FloatTime() + 5;
+					bs->owndecision_time = (int)(FloatTime() + 5);
 				}
 				else {
 					BotRefuseOrder(bs);
@@ -662,7 +666,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 					BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
 					//
 					BotSetTeamStatus(bs);
-					bs->owndecision_time = FloatTime() + 5;
+					bs->owndecision_time = (int)(FloatTime() + 5);
 				}
 			}
 		}
@@ -698,8 +702,8 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 	if (BotSetLastOrderedTask(bs))
 		return;
 	//
-	if (bs->owndecision_time > FloatTime())
-		return;;
+	if ((double)bs->owndecision_time > FloatTime())
+		return;
 	//if the bot is roaming
 	if (bs->ctfroam_time > FloatTime())
 		return;
@@ -707,7 +711,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 	if (BotAggression(bs) < 50)
 		return;
 	//set the time to send a message to the team mates
-	bs->teammessage_time = FloatTime() + 2 * random();
+	bs->teammessage_time = (float)(2 * random() + FloatTime());
 	//
 	if (bs->teamtaskpreference & (TEAMTP_ATTACKER|TEAMTP_DEFENDER)) {
 		if (bs->teamtaskpreference & TEAMTP_ATTACKER) {
@@ -724,7 +728,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 	}
 	//get the flag or defend the base
 	rnd = random();
-	if (rnd < l1 && ctf_redflag.areanum && ctf_blueflag.areanum) {
+	if (l1 > rnd && ctf_redflag.areanum && ctf_blueflag.areanum) {
 		bs->decisionmaker = bs->client;
 		bs->ordered = qfalse;
 		bs->ltgtype = LTG_GETFLAG;
@@ -734,7 +738,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 		BotGetAlternateRouteGoal(bs, BotOppositeTeam(bs));
 		BotSetTeamStatus(bs);
 	}
-	else if (rnd < l2 && ctf_redflag.areanum && ctf_blueflag.areanum) {
+	else if (l2 > rnd && ctf_redflag.areanum && ctf_blueflag.areanum) {
 		bs->decisionmaker = bs->client;
 		bs->ordered = qfalse;
 		//
@@ -753,7 +757,7 @@ void BotCTFSeekGoals(bot_state_t *bs) {
 		bs->ctfroam_time = FloatTime() + CTF_ROAM_TIME;
 		BotSetTeamStatus(bs);
 	}
-	bs->owndecision_time = FloatTime() + 5;
+	bs->owndecision_time = (int)(FloatTime() + 5);
 #ifdef DEBUG
 	BotPrintTeamGoal(bs);
 #endif //DEBUG
@@ -1323,7 +1327,8 @@ BotTeamGoals
 void BotTeamGoals(bot_state_t *bs, int retreat) {
 
 	if ( retreat ) {
-		if (gametype == GT_CTF) {
+		// Attack & Defend uses the CTF goals (retail qagamex86 0x10015960)
+		if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 			BotCTFRetreatGoals(bs);
 		}
 #ifdef MISSIONPACK
@@ -1339,7 +1344,7 @@ void BotTeamGoals(bot_state_t *bs, int retreat) {
 #endif
 	}
 	else {
-		if (gametype == GT_CTF) {
+		if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 			//decide what to do in CTF mode
 			BotCTFSeekGoals(bs);
 		}
@@ -1517,8 +1522,8 @@ int BotSynonymContext(bot_state_t *bs) {
 	int context;
 
 	context = CONTEXT_NORMAL|CONTEXT_NEARBYITEM|CONTEXT_NAMES;
-	//
-	if (gametype == GT_CTF
+	// Attack & Defend chats in the CTF contexts (retail qagamex86 0x10020e20)
+	if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND
 #ifdef MISSIONPACK
 		|| gametype == GT_1FCTF
 #endif
@@ -2111,9 +2116,11 @@ BotIntermission
 ==================
 */
 qboolean BotIntermission(bot_state_t *bs) {
-	//NOTE: we shouldn't be looking at the game code...
-	if (level.intermissiontime) return qtrue;
-	return (bs->cur_ps.pm_type == PM_FREEZE || bs->cur_ps.pm_type == PM_INTERMISSION);
+	// Retail tests the player state alone (qagamex86 0x1001f1e9 and the
+	// node checks such as 0x1000cc5a). PM_FREEZE is a frozen freeze tag
+	// player in Quake Live, and a frozen bot keeps thinking: it still aims,
+	// fires and sends movement, which its frozen body ignores.
+	return bs->cur_ps.pm_type == PM_INTERMISSION;
 }
 
 /*
@@ -3739,7 +3746,6 @@ void BotCheckAttack(bot_state_t *bs) {
 	weaponinfo_t wi;
 	bsp_trace_t trace;
 	aas_entityinfo_t entinfo;
-	weapon_t weapon;
 	vec3_t mins = {-8, -8, -8}, maxs = {8, 8, 8};
 
 	attackentity = bs->enemy;
@@ -3801,20 +3807,27 @@ void BotCheckAttack(bot_state_t *bs) {
 
 	//get the weapon info
 	trap_BotGetWeaponInfo(bs->ws, bs->weaponnum, &wi);
-	//get the start point shooting from
+	//get the start point shooting from; retail (qagamex86 0x1001b51c) sums
+	//each component on the x87 stack and rounds it once
 	VectorCopy(bs->origin, start);
-	start[2] += bs->cur_ps.viewheight;
+	start[2] = (float)((double)bs->cur_ps.viewheight + bs->origin[2]);
 	AngleVectors(bs->viewangles, forward, right, NULL);
-	start[0] += forward[0] * wi.offset[0] + right[0] * wi.offset[1];
-	start[1] += forward[1] * wi.offset[0] + right[1] * wi.offset[1];
-	start[2] += forward[2] * wi.offset[0] + right[2] * wi.offset[1] + wi.offset[2];
+	start[0] = (float)((double)wi.offset[1] * right[0] + (double)forward[0] * wi.offset[0] + start[0]);
+	start[1] = (float)((double)right[1] * wi.offset[1] + (double)forward[1] * wi.offset[0] + start[1]);
+	start[2] = (float)((double)wi.offset[1] * right[2] + (double)forward[2] * wi.offset[0]
+		+ wi.offset[2] + start[2]);
 	//end point aiming at
-	VectorMA(start, 1000, forward, end);
+	end[0] = (float)((double)forward[0] * 1000.0 + start[0]);
+	end[1] = (float)((double)forward[1] * 1000.0 + start[1]);
+	end[2] = (float)((double)forward[2] * 1000.0 + start[2]);
 	//a little back to make sure not inside a very close enemy
-	VectorMA(start, -12, forward, start);
+	start[0] = (float)(start[0] - (double)forward[0] * 12.0);
+	start[1] = (float)(start[1] - (double)forward[1] * 12.0);
+	start[2] = (float)(start[2] - (double)forward[2] * 12.0);
 	BotAI_Trace(&trace, start, mins, maxs, end, bs->entitynum, MASK_SHOT);
-	//if the entity is a client
-	if (trace.ent >= 0 && trace.ent < MAX_CLIENTS) {
+	//if the entity is a client; retail tests entity numbers 1 to 64
+	//(qagamex86 0x1001b6ac), so a shot at client 0 is never held back
+	if (trace.ent >= 1 && trace.ent <= MAX_CLIENTS) {
 		if (trace.ent != attackentity) {
 			//if a teammate is hit
 			if (BotSameTeam(bs, trace.ent))
@@ -3825,8 +3838,8 @@ void BotCheckAttack(bot_state_t *bs) {
 	if (trace.ent != attackentity || attackentity >= MAX_CLIENTS) {
 		//if the projectile does radial damage
 		if (wi.proj.damagetype & DAMAGETYPE_RADIAL) {
-			if (trace.fraction * 1000 < wi.proj.radius) {
-				points = (wi.proj.damage - 0.5 * trace.fraction * 1000) * 0.5;
+			if (wi.proj.radius > trace.fraction * 1000.0) {
+				points = (float)((wi.proj.damage - trace.fraction * 1000.0 * 0.5) * 0.5);
 				if (points > 0) {
 					return;
 				}
@@ -3834,11 +3847,7 @@ void BotCheckAttack(bot_state_t *bs) {
 			//FIXME: check if a teammate gets radial damage
 		}
 	}
-
-	weapon = bs->cur_ps.weapon;
-	if ( weapon >= WP_MACHINEGUN && weapon <= WP_BFG && !bs->cur_ps.ammo[ weapon ] ) {
-		return;
-	}
+	// retail tests no ammo before firing (qagamex86 0x1001b6d7 to 0x1001b746)
 
 	//if fire has to be release to activate weapon
 	if (wi.flags & WFL_FIRERELEASED) {
@@ -5312,7 +5321,8 @@ void BotSetupAlternativeRouteGoals(void) {
 	if (altroutegoals_setup)
 		return;
 #ifdef MISSIONPACK
-	if (gametype == GT_CTF) {
+	// Attack & Defend too (retail qagamex86 0x1001ee4e)
+	if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 		if (trap_BotGetLevelItemGoal(-1, "Neutral Flag", &ctf_neutralflag) < 0)
 			BotAI_Print(PRT_WARNING, "no alt routes without Neutral Flag\n");
 		if (ctf_neutralflag.areanum) {
@@ -5441,6 +5451,20 @@ void BotDeathmatchAI(bot_state_t *bs, float thinktime) {
 	if (!BotIntermission(bs) && !BotIsObserver(bs)) {
 		//do team AI
 		BotTeamAI(bs);
+	}
+	// Quake Live's scripted nodes (retail qagamex86 0x1001f27a), for a live
+	// player with no pending activation. The training nodes and the
+	// bot_followMe and bot_gauntletOnly nodes take precedence; FnQL-game does
+	// not have them yet, so with those set the bot keeps its usual nodes.
+	// Otherwise an instagib bot without an enemy goes hunting.
+	if (bs->cur_ps.pm_type != PM_DEAD && !BotIsObserver(bs)
+		&& bs->cur_ps.pm_type != PM_INTERMISSION && !bs->activatestack) {
+		qboolean trainingNode = bot_training.integer == 1 || bot_training.integer == 2
+			|| bot_training.integer == 3 || bot_followMe.integer || bot_gauntletOnly.integer;
+
+		if (!trainingNode && g_instaGib.integer && bs->ltgtype != LTG_INSTAGIB && bs->enemy == -1) {
+			AIEnter_InstaGib(bs);
+		}
 	}
 	//if the bot has no ai node
 	if (!bs->ainode) {
@@ -5583,7 +5607,8 @@ void BotSetupDeathmatchAI(void) {
 	trap_Cvar_Register(&bot_predictobstacles, "bot_predictobstacles", "1", 0);
 	trap_Cvar_Register(&g_spSkill, "g_spSkill", "2", 0);
 	//
-	if (gametype == GT_CTF) {
+	// Attack & Defend bots know both flags too (retail qagamex86 0x1001f6c1)
+	if (gametype == GT_CTF || gametype == GT_ATTACK_DEFEND) {
 		if (trap_BotGetLevelItemGoal(-1, "Red Flag", &ctf_redflag) < 0)
 			BotAI_Print(PRT_WARNING, "CTF without Red Flag\n");
 		if (trap_BotGetLevelItemGoal(-1, "Blue Flag", &ctf_blueflag) < 0)

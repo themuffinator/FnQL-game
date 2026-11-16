@@ -1104,14 +1104,9 @@ qboolean Team_GetLocationMsg(gentity_t *ent, char *loc, int loclen)
 	if (!best)
 		return qfalse;
 
-	if (best->count) {
-		if (best->count < 0)
-			best->count = 0;
-		if (best->count > 7)
-			best->count = 7;
-		Com_sprintf(loc, loclen, "%c%c%s" S_COLOR_WHITE, Q_COLOR_ESCAPE, best->count + '0', best->message );
-	} else
-		Com_sprintf(loc, loclen, "%s", best->message);
+	// retail (qagamex86 0x10041a15) prints the bare message: the colour a
+	// mapper set with "count" is not added, so team chat shows "(^1Flag^7)"
+	Com_sprintf(loc, loclen, "%s", best->message);
 
 	return qtrue;
 }

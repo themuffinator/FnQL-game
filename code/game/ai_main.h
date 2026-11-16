@@ -38,6 +38,8 @@
 #define LTG_ATTACKENEMYBASE			13	//attack the enemy base
 #define LTG_MAKELOVE_UNDER			14
 #define LTG_MAKELOVE_ONTOP			15
+// Quake Live's scripted nodes (retail qagamex86 0x1001f2ad..0x1001f343)
+#define LTG_INSTAGIB				21	//hunting in instagib ("insta gib!" node)
 //some goal dedication times
 #define TEAM_HELP_TIME				60	//1 minute teamplay help time
 #define TEAM_ACCOMPANY_TIME			600	//10 minutes teamplay accompany time

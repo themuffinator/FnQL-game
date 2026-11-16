@@ -894,6 +894,42 @@ if get_option('fnql-dedicated') != ''
       args: rule_args + ['--module', qagame.full_path()], depends: qagame,
       suite: 'server-rules', timeout: 300, is_parallel: false)
   endforeach
+
+  # Bots-only differentials (milestone M9, docs/PLAN.md): skill-4 bots and no
+  # scripted player, each mode run up to the frame where FnQL-game's bots
+  # still part from retail's.  The bots' entity state, chat and
+  # configstrings are diffed like a scripted player's.  Needs an FnQL engine
+  # with the Quake Live bot entity exchange (FNQL_MODULE_CAP_QL_BOT_ENTITIES).
+  # Each variant is [scenario, factory, map, frames].
+  bot_gates = {
+    'duel': ['bots_duel', 'duel', 'campgrounds', '2400'],
+    'tdm': ['bots_team', 'tdm', 'campgrounds', '2400'],
+    'dom': ['bots_team', 'dom', 'courtyard', '2400'],
+    'har': ['bots_team', 'har', 'spidercrossings', '1600'],
+    'iffa': ['bots_four', 'iffa', 'campgrounds', '1450'],
+    'ffa': ['bots_four', 'ffa', 'campgrounds', '1100'],
+    'ad': ['bots_team', 'ad', 'spidercrossings', '1000'],
+    'ctf': ['bots_team', 'ctf', 'spidercrossings', '790'],
+    'ft': ['bots_team', 'ft', 'campgrounds', '340'],
+    'ca': ['bots_team', 'ca', 'campgrounds', '75'],
+    'rr': ['bots_four', 'rr', 'campgrounds', '80'],
+  }
+  foreach name, spec : bot_gates
+    bot_args = server_lockstep_args + ['--scenario', files('tests/lockstep/server/' + spec[0] + '.txt'),
+      '--factory', spec[1], '--map', spec[2], '--frames', spec[3]]
+    test('bots-' + name + '-selfcheck', python, args: bot_args + ['--self-check'],
+      suite: 'bots', timeout: 600, is_parallel: false)
+    test('bots-' + name + '-differential', python,
+      args: bot_args + ['--module', qagame.full_path()], depends: qagame,
+      suite: 'bots', timeout: 600, is_parallel: false)
+  endforeach
+  # Negative control: past frame 1140 retail's FFA bots read a move
+  # direction botlib never wrote (stack contents), which FnQL-game cannot
+  # reproduce, so this run must report a divergence.
+  test('bots-ffa-residue-differential', python,
+    args: server_lockstep_args + ['--scenario', files('tests/lockstep/server/bots_four.txt'),
+      '--factory', 'ffa', '--map', 'campgrounds', '--frames', '1200', '--module', qagame.full_path()],
+    depends: qagame, suite: 'bots', timeout: 600, is_parallel: false, should_fail: true)
   # Key doors, on a hand-authored fixture: no stock map carries one.
   key_door_args = server_lockstep_args + ['--cheats', '--frames', '900',
     '--entities', files('tests/lockstep/entities/key_doors.ent'),
