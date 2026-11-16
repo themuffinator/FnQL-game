@@ -60,8 +60,11 @@ contract.
 9. **Enabled targets only.** Build, test and package the targets enabled
    through FnQL's Project Plan step 7 (FnQ3's full architecture and platform
    range), and validate each with its own artifacts: 32-bit x86 (Win32, Linux
-   i386) and x86_64 on Windows and Linux (milestone M11, 2026-11-11). Enable
-   each further target only behind its build, gate and FnQL hosting test.
+   i386) and x86_64 on Windows and Linux (milestone M11, 2026-11-11), and
+   aarch64, armv7l (hard-float), ppc64le and ppc64 on Linux (2026-11-16,
+   cross-built with `meson/linux-<arch>.ini` and tested under qemu-user).
+   Enable each further target only behind its build, gate and FnQL hosting
+   test.
    Retail-module interoperability stays x86 regardless; the gates that host
    or diff retail modules run on x86 only (`retail_modules_hostable`).
 10. **Cheap probes.** Use dedicated-server probes when the question is

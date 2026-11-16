@@ -54,6 +54,7 @@ exists.
 | G2 Wire manifest | Machine-readable manifest of retail enums and tables (gametypes, weapons, 60-row item list, powerups, stats, events, MODs, CS indices and payload keys, server commands; the qagame, cgame and ui cvar tables and the ui binding table) compared with FnQL-game's tables | M2 |
 | G3a Pmove lockstep | `scripts/pmove_lockstep.py` and `tests/lockstep/`: the retail qagame's `Pmove` and FnQL-game's run the same scripted and fuzzed command streams in one process, and every `playerState_t` and `pmove_t` output matches bit for bit | M3 |
 | G3 Lockstep differential | `scripts/server_lockstep.py` and `tests/lockstep/server/` (suite `differential`): FnQL's `sv_lockstep` dedicated server hosts the retail qagame and FnQL-game's qagame in turn with the same map, seed and scripted usercmd streams, and diffs every client-visible entity, scripted playerState, configstring, server command, engine query answer (FnQL `sv_lockstepQueries`) and Steam statistic and achievement call (FnQL `sv_lockstepSteam`, since M5) frame by frame; `--self-check` (retail twice) must show zero divergence | M4 |
+| G3c Movement on every target | `pmove-replay` (`tests/lockstep/pmove_replay.c`, suites `unit` and `parity`): FnQL-game's `Pmove` on the target it was built for reproduces the retail `Pmove` output recorded in `tests/lockstep/pmove_golden.txt` (which G3a checks against the retail module) bit for bit, on every byte order and pointer width | M11 |
 | G3b Bot differential | `tests/lockstep/server/bots_*.txt` (suite `bots`): the G3 rig with skill-4 bots and no scripted player, per mode up to each mode's recorded horizon, with a negative control that must diverge | M9 |
 | G4a Retail prediction | `scripts/prediction_probe.py`: the retail cgame predicts FnQL-game's server-side movement on a stock map with no prediction error at all, VQL and PQL | M3 |
 | G4 Prediction | FnQL-game cgame predicts retail and FnQL-game servers with zero prediction errors over recorded demo and live corpora | M7 |
@@ -1944,7 +1945,7 @@ Adding `fnql_game_client.pk3` to them, so that pure FnQL servers and clients
 can use the FnQL-game client modules out of the box, belongs to M12's
 packaging work.
 
-### M11 — Architecture and platform range
+### M11 — Architecture and platform range (Linux range complete)
 
 FnQL's Project Plan step 7 takes the engine to FnQ3's full range:
 
@@ -1966,6 +1967,9 @@ The rules for every target:
 
 - The wire contract is architecture-independent (G2), so x86 and non-x86 peers
   interoperate.
+- Movement is architecture-independent too (G3c): retail clients predict
+  with the x86 `Pmove`, so a server on any target must move players exactly
+  as retail does.
 - x86 retail interoperability is never regressed.
 - A target counts as supported only when its gates pass.
 
@@ -1983,6 +1987,85 @@ Enabled targets:
   x86_64; a G3 run against it is open. FnQL's release CI builds and tests the
   pinned commit for both and bundles the modules in its x86_64 packages; G1
   needs a retail install, so it runs outside CI.
+- **aarch64, armv7l, ppc64le and ppc64 on Linux** (2026-11-16). Modules are
+  `fnql_<slot>aarch64.so`, `fnql_<slot>arm.so`, `fnql_<slot>ppc64le.so` and
+  `fnql_<slot>ppc64.so` (the engine's `ARCH_STRING`). armv7l means ARMv7 or
+  later, little endian, hard-float; ppc64 is big endian. `meson.build`
+  checks each with a compiler probe (byte order, float ABI and pointer width),
+  and builds with `-fsigned-char`, because the game code assumes x86's signed
+  `char` and ARM and POWER default to unsigned. Each target cross-builds from
+  x86_64 Linux with its committed cross file (`meson/linux-<arch>.ini`: the
+  Debian/Ubuntu crossbuild gcc and a qemu-user `exe_wrapper`). `meson test`
+  runs the unit tests, the gate scripts' compiled probes and the engine
+  through qemu-user (the cross file's `fnql_exe_wrapper`, read by
+  `scripts/headless.py`). FnQL enables only its dedicated server on these
+  targets; it has no client gate there yet.
+
+  Gates (2026-11-16): gcc 13 cross builds under WSL Ubuntu 24.04, run
+  through qemu-user 8.2. Each target runs on its own FnQL `m11-arch-range`
+  dedicated server, on retail campgrounds.
+  - G0 `engine-abi-parity`: 221 checks on every target, against the FnQL
+    engine headers plus the one header change that FnQL's `m9-bot-entities`
+    adds (`FNQL_MODULE_CAP_QL_BOT_ENTITIES`; until that branch lands, G0
+    against FnQL `main` fails on every target, x86 included).
+  - G2 `wire-contract`, `retail-tables-current` and the other 58 unit
+    tests pass. That is 63 of the 64 tests outside the slow `sweep` and
+    `stats` suites, which were not run under emulation. The 64th is G0
+    against the plain engine headers.
+  - G3c `pmove-replay`: all 57 records (56 scenarios, 46,270 frames, and
+    3,408 sine trajectory evaluations) match the retail golden bit for bit,
+    big-endian ppc64 included.
+  - G1: `dedicated-smoke` and the 75 s `combat-soak` pass. FnQL's synthetic
+    hosting gate (`scripts/synthetic_hosting_gate.py`, no retail assets)
+    passes on all four.
+
+  Findings on the way:
+  - **π on Linux.** `q_shared.h` defined `M_PI` only `#ifndef M_PI`.
+    glibc's `math.h` defines a double `M_PI`, so Linux builds (i386 and
+    x86_64 included) used the double value. Windows builds and retail use the
+    float literal: retail qagamex86 0x1002d297 multiplies by
+    3.1415927410125732. Every sine mover, angle conversion and spread on Linux
+    therefore drifted from retail. On Linux x86_64 and aarch64, 3,075 of the
+    3,408 G3c sine evaluations differed. `M_PI` is now always the float
+    literal. MSVC's `math.h` defines no `M_PI`, so Windows builds do not
+    change.
+  - **Big-endian ppc64 in the engine.** FnQ3's `q_platform.h` tested
+    `defined( __LITTLE_ENDIAN )`, which glibc defines on every host. So a
+    big-endian build named itself `ppc64le` and did no byte swapping: it found
+    0 files in the retail paks. FnQL now uses the compiler's byte-order macros
+    and has a compile-time check that the two agree. The JIT's ELFv1 path
+    and the codec's swap helpers needed fixes before the target would link.
+
+G3c (`pmove-replay`, every target): `tests/lockstep/pmove_golden.txt` holds
+a digest of the retail `Pmove` output for every lockstep scenario. Each
+frame's state is serialized field by field, little endian at each field's
+width, so the same values give the same digest on every byte order and
+pointer width (`tests/lockstep/lockstep_digest.h`). G3a records the golden
+from the retail module (`pmove_lockstep --write-golden`) and checks it on
+every run (`--golden`). `pmove_replay` runs FnQL-game's `Pmove` alone on the
+target it was built for and compares the digests. Win32 MSVC, Linux x86_64,
+aarch64, armv7l, ppc64le and ppc64 all match. The digests caught the π
+difference above, which no Windows gate could have seen.
+
+Open:
+
+- **macOS and the BSDs.** Not enabled. This machine can run neither natively
+  nor in a VM, and a target needs its own artifacts for its gates. FnQL's
+  CI has no macOS or BSD runner declared.
+- **Windows on ARM64.** FnQ3 names it `arm64`. Not enabled; it needs an ARM64
+  Windows host for its gates.
+- **The QVM build** (optional): not started.
+- **A G3 run against retail's Linux `qagamex64.so`** on Linux x86_64. Inferred,
+  not checked: retail's Linux modules were built with gcc, so they may carry
+  glibc's double π and differ from retail Windows on sine movers. Such a run
+  would compare FnQL-game against a module that is not the retail-client
+  reference.
+- **CI for the new targets.** FnQL's release workflow cross-builds the
+  engine for the four targets and runs its suite under qemu-user
+  (`linux-cross-regression`). It cannot build FnQL-game for them until its
+  pin (`version/fnql_game.json`) moves past this milestone, and that waits
+  for FnQL's `m9-bot-entities` (G0). The FnQL release packages do not carry
+  the new targets yet; that belongs to M12.
 
 ### M12 — Release
 
@@ -2052,7 +2135,7 @@ Exit:
 
 - Small compatibility slices, each with its gate.
 - Baseline files keep their headers. New files carry the FnQL-game GPL header.
-- Enabled targets only (x86; x86_64 on Windows and Linux). Validate each
-  target with its own artifacts.
+- Enabled targets only (x86; x86_64 on Windows and Linux; aarch64, armv7l,
+  ppc64le and ppc64 on Linux). Validate each target with its own artifacts.
 - Probes run headless (`AGENTS.md` rule 13) and as cheaply as the question
   allows. Dedicated server first.

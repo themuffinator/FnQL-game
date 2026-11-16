@@ -1,0 +1,61 @@
+# Gate G3c golden: the retail qagamex86.dll Pmove output for every
+# pmove lockstep scenario (tests/lockstep/lockstep_digest.h), written by
+# pmove_lockstep --write-golden and checked against the retail module by
+# every G3a run.  pmove_replay compares FnQL-game's Pmove on each target.
+sine 3408 b9223209638e3e2b
+scenario run 400 50d26b5f55b2b065 c56652ecbd3d840e
+scenario run-16ms 200 e5db7753d1713f75
+scenario run-3ms 900 af1bc09409206988 5591a7975db83f63 6f7ae16991d61ed6 15a03d032e36e095
+scenario run-jump 600 24eaa705b7c44432 121353169b8d5052 f51a7bef93ce601b
+scenario strafe-jump 1200 2b5df1381e25bc4d 8928e681e47d9968 b1e764bb81e91e39 fccb0c762f83f088 62ef6c9176772277
+scenario strafe-jump-pql 1200 0463e6e6466836e0 a1fbf6a80dffd6a0 80d5e862b00bd266 6324cebde6743eda 5fbac403705df7e7
+scenario crouch-slide 300 1c23c577771ecaad c25421e56816ea7c
+scenario back-jump 200 5bd8dd8bbf1260fd
+scenario stairs 260 e680e43d059f3757 b3e048d63fecc2ca
+scenario stairs-jump 260 a315e7b716eeb7d6 a949c6298f13977d
+scenario stairs-18 260 5e44ff36c9b8e3b7 cdfb93d4ed1a07e6
+scenario ramp 300 67808531c9667952 2f6200e5599cd1ae
+scenario ramp-jump 300 486d52e361e0152c 8ad852df6c2cfde5
+scenario steep 200 a776041bee2755b4
+scenario tunnel 300 8dd1441d0273f525 45d8b53de551f610
+scenario water 400 64a8106893299fc3 a911dd649a1e0a23
+scenario fall 300 787b2fc7399b251e a3d83e231ec9dc2e
+scenario slick 200 f4b433c2ed93c990
+scenario playerclip 120 514cc38e1be8e5ea
+scenario weapons 600 33bd0287eea0c6d8 dac7a93c63c1e3f1 b9a079ae229fff27
+scenario knockback 200 1cce4e37776e269b
+scenario dead 120 0555936a3036eec0
+scenario dead-water 160 f71f669cf2bec3e6
+scenario water-battlesuit 400 b256f817612ee16c 2c07fd136b4d3944
+scenario spectator 200 5f64da96bb416e78
+scenario noclip 120 f05d6e6b1bc506ef
+scenario fuzz-1 3000 5d5b13d06ee51c23 31906941ea8462fe f9e4b51a0d6f7c14 10d83d4cfba0ec87 e7eaecedb2281d4e 62d2eddc39cd7fa4 b530c0d425f0384d 0aff05c2b44420dc 9c09750fc51e2525 2f70dd71863461b3 3ae7e6405633c0ac 61a0c4e25b547173
+scenario fuzz-2 3000 d4df6916bedebdc6 6bc883e5ee5ef749 fcb592ef3492fde2 b5fb59fc24809fab 3d518b02034e993b 777602d3104e516d 3b0dab12136cdb12 2f172324fa3edbef 03412e2ae70f9fd5 a1ddc4f80ae99ea8 7bc3dccf771cfade c308e5ad00f08ce1
+scenario fuzz-3 3000 48633319d6d2e8c6 538768ccc68eb1a2 44c4808e0ed2d4d6 934ddf0ef4f7ea81 bb2066982fac159c b191bc8ab31f8a6c ee55314df5ee73a8 f9077b854d73cb9f 4dedc04d645bc289 bc2bf163d04cd1d4 cee9d667a978b65f 943a99c43d37ed99
+scenario fuzz-pql 3000 6ed5ed999dff2781 96ab46495533f3c9 fd3ad1d73b7125a7 e49aa488be82594e 5267f0eee0a1f3db d2c0fd35771c9f8b d0cb0049807fced4 4bf58bfd8f0070da c321ad46fd3ff4c8 31adb82e6d042c48 175f1940127a8a8a d33ab9a8f99f9983
+scenario fuzz-settings 3000 965651d13ee622fc 70464a588fc14992 478e08baace57122 06373a02e7d7ef29 698fbfa8464160fd 84752b922f693ad5 d80537bf1bfd7758 aadfe083a6114d32 ba400b058e8e7edf 8ab4c95ca323ddd8 7ea153a9d1bbf93b 4d3391b905003be4
+scenario ladder 320 df92581197792578 9c9b842fab0b29d1
+scenario ladder-pql 320 17d3db5c50b20714 dbaab377e8156118
+scenario double-jump 600 161a6632223cf3dc 4d8c2d709e36a7ac 6cddece76ea4514c
+scenario crouch-slide-on 600 9789591cf88f1f47 1c62617992802bc7 5601a82b96374807
+scenario crouch-slide-pql 600 476a80b808acb81a c474caf19c8e9198 84f09046ed2da053
+scenario jump-release 400 2e0a3ae0032db25a ed745d0401bc8ed3
+scenario no-autohop 400 24eaa705b7c44432 0c2b152ec24a178b
+scenario respawned 200 547ffe51c30cf645
+scenario flight 420 6bc8a92bb504341a f880d78283a26000
+scenario flight-once 420 49843643610ee22e 07752927ae1dc75d
+scenario medkit 320 39eff1cf9cf59c85 15cc4a2fa2e9c952
+scenario gauntlet 400 2f031cbcf7076a92 f96d3eb85eb5549a
+scenario chaingun 900 812fcd3f8d7c4e4f 9393eaadbcd8ba56 af9450be1d17c4c4 e8ba93525d4e4307
+scenario haste-scout 960 940af750ae47f55c 9abd23a8fe2dd65b 0e7d015e1fab2e23 f5aa1cbd135a58dc
+scenario holster 360 4b4dc601d66b8082 e1b74b41f8fc7157
+scenario lockout 400 f78ee77f88a71fed 42622d5acee19f86
+scenario invulnerable 360 c9e4ca4d4a406232 12669ebc2acfa0ae
+scenario buttons 500 210e7284de47bd84 0683443d8b7d9768
+scenario grapple 450 309b38fc7d911de7 0c003c5d8862bd6f
+scenario grapple-gh0 200 8b3913733ddba0ae
+scenario frozen 200 92e35c4ffdfb25e0
+scenario intermission 120 844ebc0ed3a8f9b5
+scenario tutorial 120 57f84f41f8cfef4d
+scenario fuzz-game 6000 6f32a66a4953a330 2e9536fcbf386973 9b92053cb5eb3d4a 1eb107699ab9c2f7 327f9b7da1d52cf4 d771f4d174694c7f e380490b1f1c625b a6d5ae15936cafb7 4ff13c86e7a244a3 a7f317aa3f88cfc2 cfbcaf1c5125cef2 25ee7c8eba968041 c400e02ec4485e5e 7e1fdeb30862e366 dac8e5d185013f3b 6b2a3ae1e7b5a2f5 e6ee99a178bd982c bed33728ff1d1abb a4e877d9de81b93a 677a2048a21e1808 833e5323c15d6f28 ef4bcb3c4d13e45a f4776243ea9cb779 2324fd23aeae68ac
+scenario fuzz-game-2 6000 555766636f0d3b19 cc0e21df66993297 b4dbe274c2e178f6 5527f5bfc60f226d d9e325137f4f738d d365009bc2324a95 ed72b546865ce1ec 0ad02cfe40585f10 e38ed322e5d0c390 df33b294aa61c919 095550acf1d809de bd16ceb45a9d3f36 39bdc2b66e255c54 c40c2d673527a37d dd2872962ec8af01 df34132a51bfb899 0073f58301d8fe84 0b1f955c1946b77e 44ad533b1b073920 c01aafe24d5d5a0d 65afcf36ee92f69b 25be442be3385ccc 0848747dcf639b7b a31efd1a022e9d3f

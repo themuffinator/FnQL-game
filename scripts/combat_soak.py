@@ -67,6 +67,7 @@ def main() -> int:
         startup = [f"map {args.map} {args.factory}", "wait 40"]
         startup += [f"addbot {name} {args.skill}" for name in bots]
         command = [
+            *headless.exe_wrapper(),
             str(engine),
             *headless.SERVER,
             "+set", "fs_basepath", str(retail),

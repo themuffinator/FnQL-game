@@ -286,9 +286,15 @@ typedef	int	fixed4_t;
 typedef	int	fixed8_t;
 typedef	int	fixed16_t;
 
-#ifndef M_PI
+// Always the float literal, whatever <math.h> defined.  Retail's modules were
+// built with it (MSVC's math.h defines no M_PI): the retail qagamex86 sine
+// trajectory (0x1002d297) multiplies by 3.1415927410125732, the float value.
+// glibc's math.h defines a double M_PI, which under the old #ifndef guard
+// moved every sine mover, angle conversion and spread on Linux away from
+// retail (observed 2026-11-16: gate G3c, pmove-replay, failed its sine
+// record on Linux x86_64 and aarch64 alone).
+#undef M_PI
 #define M_PI		3.14159265358979323846f	// matches value in gcc v2 math.h
-#endif
 
 #define NUMVERTEXNORMALS	162
 extern	vec3_t	bytedirs[NUMVERTEXNORMALS];

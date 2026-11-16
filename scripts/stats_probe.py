@@ -200,6 +200,7 @@ def host(args, provider: str, retail: Path) -> tuple[list[dict], str]:
         if args.script:
             startup += [part.strip() for part in args.script.split(";") if part.strip()]
         command = [
+            *headless.exe_wrapper(),
             str(args.engine),
             *headless.SERVER,
             "+set", "fs_basepath", str(retail),

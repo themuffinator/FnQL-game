@@ -594,3 +594,12 @@ comments and docs/PLAN.md):
   live only in `code/ui/`. QL widgets, numeric crosshairs, model/skin pairs,
   native text and bounded menu parsing are independent adaptations of the
   baseline architecture. [UI.md](UI.md) records observations and gates.
+
+- `q_shared.h` now always defines `M_PI` as the baseline's float literal. The
+  baseline defined it only `#ifndef M_PI`, so with glibc's `math.h` Linux
+  builds used a double value and drifted from retail (qagamex86 0x1002d297
+  multiplies by 3.1415927410125732). Gate G3c (`pmove-replay`) holds every
+  target to the retail `Pmove` and sine-trajectory output.
+- Milestone 11 builds the modules for aarch64, armv7l, ppc64le and ppc64 on
+  Linux with `-fsigned-char`, because the baseline assumes x86's signed
+  `char`.

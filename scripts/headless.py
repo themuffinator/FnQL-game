@@ -20,6 +20,7 @@ display mode or touch the desktop gamma:
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 import threading
@@ -34,6 +35,20 @@ SERVER_SETTINGS = {"com_headless": "1"}
 def retail_client_allowed() -> bool:
     """Whether a run may launch the retail Steam client (explicit opt-in)."""
     return os.environ.get("FNQL_ALLOW_RETAIL_CLIENT") == "1"
+
+
+def exe_wrapper() -> list[str]:
+    """Command prefix that runs a target binary on this host.
+
+    A cross build (meson/linux-<arch>.ini: qemu-user for the Linux aarch64,
+    armv7l, ppc64le and ppc64 targets) exports its fnql_exe_wrapper property as
+    FNQL_EXE_WRAPPER to every test, so a gate runs the engine and the probes it
+    compiles for the target it was built for. Meson's own MESON_EXE_WRAPPER,
+    which it sets only for tests that involve a cross-built target, is the
+    fallback. Native builds set neither and get an empty prefix.
+    """
+    value = os.environ.get("FNQL_EXE_WRAPPER", "").strip() or os.environ.get("MESON_EXE_WRAPPER", "").strip()
+    return shlex.split(value) if value else []
 
 
 def popen_options() -> dict[str, Any]:

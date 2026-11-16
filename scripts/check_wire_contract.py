@@ -31,6 +31,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import headless
+
 ROOT = Path(__file__).resolve().parents[1]
 GAME = ROOT / "code" / "game"
 TABLES = ROOT / "docs" / "contract" / "retail_tables.json"
@@ -109,13 +111,13 @@ def run_probe(cc: list[str], enums: dict) -> list[str]:
         if built.returncode != 0:
             print(f"wire-contract probe failed to build:\n{built.stdout}{built.stderr}", file=sys.stderr)
             raise SystemExit(1)
-        ran = subprocess.run([str(exe)], capture_output=True, text=True, check=True)
+        ran = subprocess.run([*headless.exe_wrapper(), str(exe)], capture_output=True, text=True, check=True)
         return ran.stdout.splitlines()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--cc", default="cl", help="C compiler command for the module target (x86 or x86_64)")
+    parser.add_argument("--cc", default="cl", help="C compiler command for the module target (any enabled target)")
     args = parser.parse_args()
 
     tables = json.loads(TABLES.read_text(encoding="utf-8"))

@@ -67,7 +67,7 @@ def main() -> int:
         (game_dir / "sweep.cfg").write_text("\n".join(lines) + "\n", encoding="ascii")
 
         log_path = game_dir / "qconsole.log"
-        command = [str(engine), *headless.SERVER, "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
+        command = [*headless.exe_wrapper(), str(engine), *headless.SERVER, "+set", "fs_basepath", str(retail), "+set", "fs_homepath", str(home),
                    "+set", "logfile", "2", "+set", "net_port", str(args.port), "+set", "sv_pure", "0",
                    "+set", "vm_gameProvider", "fnql",
                    # the dedicated startup hook runs after the command line

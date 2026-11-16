@@ -15,49 +15,58 @@ project('fnql-game', 'c',
 cc = meson.get_compiler('c')
 fs = import('fs')
 
-x86_target_probe = '''
-#if !defined(_M_IX86) && !defined(__i386__)
-#error FnQL-game requires an x86 target
+# Each enabled target (Meson CPU family): [systems, compiler predicate,
+# pointer bytes].  The compiler probe catches a wrapper whose real target
+# disagrees with the configured CPU family (a dropped -m32, an x32 ABI, a
+# soft-float or big-endian ARM toolchain, or a ppc64 compiler of the other
+# byte order).
+target_probe_template = '''
+#if !(@0@)
+#error FnQL-game requires a @1@ target
 #endif
-typedef char fnql_game_pointer_width_must_be_32_bits[(sizeof(void *) == 4) ? 1 : -1];
+typedef char fnql_game_pointer_width_must_match[(sizeof(void *) == @2@) ? 1 : -1];
 int main(void) { return 0; }
 '''
-x86_64_target_probe = '''
-#if !defined(_M_AMD64) && !defined(__x86_64__)
-#error FnQL-game requires an x86_64 target
-#endif
-typedef char fnql_game_pointer_width_must_be_64_bits[(sizeof(void *) == 8) ? 1 : -1];
-int main(void) { return 0; }
-'''
+enabled_targets = {
+  'x86': [['windows', 'linux'], 'defined(_M_IX86) || defined(__i386__)', '4'],
+  'x86_64': [['windows', 'linux'], 'defined(_M_AMD64) || defined(__x86_64__)', '8'],
+  'aarch64': [['linux'], 'defined(__aarch64__) && !defined(__AARCH64EB__)', '8'],
+  'arm': [['linux'], 'defined(__arm__) && defined(__ARM_ARCH) && __ARM_ARCH >= 7 && defined(__ARM_PCS_VFP) && !defined(__ARMEB__)', '4'],
+  'ppc64le': [['linux'], 'defined(__PPC64__) && defined(__LITTLE_ENDIAN__)', '8'],
+  'ppc64': [['linux'], 'defined(__PPC64__) && defined(__BIG_ENDIAN__)', '8'],
+}
 cpu_family = host_machine.cpu_family()
-if cpu_family == 'x86'
-  target_supported = cc.compiles(x86_target_probe, name: '32-bit x86 target')
-elif cpu_family == 'x86_64'
-  target_supported = cc.compiles(x86_64_target_probe, name: 'x86_64 target')
-else
-  target_supported = false
+target_supported = false
+if enabled_targets.has_key(cpu_family)
+  target = enabled_targets[cpu_family]
+  if target[0].contains(host_machine.system())
+    target_supported = cc.compiles(
+      target_probe_template.format(target[1], cpu_family, target[2]),
+      name: cpu_family + ' target')
+  endif
 endif
 if not target_supported
-  error('FnQL-game supports only 32-bit x86 and x86_64 targets; Meson configured host CPU family "'
-    + cpu_family + '" or the compiler target probe failed. Use a vcvars32 (Win32) or vcvars64 (x64) '
-    + 'environment on Windows, and an i686 cross file or a native x86_64 compiler on Linux.')
+  error('FnQL-game supports only 32-bit x86 and x86_64 on Windows and Linux, and aarch64, '
+    + 'armv7l (hard-float), ppc64le and ppc64 on Linux; Meson configured host CPU family "'
+    + cpu_family + '" on "' + host_machine.system() + '" or the compiler target probe failed. '
+    + 'Use a vcvars32 (Win32) or vcvars64 (x64) environment on Windows, and a native compiler '
+    + 'or a matching cross file (meson/linux-<arch>.ini) on Linux.')
 endif
 
 win32 = host_machine.system() == 'windows'
 linux = host_machine.system() == 'linux'
-if not (win32 or linux)
-  error('FnQL-game targets Windows and Linux; other platforms are enabled through milestone M11.')
-endif
+# Cross builds name the command that runs target binaries here (see test_env).
+exe_wrapper_command = meson.get_external_property('fnql_exe_wrapper', [])
 
 # Module names carry the engine's ARCH_STRING: x86 on Windows and i386 on
 # Linux for the retail-ABI target, x86_64 on both for the 64-bit target (no
-# retail 64-bit Windows modules exist).  FnQL-game prefixes "fnql_" so its
-# modules never shadow the retail ones in a search path; the FnQL engine
-# selects them by provider.
+# retail 64-bit Windows modules exist), and aarch64, arm, ppc64le or ppc64 on
+# Linux.  FnQL-game prefixes "fnql_" so its modules never shadow the retail
+# ones in a search path; the FnQL engine selects them by provider.
 if cpu_family == 'x86'
   module_arch = win32 ? 'x86' : 'i386'
 else
-  module_arch = 'x86_64'
+  module_arch = cpu_family
 endif
 # The retail client, its cgame and ui, and the retail Windows qagame exist only
 # for 32-bit x86, and the G3 harness and the client probes are written against
@@ -88,6 +97,9 @@ else
     '-fvisibility=hidden',
     '-Wno-unused-parameter',
     '-ffp-contract=off',
+    # The game code (and the retail modules it replaces) assumes x86's signed
+    # char; ARM and POWER default to unsigned. A no-op on x86 and x86_64.
+    '-fsigned-char',
   ])
   if cpu_family == 'x86'
     c_args += cc.get_supported_arguments(['-msse2', '-mfpmath=sse'])
@@ -614,24 +626,43 @@ if get_option('retail-ql') != ''
 endif
 test('retail-tables-current', python, args: retail_table_args, suite: 'contract')
 
+# The pmove lockstep scenarios, their brush world and the output digests
+# (tests/lockstep/lockstep_scenarios.h, lockstep_digest.h).
+lockstep_common_sources = files('tests/lockstep/lockstep_scenarios.c',
+  'tests/lockstep/lockstep_digest.c', 'tests/lockstep/lockstep_world.c',
+  'code/game/bg_lib.c', 'code/game/bg_misc.c', 'code/game/bg_pmove.c', 'code/game/bg_pmove_settings.c',
+  'code/game/bg_slidemove.c', 'code/game/q_math.c', 'code/game/q_shared.c')
+pmove_golden = files('tests/lockstep/pmove_golden.txt')
+
 # Gate G3: FnQL-game's Pmove runs in lockstep with the retail one.  The
 # harness loads the retail Windows module and calls its Pmove through MSVC
 # inline assembly, so it exists only for Windows x86 MSVC builds; it skips
-# (exit 77) without a retail install.
+# (exit 77) without a retail install.  Each run also holds the retail
+# output to the committed G3c golden file (tests/lockstep/pmove_golden.txt).
 if win32 and host_machine.cpu_family() == 'x86' and cc.get_id() == 'msvc'
   pmove_lockstep = executable('pmove_lockstep',
-    files('tests/lockstep/pmove_lockstep.c', 'tests/lockstep/lockstep_world.c',
-      'code/game/bg_lib.c', 'code/game/bg_misc.c', 'code/game/bg_pmove.c', 'code/game/bg_pmove_settings.c',
-      'code/game/bg_slidemove.c', 'code/game/q_math.c', 'code/game/q_shared.c'),
+    files('tests/lockstep/pmove_lockstep.c') + lockstep_common_sources,
     c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'],
     dependencies: [math_dep])
   lockstep_args = [files('scripts/pmove_lockstep.py'), '--harness', pmove_lockstep.full_path()]
   if get_option('retail-ql') != ''
     lockstep_args += ['--retail', get_option('retail-ql')]
   endif
+  lockstep_args += ['--golden', pmove_golden]
   test('pmove-lockstep', python, args: lockstep_args, depends: pmove_lockstep,
     suite: 'parity', timeout: 120)
 endif
+
+# Gate G3c: on every target, FnQL-game's Pmove reproduces the retail Pmove's
+# recorded output (the golden file G3a checks against the retail module) bit
+# for bit.  Retail clients predict with the x86 Pmove, so this is what lets a
+# server on another architecture move players exactly as retail does.  Needs
+# no retail install.
+pmove_replay = executable('pmove_replay',
+  files('tests/lockstep/pmove_replay.c') + lockstep_common_sources,
+  c_args: c_args + ['-DQAGAME', '-DMISSIONPACK'],
+  dependencies: [math_dep])
+test('pmove-replay', pmove_replay, args: [pmove_golden], suite: ['unit', 'parity'], timeout: 300)
 
 # Gate G1: boot the module on a retail map in an FnQL dedicated server.
 if get_option('fnql-dedicated') != ''
@@ -1979,10 +2010,22 @@ endif
 
 summary({
   'target': host_machine.system() + ' ' + host_machine.cpu_family(),
+  'exe wrapper': exe_wrapper_command.length() > 0 ? ' '.join(exe_wrapper_command) : 'none',
   'qagame': fs.name(qagame.full_path()),
 }, section: 'FnQL-game')
 
 # Every test runs unattended (AGENTS.md headless rule): FnQL clients start
 # windowless (com_headless 2, which still renders and captures) and dedicated
 # servers headless, unless a test passes +set com_headless itself.
-add_test_setup('headless', env: {'FNQL_HEADLESS': '2'}, is_default: true)
+#
+# A cross build (meson/linux-<arch>.ini) runs target binaries through its
+# exe_wrapper, which Meson applies to the test executables it builds. Meson
+# exports it (as MESON_EXE_WRAPPER) only to tests that involve a cross-built
+# target, so the cross file repeats it as the fnql_exe_wrapper property and
+# every test gets it as FNQL_EXE_WRAPPER: the gate scripts prefix it to the
+# probes they compile and the engine they launch (scripts/headless.py).
+test_env = {'FNQL_HEADLESS': '2'}
+if exe_wrapper_command.length() > 0
+  test_env += {'FNQL_EXE_WRAPPER': ' '.join(exe_wrapper_command)}
+endif
+add_test_setup('headless', env: test_env, is_default: true)

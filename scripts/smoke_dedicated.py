@@ -24,10 +24,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 # The x86 (retail-ABI) name; other targets name the module after the engine's
-# ARCH_STRING (fnql_qagamex86_64.dll / .so), so a gate copies the module under
+# ARCH_STRING (fnql_qagamex86_64.dll, fnql_qagameaarch64.so, ...), so a gate copies the module under
 # the name it was built with -- see hosted_module_name().
 MODULE_NAME = "fnql_qagamex86.dll" if os.name == "nt" else "fnql_qagamei386.so"
-MODULE_ARCHES = ("x86", "i386", "x86_64")
+MODULE_ARCHES = ("x86", "i386", "x86_64", "aarch64", "arm", "ppc64le", "ppc64")
 
 # Each line must appear in the server log for the gate to pass; the hosted
 # module's own line is added by required_lines().
@@ -110,6 +110,7 @@ def main() -> int:
         shutil.copy2(args.module, home / "baseq3" / module_name)
         log_path = home / "baseq3" / "qconsole.log"
         command = [
+            *headless.exe_wrapper(),
             str(engine),
             *headless.SERVER,
             "+set", "fs_basepath", str(retail),

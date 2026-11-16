@@ -24,6 +24,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import headless
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # Structures the engine and qagame share by pointer, with the engine header
@@ -146,7 +148,7 @@ def compile_and_run(cc: list[str], source: str, include_dir: Path, work: Path, t
     if built.returncode != 0:
         print(f"[{tag}] layout probe failed to compile:\n{built.stdout}{built.stderr}", file=sys.stderr)
         raise SystemExit(1)
-    ran = subprocess.run([str(exe_path)], capture_output=True, text=True, check=True)
+    ran = subprocess.run([*headless.exe_wrapper(), str(exe_path)], capture_output=True, text=True, check=True)
     return ran.stdout.splitlines()
 
 
@@ -154,7 +156,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--fnql", type=Path, default=ROOT.parent / "FnQL",
                         help="FnQL engine checkout (default: ../FnQL)")
-    parser.add_argument("--cc", default="cl", help="C compiler command for the module target (x86 or x86_64)")
+    parser.add_argument("--cc", default="cl", help="C compiler command for the module target (any enabled target)")
     args = parser.parse_args()
 
     fnql = args.fnql.resolve()
